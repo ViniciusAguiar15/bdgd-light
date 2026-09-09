@@ -11,6 +11,7 @@ O download mostra progresso e é retomado (HTTP Range) se o .zip parcial existir
 import argparse
 import os
 import sys
+import urllib.error
 import urllib.request
 import zipfile
 
@@ -27,7 +28,14 @@ def baixar(url: str, destino: str) -> None:
     req = urllib.request.Request(url)
     if parcial:
         req.add_header("Range", f"bytes={parcial}-")
-    with urllib.request.urlopen(req) as resp:
+    try:
+        resp_ctx = urllib.request.urlopen(req)
+    except urllib.error.HTTPError as e:
+        if e.code == 416 and parcial:
+            print(f"Arquivo já completo ({parcial/1e9:.2f} GB) — pulando download.")
+            return
+        raise
+    with resp_ctx as resp:
         if parcial and resp.status != 206:
             print("Servidor não aceitou retomada — baixando do zero.")
             parcial = 0

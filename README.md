@@ -24,13 +24,16 @@ data/                  dados baixados/derivados (ignorado pelo git)
 
 ## Começando
 
+Ambiente sempre isolado com [uv](https://docs.astral.sh/uv/) (nada é instalado no Python do sistema):
+
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"            # + ".[twin,agent]" para OpenDSS e MCP
-python3 scripts/baixar_bdgd.py     # Light 2025-12-31 (~1,1 GB)
-python3 scripts/listar_camadas.py data/Light_382_2025-12-31_V11_20260824-0926.gdb
-pytest && ruff check .
+uv sync --extra dev                # cria .venv e instala; + --extra twin --extra agent para OpenDSS e MCP
+uv run scripts/baixar_bdgd.py      # Light 2025-12-31 (~1,1 GB)
+uv run scripts/listar_camadas.py data/Light_382_2025-12-31_V11_20260824-0926.gdb
+uv run pytest && uv run ruff check .
 ```
+
+Qualquer comando do projeto é `uv run <comando>`; para adicionar dependência, `uv add <pacote>` (e `uv lock`).
 
 Outras versões: `--dist light --ano 2024` (ver `src/bdgd_light/catalogo.py`).
 

@@ -9,6 +9,9 @@ ferramentas de rede → agente orquestrador/verificador em modo *human-in-the-lo
 roteiro de modernização do COD em `docs/PLANO.md`.
 
 ## Convenções obrigatórias
+- Ambiente **sempre via uv**: `uv sync --extra dev` cria o `.venv`; todo comando roda com `uv run ...`
+  (`uv run pytest`, `uv run ruff check .`, `uv run bdgd-light ...`). Dependências entram com `uv add`
+  (nunca `pip install` no Python do sistema). Commitar `uv.lock`.
 - Python >= 3.11, layout `src/bdgd_light/`; testes em `tests/` com pytest; lint/format com **ruff**
   (line-length 100). CI (`.github/workflows/ci.yml`) precisa passar.
 - Código, docstrings, mensagens de commit e issues em **português do Brasil**; nomes de

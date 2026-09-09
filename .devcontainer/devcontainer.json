@@ -5,7 +5,7 @@
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/devcontainers/features/node:1": { "version": "20" }
   },
-  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y gdal-bin && pip install -e '.[dev,twin,agent]'",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y gdal-bin && curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uv sync --extra dev --extra twin --extra agent",
   "customizations": {
     "vscode": {
       "extensions": ["ms-python.python", "charliermarsh.ruff", "GitHub.copilot", "GitHub.copilot-chat"]

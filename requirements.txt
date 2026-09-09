@@ -1,2 +1,2 @@
-# Instalação recomendada: pip install -e ".[dev]"  (ver pyproject.toml)
+# Use uv: `uv sync --extra dev` (ver pyproject.toml). Este arquivo existe só por compatibilidade.
 -e .[dev]
