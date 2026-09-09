@@ -19,7 +19,7 @@ scripts/
   listar_camadas.py    lista as camadas do .gdb
   converter.py         camada → GeoJSON (EPSG:4326) com recorte por bbox
 index.html             visor Leaflet legado (será substituído pelo console MapLibre)
-docs/                  plano, ADRs
+docs/                  plano, ADRs, notas de referência da BDGD Light 2025 (bdgd-light-2025.md)
 tests/                 pytest (fixtures sintéticas; dados reais nunca vão para o git)
   fixtures/            bdgd_mini.gpkg (BDGD sintética) e gerar_fixture.py, que a (re)cria
 data/                  dados baixados/derivados (ignorado pelo git)
@@ -72,7 +72,9 @@ uv run bdgd-light export --gdb data/Light_382_2025-12-31_V11_20260824-0926.gdb \
   (Light 2025: SSDMT com 1,0 M de trechos em ~4 s e UCBT_tab com 5,0 M de linhas em ~23 s, pico de
   memória < 500 MB). O log mostra feições e tempo por camada.
 - Na Light 2025 V11 **CTMT é uma tabela** (sem geometria), **não existe camada `UCBT`/`UCMT`/
-  `UGBT`/`UGMT` geográfica** (só as tabelas `*_tab`) e as subestações estão em `UNTRAT`/`SUB`.
+  `UGBT`/`UGMT` geográfica** (só as tabelas `*_tab`) e as subestações estão em `SUB`/`UNTRAT`.
+  Essas e outras particularidades da base (domínios `TEN_NOM` e `TIP_UNID`, numeração de `PAC` por
+  alimentador, contagens por camada) estão em [`docs/bdgd-light-2025.md`](docs/bdgd-light-2025.md).
 
 Para testar sem a BDGD real: `uv run bdgd-light export --gdb tests/fixtures/bdgd_mini.gpkg --out /tmp/parquet`
 (a fixture sintética é recriada com `uv run tests/fixtures/gerar_fixture.py`).
