@@ -34,3 +34,23 @@ def bdgd_mini(gerador: ModuleType) -> Path:
     if not GPKG_MINI.exists():
         gerador.gerar(GPKG_MINI)
     return GPKG_MINI
+
+
+@pytest.fixture(scope="session")
+def bairro_mini(bdgd_mini: Path) -> Path:
+    """GeoJSON (EPSG:4326) que cobre RJO001 e RJO002 mas não RJO003."""
+    caminho = DIR_FIXTURES / "bairro_sintetico.geojson"
+    assert caminho.exists()
+    return caminho
+
+
+@pytest.fixture(scope="session")
+def parquet_mini(bdgd_mini: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Todas as camadas da fixture exportadas para Parquet (entrada de inventario/recortar)."""
+    from rich.console import Console
+
+    from bdgd_light.ingest.export import exportar, listar_camadas
+
+    destino = tmp_path_factory.mktemp("parquet_mini")
+    exportar(bdgd_mini, list(listar_camadas(bdgd_mini)), destino, console=Console(quiet=True))
+    return destino

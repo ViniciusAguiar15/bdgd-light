@@ -1,0 +1,8 @@
+{
+"type": "FeatureCollection",
+"name": "bairro_sintetico",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "nome": "Bairro Sintético" }, "geometry": { "type": "Polygon", "coordinates": [ [ [ -43.192, -22.913 ], [ -43.192, -22.909 ], [ -43.201, -22.909 ], [ -43.201, -22.913 ], [ -43.192, -22.913 ] ] ] } }
+]
+}

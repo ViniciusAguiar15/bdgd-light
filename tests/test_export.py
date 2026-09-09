@@ -28,9 +28,45 @@ from bdgd_light.ingest.export import (
     resolver_camadas,
 )
 
-CAMADAS_FIXTURE = {"CTMT": 3, "SSDMT": 5, "UNSEMT": 4, "UCBT": 5, "UCBT_tab": 5}
-GEOGRAFICAS = {"SSDMT": "MultiLineString", "UNSEMT": "Point", "UCBT": "Point"}
-TABELAS = ("CTMT", "UCBT_tab")
+CAMADAS_FIXTURE = {
+    "CTMT": 3,
+    "SUB": 2,
+    "UNTRAT": 3,
+    "SSDMT": 9,
+    "UNSEMT": 7,
+    "UNTRMT": 4,
+    "UNREMT": 1,
+    "UNCRMT": 1,
+    "SSDBT": 4,
+    "UNSEBT": 1,
+    "RAMLIG": 3,
+    "PONNOT": 34,
+    "UCBT": 7,
+    "UCBT_tab": 7,
+    "UCMT_tab": 2,
+    "UGBT_tab": 2,
+    "UGMT_tab": 1,
+    "CRVCRG": 6,
+    "SEGCON": 3,
+    "EQTRMT": 4,
+    "EQSE": 7,
+}
+GEOGRAFICAS = {
+    "SUB": "MultiPolygon",
+    "UNTRAT": "Point",
+    "SSDMT": "MultiLineString",
+    "UNSEMT": "Point",
+    "UNTRMT": "Point",
+    "UNREMT": "Point",
+    "UNCRMT": "Point",
+    "SSDBT": "MultiLineString",
+    "UNSEBT": "Point",
+    "PONNOT": "Point",
+    "UCBT": "Point",
+}
+TABELAS = tuple(c for c in CAMADAS_FIXTURE if c not in GEOGRAFICAS)
+# subconjunto usado nos testes de exportação (o conjunto todo é coberto por `exportar` sem --layers)
+NUCLEO = ("CTMT", "SSDMT", "UNSEMT", "UCBT", "UCBT_tab")
 ENE = [f"ENE_{m:02d}" for m in range(1, 13)]
 
 runner = CliRunner()
@@ -60,8 +96,14 @@ def test_fixture_reproduz_estrutura_da_bdgd(bdgd_mini):
     for camada, n in CAMADAS_FIXTURE.items():
         assert pyogrio.read_info(bdgd_mini, layer=camada)["features"] == n
     chaves = gpd.read_file(bdgd_mini, layer="UNSEMT", engine="pyogrio")
-    assert {"COD_ID", "CTMT", "PAC_1", "PAC_2", "P_N_OPE"} <= set(chaves.columns)
-    assert chaves["P_N_OPE"].value_counts().to_dict() == {"F": 3, "A": 1}
+    esperadas = {"COD_ID", "CTMT", "PAC_1", "PAC_2", "P_N_OPE", "TLCD", "TIP_UNID"}
+    assert esperadas <= set(chaves.columns)
+    assert chaves["P_N_OPE"].value_counts().to_dict() == {"A": 4, "F": 3}
+    # nenhum PAC é compartilhado entre CTMT (a interligação é só geométrica, como na base real)
+    trechos = gpd.read_file(bdgd_mini, layer="SSDMT", engine="pyogrio")
+    pacs = pd.concat([trechos["PAC_1"], trechos["PAC_2"]])
+    ctmts = pd.concat([trechos["CTMT"]] * 2)
+    assert all(pac.startswith(ctmt) for pac, ctmt in zip(pacs, ctmts, strict=True))
 
 
 def test_fixture_commitada_em_sincronia_com_o_gerador(bdgd_mini, gerador, tmp_path):
@@ -84,7 +126,8 @@ def test_exporta_geograficas_como_geoparquet_em_epsg4674(bdgd_mini, tmp_path):
     assert [r.camada for r in resultados] == list(CAMADAS_FIXTURE)
     assert {r.camada: r.feicoes for r in resultados} == CAMADAS_FIXTURE
     assert {r.camada: r.geometria for r in resultados if not r.eh_tabela} == GEOGRAFICAS
-    for camada, tipo in GEOGRAFICAS.items():
+    for camada in ("SSDMT", "UNSEMT", "UCBT"):
+        tipo = GEOGRAFICAS[camada]
         arquivo = tmp_path / f"{camada}.parquet"
         gdf = gpd.read_parquet(arquivo)
         assert len(gdf) == CAMADAS_FIXTURE[camada]
@@ -100,7 +143,7 @@ def test_exporta_geograficas_como_geoparquet_em_epsg4674(bdgd_mini, tmp_path):
 
 
 def test_exporta_tabelas_sem_geometria_como_parquet(bdgd_mini, tmp_path):
-    resultados = exportar(bdgd_mini, TABELAS, tmp_path, console=console_silenciosa())
+    resultados = exportar(bdgd_mini, ("CTMT", "UCBT_tab"), tmp_path, console=console_silenciosa())
     assert all(r.eh_tabela for r in resultados)
 
     ctmt = pd.read_parquet(tmp_path / "CTMT.parquet")
@@ -112,45 +155,45 @@ def test_exporta_tabelas_sem_geometria_como_parquet(bdgd_mini, tmp_path):
     assert ctmt.set_index("COD_ID").loc["RJO001", "SUB"] == "SE001"
 
     ucbt = pd.read_parquet(tmp_path / "UCBT_tab.parquet")
-    assert len(ucbt) == 5 and "geometry" not in ucbt.columns
+    assert len(ucbt) == 7 and "geometry" not in ucbt.columns
     assert {"COD_ID", "CTMT", "PAC", "UNI_TR_MT", "CLAS_SUB", "CAR_INST", *ENE} <= set(ucbt.columns)
-    assert ucbt["CTMT"].value_counts().to_dict() == {"RJO001": 3, "RJO002": 2}
+    assert ucbt["CTMT"].value_counts().to_dict() == {"RJO001": 3, "RJO002": 3, "RJO003": 1}
     assert (ucbt[ENE] > 0).all().all()
 
 
 def test_chaves_preservam_atributos_e_geometria(bdgd_mini, tmp_path):
     resultado = exportar_camada(bdgd_mini, "UNSEMT", tmp_path)
-    assert resultado.feicoes == 4 and resultado.geometria == "Point"
+    assert resultado.feicoes == 7 and resultado.geometria == "Point"
     assert resultado.parquet == tmp_path / "UNSEMT.parquet" and resultado.gpkg is None
 
     chaves = gpd.read_parquet(resultado.parquet)
     original = gpd.read_file(bdgd_mini, layer="UNSEMT", engine="pyogrio")
     assert set(chaves.columns) == set(original.columns)
     assert chaves.geometry.geom_equals(original.geometry).all()
-    assert chaves["P_N_OPE"].value_counts().to_dict() == {"F": 3, "A": 1}
-    na = chaves[chaves["P_N_OPE"] == "A"].iloc[0]
-    assert (na["PAC_1"], na["PAC_2"]) == ("RJO001_MT_5", "RJO002_MT_4")
-    assert na.geometry.x == pytest.approx(-43.196) and na.geometry.y == pytest.approx(-22.9105)
+    assert chaves["P_N_OPE"].value_counts().to_dict() == {"A": 4, "F": 3}
+    tie = chaves.set_index("COD_ID").loc["CH003"]
+    assert (tie["PAC_1"], tie["PAC_2"], tie["TLCD"]) == ("RJO001_MT_5", "RJO001_MT_7", 1)
+    assert tie.geometry.x == pytest.approx(-43.1968) and tie.geometry.y == pytest.approx(-22.91)
 
 
 def test_lotes_pequenos_gravam_todas_as_feicoes(bdgd_mini, tmp_path):
     inteiro = exportar_camada(bdgd_mini, "UCBT", tmp_path / "inteiro")
     em_lotes = exportar_camada(bdgd_mini, "UCBT", tmp_path / "lotes", batch_size=2)
-    assert inteiro.feicoes == em_lotes.feicoes == 5
+    assert inteiro.feicoes == em_lotes.feicoes == 7
     assert pq.read_metadata(inteiro.parquet).num_row_groups == 1
-    assert pq.read_metadata(em_lotes.parquet).num_row_groups == 3
+    assert pq.read_metadata(em_lotes.parquet).num_row_groups == 4
     assert_geodataframe_equal(gpd.read_parquet(inteiro.parquet), gpd.read_parquet(em_lotes.parquet))
 
     avancos: list[int] = []
     exportar_camada(bdgd_mini, "UCBT", tmp_path / "prog", batch_size=2, ao_avancar=avancos.append)
-    assert avancos == [2, 2, 1]
+    assert avancos == [2, 2, 2, 1]
 
 
 def test_gpkg_unico_com_camadas_geograficas_e_tabelas(bdgd_mini, tmp_path):
     gpkg = tmp_path / "saida" / "bdgd.gpkg"
     resultados = exportar(
         bdgd_mini,
-        list(CAMADAS_FIXTURE),
+        list(NUCLEO),
         tmp_path / "parquet",
         gpkg=gpkg,
         batch_size=2,
@@ -158,10 +201,10 @@ def test_gpkg_unico_com_camadas_geograficas_e_tabelas(bdgd_mini, tmp_path):
     )
     assert all(r.gpkg == gpkg for r in resultados)
     camadas = listar_camadas(gpkg)
-    assert set(camadas) == set(CAMADAS_FIXTURE)
+    assert set(camadas) == set(NUCLEO)
     assert camadas["SSDMT"] == "MultiLineString" and camadas["CTMT"] is None
-    for camada, n in CAMADAS_FIXTURE.items():
-        assert pyogrio.read_info(gpkg, layer=camada)["features"] == n
+    for camada in NUCLEO:
+        assert pyogrio.read_info(gpkg, layer=camada)["features"] == CAMADAS_FIXTURE[camada]
     ssdmt = gpd.read_file(gpkg, layer="SSDMT", engine="pyogrio")
     original = gpd.read_file(bdgd_mini, layer="SSDMT", engine="pyogrio")
     assert ssdmt.crs.to_epsg() == 4674
@@ -170,8 +213,8 @@ def test_gpkg_unico_com_camadas_geograficas_e_tabelas(bdgd_mini, tmp_path):
 
     # reexportar substitui a camada no GeoPackage em vez de duplicar feições
     exportar(bdgd_mini, ["UNSEMT"], tmp_path / "parquet", gpkg=gpkg, console=console_silenciosa())
-    assert pyogrio.read_info(gpkg, layer="UNSEMT")["features"] == 4
-    assert set(listar_camadas(gpkg)) == set(CAMADAS_FIXTURE)
+    assert pyogrio.read_info(gpkg, layer="UNSEMT")["features"] == 7
+    assert set(listar_camadas(gpkg)) == set(NUCLEO)
 
 
 def test_sem_layers_usa_camadas_chave_e_pula_ausentes_com_aviso(bdgd_mini, tmp_path):
@@ -182,7 +225,7 @@ def test_sem_layers_usa_camadas_chave_e_pula_ausentes_com_aviso(bdgd_mini, tmp_p
         f"{c}.parquet" for c in CAMADAS_FIXTURE
     )
     log = saida.getvalue()
-    assert "Aviso" in log and "SSDBT" in log and "pulada" in log
+    assert "Aviso" in log and "SSDAT" in log and "pulada" in log
     assert "3 feições" in log and "Resumo da exportação" in log
 
 
@@ -270,7 +313,7 @@ def test_cli_exporta_com_layers_out_e_gpkg(bdgd_mini, tmp_path):
         "UNSEMT.parquet",
     ]
     assert set(listar_camadas(gpkg)) == {"CTMT", "UNSEMT"}
-    assert "4 feições" in saida(resultado) and "Resumo da exportação" in saida(resultado)
+    assert "7 feições" in saida(resultado) and "Resumo da exportação" in saida(resultado)
 
 
 def test_cli_help_e_versao():
