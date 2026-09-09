@@ -1,33 +1,40 @@
 # Escopo geográfico: alimentadores escolhidos
 
-Análise preliminar feita sobre `data/parquet/{CTMT,SSDMT,UNSEMT}.parquet` (Light 2025-12-31 V11) em 2026-09-09.
-Inventário completo (1.802 alimentadores) em `data/inventario_ctmt_preliminar.csv` (fora do git).
+**Versão 2 (2026-09-09, após o inventário da issue #2).** A versão 1 escolhia o cluster PDG (MENEZES/XINGU/DANTAS);
+o inventário mostrou que as interligações telecomandadas entre eles eram todas **disjuntores dentro da SE**
+(`EM_SUB = True`), não chaves de campo — ou seja, não servem para transferência de carga num FLISR.
+A escolha abaixo usa só interligações de campo.
 
 ## Método
-- Chave de **interligação** (tie) = chave `UNSEMT` normalmente aberta (`P_N_OPE = "A"`) cujo ponto coincide
-  (raio de 2 m) com a extremidade de um segmento `SSDMT` de **outro** CTMT. Na BDGD da Light os `PAC` são
-  numerados por alimentador (`<CTMT>_MT_<n>`), então **a interligação não aparece por PAC compartilhado** —
-  só geometricamente. Isso vale para o grafo (issue #6) e o inventário (issue #2).
-- Priorizado: município do Rio (`MUN = 3304557`), rede aérea (`LDA`), 13,8 kV (`TEN_NOM = 46`), muitas
-  interligações **telecomandadas** (`TLCD = 1`), alimentadores da mesma subestação e mutuamente interligados.
+- Interligação (tie) = chave `UNSEMT` normalmente aberta (`P_N_OPE = "A"`) a até 2 m de uma extremidade de
+  `SSDMT` de **outro** CTMT (`ingest/interligacoes.py`); os `PAC` são numerados por alimentador, então não há
+  ligação topológica entre CTMT, só geométrica. Chaves dentro de polígono `SUB` são descontadas.
+- Priorizado: município do Rio (`MUN = 3304557`), rede aérea (`LDA`), 13,2 kV nominal (`TEN_NOM = 46`),
+  três alimentadores **mutuamente** interligados por chaves de campo, com pelo menos uma telecomandada
+  (`TLCD = 1`) em cada par.
+- Na Light 2025: 5.031 chaves NA de interligação; 381 dentro de SE; 4.650 de campo, das quais 659 telecomandadas.
+  Só **dois** trios aéreos no Rio fecham triângulo com ties telecomandadas de campo em todos os pares.
 
-## Números gerais
-1.802 CTMT (1.405 no município do Rio); 64.745 chaves MT, 12.754 NA, das quais 5.031 são interligação entre
-alimentadores e 875 dessas telecomandadas. Nome `LDS` = rede subterrânea (reticulada, Centro/Zona Sul),
-`LDA` = aérea, `LSA` = 25 kV (`TEN_NOM = 67`, Zona Oeste, 45–90 km).
+## Escolha: cluster TQR — SETD Taquara (Jacarepaguá)
 
-## Escolha: cluster PDG (Jacarepaguá — Freguesia / Pechincha / Anil), SE `10385916`
+| CTMT | nome | km MT | MWh/ano | UCBT | DER | trafos | chaves MT | telecom. |
+|---|---|---|---|---|---|---|---|---|
+| **TQR0007** | LDA PARNAIBA | 16,5 | 23.886 | 6.268 | 118 | 82 | 50 | 7 |
+| **TQR33859** | LDA CURUMAU | 18,0 | 27.156 | 5.885 | 124 | 99 | 54 | 7 |
+| **TQR33862** | LDA BOCARI | 12,2 | 20.509 | 4.351 | 199 | 82 | 58 | 6 |
 
-| CTMT | nome | km MT | MWh/ano | NA | NA tie telecomandadas |
-|---|---|---|---|---|---|
-| **PDG29724** | LDA MENEZES | 12,9 | 34.044 | 16 | 8 |
-| **PDG33499** | LDA XINGU | 8,2 | 20.868 | — | 3 (com MENEZES) |
-| **PDG29731** | LDA DANTAS | 8,7 | 30.497 | — | 3 (com MENEZES) + 1 manual com XINGU |
+Interligações de campo entre eles: PARNAIBA–BOCARI **8** (2 telecomandadas), CURUMAU–BOCARI **7** (1),
+PARNAIBA–CURUMAU **2** (1). Total 17 ties, 4 telecomandadas. Mesma subestação (fonte única no OpenDSS).
+Bbox 4326 aproximado: lon −43,450 a −43,373; lat −22,932 a −22,905 (Taquara / Curicica / Freguesia).
 
-Bbox aproximado (EPSG:4326): lon −43,354 a −43,316; lat −22,950 a −22,922.
-Motivos: três alimentadores aéreos radiais da mesma subestação, tamanho tratável em OpenDSS, e MENEZES tem
-transferência de carga telecomandada para os dois vizinhos — cenário FLISR completo (isolar trecho de MENEZES,
-reenergizar a jusante por XINGU ou DANTAS).
+Cenário FLISR de referência: falta em BOCARI (`TQR33862`), que tem duas rotas de restauração telecomandadas
+(por PARNAIBA e por CURUMAU) — o agente compara as duas no OpenDSS.
 
-## Alternativa (Tijuca / Rio Comprido): FCN604 LDA SERTORIO (6 km), FCN929 LDA SILVESTRE, FCN1438 (LDS/LDA CAVALITO)
-Menor e mais denso, mas menos interligações telecomandadas (1 por par) e um dos três é parcialmente subterrâneo.
+## Alternativa: cluster BMT/CBI — SETD Boca do Mato + SETD Cachambi (Méier)
+`BMT0001` LDA DEPAIVA (6,5 km, 17 chaves telecomandadas), `BMT29737` LDA AVEMAR (5,3 km), `CBI33798` LDA RABELO
+(5,8 km). 10 ties de campo (3 telecomandadas), **duas subestações** — menor e mais rápido no OpenDSS, e mostra
+transferência entre SEs. Bom segundo cenário se o TQR ficar pesado.
+
+## Histórico
+- v1: PDG29724 MENEZES / PDG33499 XINGU / PDG29731 DANTAS (SE 10385916). Descartado: ties entre eles são
+  disjuntores de SE; as ties de campo de cada um vão para outros CTMT (PDG33651, PDG29776, PDG29820).
