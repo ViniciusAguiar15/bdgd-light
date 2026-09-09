@@ -1,70 +1,48 @@
-# bdgd-cemig
+# bdgd-light
 
-Visualização da **BDGD da CEMIG-D** (Base de Dados Geográfica da Distribuidora,
-dados abertos da ANEEL) sobre mapa de **satélite de alta resolução**.
+POC/MVP de um **Centro de Operação da Distribuição (COD) agêntico** sobre a **BDGD da Light**
+(Rio de Janeiro), usando dados abertos da ANEEL. A ideia: expor a rede (topologia, chaves, cargas,
+gêmeo digital em OpenDSS) como ferramentas para um agente de IA que monitora eventos, propõe manobras
+(ex.: FLISR) e as submete à aprovação de um operador humano, num console com mapa.
 
-Dataset: [Cemig-D 4950 2023-12-31 (ANEEL Dados Abertos)](https://dadosabertos-aneel.opendata.arcgis.com/datasets/52904205104349d19142c5892ec50844/about)
+Plano completo, módulos e fases em [`docs/PLANO.md`](docs/PLANO.md).
 
 ## Estrutura
 
 ```
-index.html              Visor de mapa (satélite Esri + camadas GeoJSON) — abrir no navegador
+src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim)
+  catalogo.py          IDs da BDGD por distribuidora/ano e camadas-chave
 scripts/
-  baixar_bdgd.py        Baixa e extrai o File Geodatabase da CEMIG-D
-  listar_camadas.py     Lista as camadas do .gdb
-  converter.py          Converte camada → GeoJSON (EPSG:4326), com recorte por área
-data/                   Dados baixados e convertidos (fora do git)
+  baixar_bdgd.py       baixa e extrai a BDGD (Light 2025 por padrão)
+  listar_camadas.py    lista as camadas do .gdb
+  converter.py         camada → GeoJSON (EPSG:4326) com recorte por bbox
+index.html             visor Leaflet legado (será substituído pelo console MapLibre)
+docs/                  plano, ADRs
+tests/                 pytest (fixtures sintéticas; dados reais nunca vão para o git)
+data/                  dados baixados/derivados (ignorado pelo git)
 ```
 
-## Como usar
-
-### 1. Instalar dependências (uma vez)
+## Começando
 
 ```bash
-pip3 install -r requirements.txt
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"            # + ".[twin,agent]" para OpenDSS e MCP
+python3 scripts/baixar_bdgd.py     # Light 2025-12-31 (~1,1 GB)
+python3 scripts/listar_camadas.py data/Light_382_2025-12-31_V11_20260824-0926.gdb
+pytest && ruff check .
 ```
 
-### 2. Baixar a BDGD da CEMIG
+Outras versões: `--dist light --ano 2024` (ver `src/bdgd_light/catalogo.py`).
 
-```bash
-python3 scripts/baixar_bdgd.py
-```
+## Fluxo de trabalho
 
-Atenção: o arquivo tem **vários GB** (CEMIG cobre Minas Gerais inteira).
+Backlog em Issues/Projects; issues são especificadas com critérios de aceite e implementadas pelo
+GitHub Copilot (coding agent) em PRs revisados. Convenções em
+[`.github/copilot-instructions.md`](.github/copilot-instructions.md).
 
-### 3. Ver quais camadas existem
+## Referências
 
-```bash
-python3 scripts/listar_camadas.py data/NOME_EXTRAIDO.gdb
-```
-
-Principais camadas geográficas: `UNTRD` (transformadores), `SSDMT`/`SSDBT`
-(rede de média/baixa tensão), `UCBT`/`UCMT` (unidades consumidoras),
-`PONNOT` (postes), `SUB` (subestações), `ARAT` (área de atuação).
-
-### 4. Converter uma camada para GeoJSON (com recorte)
-
-Converta sempre com `--bbox` — a camada inteira é grande demais para o navegador.
-Desenhe sua área em <https://boundingbox.klokantech.com> (formato CSV) e:
-
-```bash
-# Transformadores na região central de BH
-python3 scripts/converter.py data/NOME.gdb UNTRD --bbox -44.02 -19.95 -43.90 -19.88
-
-# Rede de média tensão, limitando feições para teste rápido
-python3 scripts/converter.py data/NOME.gdb SSDMT --bbox -44.02 -19.95 -43.90 -19.88 --max 20000
-```
-
-### 5. Visualizar
-
-Abra o `index.html` no navegador (2 cliques) e **arraste** os `.geojson`
-gerados em `data/` para o mapa. Clique em qualquer feição para ver os
-atributos. Precisa de internet (as imagens de satélite são carregadas da Esri).
-
-## Notas
-
-- A BDGD usa SIRGAS 2000 (EPSG:4674); o `converter.py` já reprojeta para
-  WGS84 (EPSG:4326), que é o que o mapa web usa.
-- Arquivos GeoJSON acima de ~80 MB deixam o navegador lento; reduza o bbox.
-- Para análises maiores (MG inteira, cruzamentos, filtros por atributo), o
-  caminho natural é importar o .gdb num PostGIS ou usar geopandas direto.
+- ANEEL — [BDGD (Módulo 10 do PRODIST)](https://dadosabertos.aneel.gov.br/dataset/base-de-dados-geografica-da-distribuidora-bdgd) e [Manual da BDGD](https://dadosabertos-aneel.opendata.arcgis.com/documents/f0d5c43ac67d4f5eb2ddffa4589501b2)
+- Badmus et al., *PowerChain: A Verifiable Agentic AI System for Automating Distribution Grid Analyses* — [arXiv:2508.17094](https://arxiv.org/abs/2508.17094)
+- [bdgd2opendss](https://github.com/PauloRadatz/bdgd2opendss) (MIT) — conversão BDGD → OpenDSS
+- [OpenDSSDirect.py](https://github.com/dss-extensions/OpenDSSDirect.py)

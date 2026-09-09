@@ -1,11 +1,24 @@
-# Dados da BDGD (grandes demais para o git)
+# Dados da BDGD e derivados (grandes demais para o git)
 data/
 !data/exemplo.geojson
+*.gdb/
+*.zip
+*.parquet
+*.gpkg
+*.pmtiles
+out/
 
 # Python
 __pycache__/
 *.pyc
 .venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
 
-# SO
+# SO / IDE
 .DS_Store
+.vscode/
+.idea/

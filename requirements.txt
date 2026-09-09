@@ -1,2 +1,2 @@
-geopandas>=1.0
-pyogrio>=0.9
+# Instalação recomendada: pip install -e ".[dev]"  (ver pyproject.toml)
+-e .[dev]
