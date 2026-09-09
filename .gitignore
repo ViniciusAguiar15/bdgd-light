@@ -1,0 +1,11 @@
+# Dados da BDGD (grandes demais para o git)
+data/
+!data/exemplo.geojson
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# SO
+.DS_Store
