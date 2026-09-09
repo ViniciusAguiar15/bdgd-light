@@ -13,6 +13,6 @@ de todo o resto do projeto (grafo, OpenDSS, tiles).
 Depende de #1.
 
 ## Critérios de aceite
-- [ ] GeoPackage por alimentador com CTMT, SSDMT, SSDBT, UNTRMT, UNSEMT, UNSEBT, UNREMT, UNCRMT, UCMT, UCBT, UGMT, UGBT, PONNOT, RAMLIG, SUB.
+- [ ] GeoPackage por alimentador com CTMT, SSDMT, SSDBT, UNTRMT, UNSEMT, UNSEBT, UNREMT, UNCRMT, UCMT, UCBT, UCBT_tab, UCMT_tab, UGMT, UGBT, PONNOT, RAMLIG, UNTRAT (da subestação do CTMT).
 - [ ] Regras de junção documentadas em `docs/bdgd-relacoes.md` (quais colunas ligam cada camada).
 - [ ] Testes com fixture sintética verificam que nada de outro CTMT vaza para o recorte.

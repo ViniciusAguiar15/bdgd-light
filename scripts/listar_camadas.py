@@ -4,7 +4,9 @@
 Uso:
     python3 scripts/listar_camadas.py data/NOME_DO_ARQUIVO.gdb
 """
+
 import sys
+
 import pyogrio
 
 if len(sys.argv) < 2:
