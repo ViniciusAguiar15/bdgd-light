@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 
 import geopandas as gpd
 import pandas as pd
@@ -33,10 +34,16 @@ TABELAS = ("CTMT", "UCBT_tab")
 ENE = [f"ENE_{m:02d}" for m in range(1, 13)]
 
 runner = CliRunner()
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 
 
 def console_silenciosa() -> Console:
     return Console(file=io.StringIO(), width=200)
+
+
+def saida(resultado) -> str:
+    """Saída da CLI sem códigos ANSI (no GitHub Actions o typer força cores no rich)."""
+    return _ANSI.sub("", resultado.output)
 
 
 # --- fixture sintética -------------------------------------------------------------------------
@@ -218,8 +225,8 @@ def test_cli_camada_inexistente_da_erro_claro_sem_traceback(bdgd_mini, tmp_path)
     )
     assert resultado.exit_code == 1
     assert isinstance(resultado.exception, SystemExit)  # saída limpa, não exceção não tratada
-    assert "Erro" in resultado.output and "NAOEXISTE" in resultado.output
-    assert "Traceback" not in resultado.output
+    assert "Erro" in saida(resultado) and "NAOEXISTE" in saida(resultado)
+    assert "Traceback" not in saida(resultado)
     assert not (tmp_path / "p").exists()  # falha antes de gravar qualquer coisa
 
 
@@ -228,7 +235,7 @@ def test_cli_base_inexistente_da_erro_claro(tmp_path):
         app, ["export", "--gdb", str(tmp_path / "nada.gdb"), "--out", str(tmp_path / "p")]
     )
     assert resultado.exit_code == 1 and isinstance(resultado.exception, SystemExit)
-    assert "Erro" in resultado.output and "não encontrada" in resultado.output
+    assert "Erro" in saida(resultado) and "não encontrada" in saida(resultado)
 
 
 def test_cli_arquivo_invalido_da_erro_claro(tmp_path):
@@ -236,7 +243,7 @@ def test_cli_arquivo_invalido_da_erro_claro(tmp_path):
     invalido.write_text("não sou uma geodatabase")
     resultado = runner.invoke(app, ["export", "--gdb", str(invalido), "--out", str(tmp_path / "p")])
     assert resultado.exit_code == 1 and isinstance(resultado.exception, SystemExit)
-    assert "Erro" in resultado.output and "não foi possível abrir" in resultado.output
+    assert "Erro" in saida(resultado) and "não foi possível abrir" in saida(resultado)
 
 
 def test_cli_exporta_com_layers_out_e_gpkg(bdgd_mini, tmp_path):
@@ -257,21 +264,21 @@ def test_cli_exporta_com_layers_out_e_gpkg(bdgd_mini, tmp_path):
             "2",
         ],
     )
-    assert resultado.exit_code == 0, resultado.output
+    assert resultado.exit_code == 0, saida(resultado)
     assert sorted(p.name for p in (tmp_path / "parquet").iterdir()) == [
         "CTMT.parquet",
         "UNSEMT.parquet",
     ]
     assert set(listar_camadas(gpkg)) == {"CTMT", "UNSEMT"}
-    assert "4 feições" in resultado.output and "Resumo da exportação" in resultado.output
+    assert "4 feições" in saida(resultado) and "Resumo da exportação" in saida(resultado)
 
 
 def test_cli_help_e_versao():
     ajuda = runner.invoke(app, ["--help"])
-    assert ajuda.exit_code == 0 and "export" in ajuda.output
+    assert ajuda.exit_code == 0 and "export" in saida(ajuda)
     ajuda_export = runner.invoke(app, ["export", "--help"])
     assert ajuda_export.exit_code == 0
     for opcao in ("--gdb", "--layers", "--out", "--gpkg", "--batch-size"):
-        assert opcao in ajuda_export.output
+        assert opcao in saida(ajuda_export)
     versao = runner.invoke(app, ["--version"])
-    assert versao.exit_code == 0 and "bdgd-light" in versao.output
+    assert versao.exit_code == 0 and "bdgd-light" in saida(versao)
