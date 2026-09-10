@@ -68,7 +68,12 @@ entre a **ponta de fora** da chave e o vizinho:
 1. **Ponta de fora** = o PAC da chave que **não** está no conjunto de PAC de `SSDMT` do CTMT dono
    (4.959 de 5.833 ties têm exatamente um PAC solto). Se os dois estão na própria rede (90 casos:
    ambíguo) ou nenhum está (784, das quais 634 dentro da SE), usa-se `PAC_2` por convenção (`PAC_1` é
-   o lado da fonte), com aviso no primeiro caso.
+   o lado da fonte), com aviso no primeiro caso. **Tie ambígua** (os dois PAC na própria rede) é
+   tipicamente uma chave NA de anel interno que também encosta num vizinho: a aresta `tie` recebe
+   `via_chave=<cod>` e só é atravessável com a chave **fechada** (`tie_switches()` tem a coluna
+   `ambigua`); antes, o grafo passava pela tie e contornava a chave aberta — com isso a zona da falta
+   "vazava" para o anel e `restore_options` sugeria transferir carga já energizada (Tijuca:
+   `757513244` RCP9882→RCP33308 e `977464757` URG29983→URG30000).
 2. **Vizinho carregado** (`Cluster`): a tie liga a ponta de fora ao `PAC_VIZ` real. A rede do vizinho
    fica conectada de verdade e uma transferência de carga aparece como energização vinda de outra
    fonte (`energized_by`).
@@ -83,7 +88,10 @@ entre a **ponta de fora** da chave e o vizinho:
    (`DIST_M`), com aviso.
 5. **Chaves dentro da SE** (`EM_SUB = True`) são ignoradas por padrão (`ties_na_se=False`): são
    disjuntores/baias do barramento e não transferem carga em campo — a mesma regra do inventário
-   (`NA_interligacao_campo`) e de `vizinhos --sem-se`.
+   (`NA_interligacao_campo`) e de `vizinhos --sem-se`. `EM_SUB` considera uma folga de 50 m ao redor do
+   polígono `SUB` (`detectar_interligacoes(raio_sub_m=…)`): o pátio da SE Posto Seis (Ipanema) tem 35
+   chaves NA de transferência de barra a 12–40 m do polígono cadastrado, todas sem `SSDMT` — não são
+   ties de campo (`docs/escopo-cidade.md`, v3.1).
 
 Números no cluster TQR (PARNAIBA / CURUMAU / BOCARI): 2.069 nós, 1.924 trechos (46,65 km), 162
 chaves, 35 ties (12 de chaves de CTMT fora do cluster, 7 CTMT externos), 2.068 nós energizados (o

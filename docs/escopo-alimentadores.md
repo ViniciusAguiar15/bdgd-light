@@ -1,5 +1,10 @@
 # Escopo geográfico: alimentadores escolhidos
 
+> **Superado pela v3.** A demo passou para os clusters **Tijuca** (`ALC9925,ALC9946,URG29983,RCP9882`) e
+> **Ipanema** (`PTS0001,PTS9088,PTS9924,PTS4022`) — ver [`escopo-cidade.md`](escopo-cidade.md), que traz o
+> panorama da cidade, os cenários e os resultados no gêmeo. O cluster TQR abaixo continua como rede de
+> regressão/benchmark (testes `test_fumaca_tqr0007*`, cenário `taquara` do console).
+
 **Versão 2 (2026-09-09, após o inventário da issue #2).** A versão 1 escolhia o cluster PDG (MENEZES/XINGU/DANTAS);
 o inventário mostrou que as interligações telecomandadas entre eles eram todas **disjuntores dentro da SE**
 (`EM_SUB = True`), não chaves de campo — ou seja, não servem para transferência de carga num FLISR.

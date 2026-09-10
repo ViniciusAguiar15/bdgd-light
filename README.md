@@ -31,7 +31,8 @@ src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim
                        OpenAICompatClient (qualquer API chat/completions) e preset GitHubModelsClient;
                        agent/audit.py é o log de auditoria encadeado por hash (JSON Lines)
 console/               console do operador: Vite + TypeScript + MapLibre GL JS lendo PMTiles
-                       (public/tiles/exemplo.pmtiles = cluster TQR), sobreposição do estado do grafo,
+                       (public/tiles/exemplo_{tijuca,ipanema}.pmtiles = clusters da demo; exemplo.pmtiles
+                       = TQR, regressão), seletor de cenário, sobreposição do estado do grafo,
                        smoke test headless (scripts/smoke.mjs); publicado no Pages por Actions
 scripts/
   baixar_bdgd.py       baixa e extrai a BDGD (Light 2025 por padrão)
@@ -43,7 +44,8 @@ index.html             visor Leaflet legado (arrastar o GeoJSON de scripts/conve
 docs/                  plano, ADRs (adr/ADR-001-stack.md, ADR-002-console-maplibre-pmtiles.md), notas da
                        BDGD Light 2025 (bdgd-light-2025.md),
                        regras de junção entre camadas (bdgd-relacoes.md), escolha dos alimentadores
-                       (escopo-alimentadores.md), mapeamento BDGD → grafo (grid-modelo.md),
+                       (escopo-cidade.md = v3, clusters Tijuca e Ipanema; escopo-alimentadores.md = v2,
+                       cluster TQR), mapeamento BDGD → grafo (grid-modelo.md),
                        spikes OpenDSS (spike-opendss.md) e LLM (spike-llm.md)
 tests/                 pytest (fixtures sintéticas; dados reais nunca vão para o git)
   fixtures/            bdgd_mini.gpkg (BDGD sintética, 21 camadas, 3 CTMT com interligações
@@ -157,8 +159,12 @@ Colunas do CSV (as regras de junção estão em [`docs/bdgd-relacoes.md`](docs/b
 Na Light 2025 os `PAC` são numerados por alimentador e **não há PAC compartilhado entre CTMT**, por
 isso a interligação é detectada geometricamente (chave NA a ≤ 2 m de uma extremidade de `SSDMT` de
 outro CTMT, em UTM SIRGAS 2000). Detalhes e ressalvas (chaves em barramento de SE, chaves com vários
-vizinhos) em [`docs/bdgd-relacoes.md`](docs/bdgd-relacoes.md); a escolha do cluster TQR (PARNAIBA /
-CURUMAU / BOCARI, SETD Taquara) em [`docs/escopo-alimentadores.md`](docs/escopo-alimentadores.md).
+vizinhos) em [`docs/bdgd-relacoes.md`](docs/bdgd-relacoes.md); a escolha dos clusters da demo (v3:
+Tijuca `ALC9925,ALC9946,URG29983,RCP9882` e Ipanema `PTS0001,PTS9088,PTS9924,PTS4022`) em
+[`docs/escopo-cidade.md`](docs/escopo-cidade.md) e a do cluster TQR (PARNAIBA / CURUMAU / BOCARI,
+SETD Taquara, hoje rede de regressão) em [`docs/escopo-alimentadores.md`](docs/escopo-alimentadores.md).
+Chaves NA a até 50 m do polígono da SE contam como "na SE" (`EM_SUB`), não como tie de campo — caso
+do pátio da SE Posto Seis, em Ipanema.
 
 ### `bdgd-light vizinhos` — com quem um alimentador se interliga
 
@@ -286,7 +292,16 @@ uv run bdgd-light dss --master "data/dss/sub__10385871/TQR0007/Master_SA07_20260
 # pelo grafo e restauração fechando a tie telecomandada 1007642983 (via PARNAIBA)
 uv run bdgd-light dss --ctmt TQR0007,TQR33859,TQR33862 --out data/dss \
     --gpkg data/feeders/cluster_TQR0007-TQR33859-TQR33862.gpkg --falha 11798327 --restaurar 1007642983
+# cluster Tijuca (demo, cenário A): falta no tronco de CABOFRIO e restauração por outra SE
+uv run bdgd-light dss --gdb data/Light_382_2025-12-31_V11_20260824-0926.gdb \
+    --ctmt ALC9925,ALC9946,URG29983,RCP9882 --out data/dss --gpkg data/feeders/cluster_tijuca.gpkg \
+    --falha 11304252 --restaurar 746851189
 ```
+
+Bancos de unidades monofásicas (`UNTRMT.TIP_TRAFO = DF`) saem do bdgd2opendss como trifásicos com
+barras de 2 nós, o que aterra um vértice do delta; `converter()` corrige isso ao gerar ou reaproveitar
+a pasta (`twin.corrigir_bancos_monofasicos`). Pastas convertidas antes dessa correção são consertadas
+na primeira reutilização.
 
 | opção | padrão | descrição |
 |---|---|---|
@@ -343,6 +358,13 @@ ligação com centenas de metros cadastrados na própria BDGD. Cluster TQR (3 al
 barras, 33.340 cargas): 9 iterações, 1,2 s; a restauração de BOCARI via PARNAIBA leva o disjuntor de
 149 A a 221 A e a MT transferida fica em ≥ 1,004 pu, sem sobrecarga na MT.
 
+Cluster Tijuca (4 alimentadores de 3 SEs, 10.029 barras, 32.132 cargas): 13,3 MW, perdas 6,3 %, MT em
+1,036–1,045 pu, 6 iterações em 2,5 s. Falta em `11304252` (tronco de CABOFRIO) deixa 4.036 UCBT sem
+luz; as três restaurações possíveis convergem e o gêmeo as ordena — via `974020904` (RIMARAES, mesma
+SE) perdas 876 kW e MT ≥ 1,027 pu; via `746851189` (BOMPASTOR, SE Rio Comprido) 893 kW e ≥ 1,018 pu;
+via `977361689` (AMALIA, SE Uruguai) 902 kW e ≥ 1,014 pu. Tabela completa em
+[`docs/escopo-cidade.md`](docs/escopo-cidade.md).
+
 > **Métricas de decisão do MVP são MT.** A BT do modelo herda ramais de ligação (`RAMLIG.COMP`)
 > suspeitos da própria BDGD (700–900 m em 220 V), que produzem as tensões BT abaixo de 0,5 pu e as
 > sobrecargas reportadas; o veredito de uma manobra usa **tensão MT** (0,93–1,05 pu) e **corrente no
@@ -383,6 +405,12 @@ chaves (da camada `INTERLIGACOES`), `N_UCBT` por trafo (de `UCBT_tab.UNI_TR_MT`)
 **`UCBT`** (unidades de `UCBT_tab` agregadas por poste `PN_CON` → `PONNOT`, com `N_UC`). Cada camada
 tem um zoom mínimo (`tippecanoe.minzoom`): tronco MT a partir do 9, chaves 11, trafos 12, BT 13,
 UC/postes 14–15. Em Python: `from bdgd_light.ingest.tiles import gerar_tiles`.
+
+Os tiles dos clusters da demo ficam versionados em `console/public/tiles/exemplo_tijuca.pmtiles`
+(0,98 MB) e `exemplo_ipanema.pmtiles` (0,78 MB), gerados de `data/feeders/cluster_tijuca.gpkg` e
+`cluster_ipanema.gpkg` (`bdgd-light recortar --ctmt ALC9925,ALC9946,URG29983,RCP9882 --nome-cluster
+cluster_tijuca …`). Ressalva: `PONNOT`/`UCBT` trazem postes referenciados por `UCBT_tab.PN_CON` fora
+do bairro, então o bbox do PMTiles é maior que o cluster — o console usa centro/zoom fixos por cenário.
 
 ### `bdgd-light llm` — cliente LLM com *tool calling* (spike da issue #7)
 
@@ -447,15 +475,15 @@ postes e UC por poste — e sobrepõe o estado do grafo (`bdgd-light grafo --geo
 
 ```bash
 cd console && npm ci
-npm run dev        # http://localhost:5173 → cluster TQR de exemplo (public/tiles/exemplo.pmtiles)
+npm run dev        # http://localhost:5173 → cenário Tijuca (public/tiles/exemplo_tijuca.pmtiles)
+#   ?cenario=ipanema | taquara          outro cenário da demo (tiles + estado + enquadramento)
 #   ?tiles=tiles/OUTRO.pmtiles          outro recorte gerado por `bdgd-light tiles`
-#   ?estado=exemplos/estado_TQR0007_falta.geojson   falta simulada por cima dos tiles
+#   ?estado=exemplos/estado_TQR0007_falta.geojson   falta simulada por cima dos tiles (`none` desliga)
 npm run build && npm run smoke          # build (tsc + vite) e smoke test no Chrome headless
 ```
 
-O workflow [`pages.yml`](.github/workflows/pages.yml) compila o console a cada push em `main` e o
-publica no GitHub Pages (`https://viniciusaguiar15.github.io/bdgd-light/`) **quando o Pages estiver
-habilitado** — em repositório privado sem plano com Pages ele só compila e anexa o artefato. Detalhes
+O workflow [`pages.yml`](.github/workflows/pages.yml) compila o console a cada push em `main` que toque
+`console/` e o publica no GitHub Pages: **<https://viniciusaguiar15.github.io/bdgd-light/>**. Detalhes
 e armadilhas em [`console/README.md`](console/README.md); decisões em
 [`docs/adr/ADR-002-console-maplibre-pmtiles.md`](docs/adr/ADR-002-console-maplibre-pmtiles.md).
 
