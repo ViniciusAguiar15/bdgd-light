@@ -41,3 +41,34 @@ jobs:
         run: npm ci
       - name: Build (tsc --noEmit + vite build)
         run: npm run build
+
+  llm-smoke:
+    # ADR-003: uma chamada real por provedor (tool calling soma), só quando o segredo existir no
+    # repositório (gh secret set OPENAI_API_KEY / GEMINI_API_KEY). Sem segredo, os passos são
+    # pulados; falha de provedor (cota, 5xx) não bloqueia o PR (continue-on-error).
+    runs-on: ubuntu-latest
+    needs: test
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Instalar
+        run: uv sync --extra dev --extra agent
+      - name: Fake (sempre, sem rede)
+        run: uv run bdgd-light llm --provider fake "Quanto é 2 + 3?" --sem-audit
+      - name: OpenAI
+        if: env.OPENAI_API_KEY != ''
+        continue-on-error: true
+        run: uv run bdgd-light llm --provider openai "Quanto é 2 + 3?" --sem-audit
+      - name: Gemini
+        if: env.GEMINI_API_KEY != ''
+        continue-on-error: true
+        run: uv run bdgd-light llm --provider gemini "Quanto é 2 + 3?" --sem-audit
+      - name: Sem segredos
+        if: env.OPENAI_API_KEY == '' && env.GEMINI_API_KEY == ''
+        run: echo "::notice::llm-smoke pulou os provedores reais — cadastre OPENAI_API_KEY e/ou GEMINI_API_KEY em Settings › Secrets."

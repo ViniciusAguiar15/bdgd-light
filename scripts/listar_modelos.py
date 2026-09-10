@@ -2,29 +2,32 @@
 """Lista os modelos disponíveis no provedor LLM configurado, destacando os que suportam
 *tool calling* (OpenAI/Claude/Mistral/Llama 3.x…).
 
-Provedor pelo ambiente (mesma regra de ``bdgd_light.agent.cliente_do_ambiente``):
-  BDGD_LLM_ENDPOINT + BDGD_LLM_TOKEN  → API compatível com a OpenAI (Azure AI Foundry, OpenAI,
-                                         Ollama http://localhost:11434/v1/chat/completions…)
+Provedor por perfil (ADR-003) ou pelo ambiente, mesma regra de
+``bdgd_light.agent.cliente_do_ambiente``:
+  --provider openai|gemini|ollama     → perfil (OPENAI_API_KEY, GEMINI_API_KEY, Ollama local);
+                                         padrão: env BDGD_LLM_PROVIDER
+  BDGD_LLM_ENDPOINT + BDGD_LLM_TOKEN  → outra API compatível com a OpenAI (Azure AI Foundry…)
+  OPENAI_API_KEY / GEMINI_API_KEY     → perfil openai (padrão) ou gemini
   GITHUB_TOKEN                        → GitHub Models (aposentado em 30/07/2026: responde 410)
 
 Uso:
-    uv run scripts/listar_modelos.py [--endpoint URL] [--tools]
+    uv run scripts/listar_modelos.py [--provider openai|gemini|ollama] [--endpoint URL] [--tools]
     (--tools: só os modelos que chamam ferramentas)
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 
 from bdgd_light.agent import (
     ENV_ENDPOINT,
-    ENV_GITHUB_TOKEN,
-    ENV_TOKEN,
-    GitHubModelsClient,
+    ENV_PROVIDER,
+    PERFIS,
     LLMError,
     OpenAICompatClient,
+    TokenAusenteError,
+    cliente_do_ambiente,
 )
 
 # Famílias com tool calling nativo (heurística pelo id; confirme na ficha do modelo).
@@ -66,25 +69,27 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    perfis = [nome for nome in PERFIS if nome != "fake"]
+    p.add_argument(
+        "--provider", choices=perfis, help=f"perfil da ADR-003 (padrão: ${ENV_PROVIDER})"
+    )
     p.add_argument("--endpoint", help=f"URL …/chat/completions (padrão: ${ENV_ENDPOINT})")
     p.add_argument("--tools", action="store_true", help="mostra só modelos com tool calling")
     args = p.parse_args(argv)
 
-    endpoint = args.endpoint or os.environ.get(ENV_ENDPOINT)
     try:
-        if endpoint:
-            cliente = OpenAICompatClient(endpoint)
-            origem = cliente.url_modelos
-        elif os.environ.get(ENV_GITHUB_TOKEN):
-            cliente = GitHubModelsClient()
-            origem = cliente.url_modelos
+        if args.endpoint:
+            cliente = OpenAICompatClient(args.endpoint)
         else:
-            print(
-                f"Defina {ENV_ENDPOINT} e {ENV_TOKEN} (ou {ENV_GITHUB_TOKEN}); nada hardcoded.",
-                file=sys.stderr,
-            )
+            cliente = cliente_do_ambiente(provider=args.provider)
+        if not isinstance(cliente, OpenAICompatClient):
+            print("o perfil fake não tem catálogo de modelos.", file=sys.stderr)
             return 2
+        origem = cliente.url_modelos
         modelos = cliente.listar_modelos()
+    except TokenAusenteError as erro:
+        print(f"Sem provedor configurado: {erro} Nada hardcoded.", file=sys.stderr)
+        return 2
     except LLMError as erro:
         print(f"erro: {erro}", file=sys.stderr)
         return 2

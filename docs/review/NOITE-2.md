@@ -163,3 +163,56 @@ Pendências deixadas para o mantenedor (também na descrição do PR):
 2. Filtrar `PONNOT`/`UCBT` pelo bbox do cluster no `recortar`/`tiles` (bbox dos PMTiles cobre a cidade).
 3. Abrir issue no bdgd2opendss sobre os bancos `DF` (caso mínimo em `tests/fixtures/dss/bancos_monofasicos.dss`).
 4. Fechar os duplicados #22–#29.
+
+## 2. #31 — ADR-003 provedor LLM: perfis openai/gemini/ollama/fake + `llm-smoke` (11:10–11:45)
+
+| | |
+|---|---|
+| Branch | `feat/adr-003-provedor-llm` (a partir de `main` `7431917`, pós-PR #37) |
+| PR | ver "Fechamento" |
+| Ambiente | `GEMINI_API_KEY` presente; **`OPENAI_API_KEY` ausente** (nem no `zsh -lic`) — validação real só com Gemini |
+| docs/review | nenhum arquivo novo além dos meus; nada pendente a aplicar |
+
+### Decisões
+
+- **Perfis** em `agent/llm.py`: `Perfil(nome, endpoint, modelo, env_token, descricao, token_padrao,
+  url_modelos)` e `PERFIS = {openai, gemini, ollama, fake}`; `cliente_por_perfil()` e
+  `cliente_do_ambiente(modelo, provider)` com a ordem `provider`/`BDGD_LLM_PROVIDER` →
+  `BDGD_LLM_ENDPOINT` → `OPENAI_API_KEY` → `GEMINI_API_KEY` → `GITHUB_TOKEN` → `TokenAusenteError`
+  (mensagem lista todas as opções, inclusive `BDGD_LLM_PROVIDER=fake`). Modelo: argumento →
+  `BDGD_LLM_MODEL` → padrão do perfil. Ollama usa `token_padrao="ollama"` (sem chave).
+- `Conversa.segundos` (tempo de parede das rodadas) + `to_dict()["segundos"]`; o CLI imprime
+  `modelo · N rodada(s), T tokens, S s` — insumo direto do benchmark (#36).
+- CLI `llm --provider`; `--fake` virou atalho de `--provider fake`; `--endpoint` ignora o perfil.
+  Perfil desconhecido → `ValueError` capturado como erro de CLI (código 1).
+- `scripts/listar_modelos.py --provider {openai,gemini,ollama}` passa a usar `cliente_do_ambiente`
+  (perfil fake é recusado com mensagem); a orientação sem ambiente cita `OPENAI_API_KEY`.
+- CI: job `llm-smoke` (`needs: test`, Python 3.12, `--extra agent`): fake sempre; OpenAI e Gemini só
+  com `env.OPENAI_API_KEY != ''`/`env.GEMINI_API_KEY != ''` (segredos passados como `env` do job — o
+  contexto `secrets` não vale em `if` de job), `continue-on-error: true`; passo `::notice::` quando
+  não há segredo. **Não criei os secrets** (chave pessoal; decisão do mantenedor).
+- ADR-003 em `docs/adr/ADR-003-provedor-llm.md` (4 decisões + alternativas descartadas); ADR-001 §10
+  e `PLANO.md` apontam para ela; `spike-llm.md` ganhou o item 8 (perfis) e a **§6** com as medidas.
+
+### Validação real (Gemini)
+
+`uv run bdgd-light llm --provider gemini "Quanto é 2 + 3?" --json data/relatorios/llm_gemini.json`
+→ `⚙ soma({"b": 3, "a": 2}) → 5.0` · "A soma de 2 e 3 é 5." · `gemini-2.5-flash · 2 rodada(s),
+277 tokens, 1.8 s`. Três chamadas: 1,41 / 1,83 / 1,84 s, sempre 198 in / 31 out; custo ≈ US$ 0,00014
+por conversa (US$ 0,30/2,50 por M, tabela consultada hoje). Sem 429.
+`gemini-2.5-flash-lite` devolveu `message` **vazia** (0 tokens de saída) → `RespostaInvalidaError`;
+registrado na ADR e no spike como motivo de não ser padrão.
+`uv run scripts/listar_modelos.py --provider gemini --tools` → 40 modelos `models/gemini-…`.
+
+**Pendente para o mantenedor** (chave ausente aqui):
+`uv run bdgd-light llm --provider openai "Quanto é 2 + 3?" --json data/relatorios/llm_openai.json`
+e anotar a linha `openai` da tabela em `docs/spike-llm.md` §6; `gh secret set OPENAI_API_KEY` /
+`gh secret set GEMINI_API_KEY` para ligar o `llm-smoke`.
+
+### Testes
+
+5 novos em `tests/test_llm.py` (33 no arquivo): resolução dos perfis e precedência de modelo,
+`BDGD_LLM_PROVIDER` × `BDGD_LLM_ENDPOINT`, Gemini via `MockTransport` (host, `Bearer`, `segundos`),
+CLI `--provider fake|gemini|azure`, `listar_modelos --provider gemini` com ids `models/…`. A fixture
+`sem_segredos` também apaga `OPENAI_API_KEY`/`GEMINI_API_KEY`/`OLLAMA_API_KEY`/`BDGD_LLM_PROVIDER`;
+a varredura de segredos passou a cobrir o prefixo `AIza` (chaves Google). Suite: **174 passed**.

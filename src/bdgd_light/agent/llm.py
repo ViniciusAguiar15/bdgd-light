@@ -1,13 +1,18 @@
 """Cliente LLM abstraído: interface ``LLMClient`` com *tool calling*, cliente *fake* para testes e
 cliente HTTP para qualquer API compatível com ``chat/completions`` da OpenAI.
 
+Provedores por **perfil** (ADR-003): ``openai`` (padrão), ``gemini`` (endpoint compatível com a
+OpenAI do Google AI Studio), ``ollama`` (local, sem chave) e ``fake`` (testes). O perfil preenche
+endpoint, modelo padrão e o nome da variável do token (``OPENAI_API_KEY``, ``GEMINI_API_KEY``);
+``BDGD_LLM_PROVIDER`` ou ``bdgd-light llm --provider`` escolhem, e ``BDGD_LLM_ENDPOINT`` +
+``BDGD_LLM_TOKEN`` continuam valendo para qualquer outro endpoint compatível.
+
 O alvo original do spike (issue #7) era o GitHub Models, mas o serviço foi **aposentado em
 30/07/2026** e o endpoint responde ``410 github_models_retirement_brownout``. Por isso o cliente
-real é genérico (``OpenAICompatClient``: Azure AI Foundry, OpenAI, Ollama/LM Studio locais…) e
-``GitHubModelsClient`` fica como *preset* nomeado que falha com ``ServicoIndisponivelError``
-explicando a aposentadoria. Detalhes em ``docs/spike-llm.md``.
+real é genérico (``OpenAICompatClient``) e ``GitHubModelsClient`` fica como *preset* nomeado que
+falha com ``ServicoIndisponivelError`` explicando a aposentadoria. Ver ``docs/spike-llm.md``.
 
-Segredos só por variável de ambiente (``GITHUB_TOKEN``, ``BDGD_LLM_TOKEN``); nada no código.
+Segredos só por variável de ambiente; nada no código.
 """
 
 from __future__ import annotations
@@ -26,6 +31,9 @@ ENV_MODELO = "BDGD_LLM_MODEL"
 ENV_ENDPOINT = "BDGD_LLM_ENDPOINT"
 ENV_TOKEN = "BDGD_LLM_TOKEN"
 ENV_GITHUB_TOKEN = "GITHUB_TOKEN"
+ENV_PROVIDER = "BDGD_LLM_PROVIDER"
+ENV_OPENAI_KEY = "OPENAI_API_KEY"
+ENV_GEMINI_KEY = "GEMINI_API_KEY"
 
 # ---------------------------------------------------------------------------------------------
 # Tipos
@@ -524,18 +532,92 @@ class GitHubModelsClient(OpenAICompatClient):
         super()._checar(r)
 
 
-def cliente_do_ambiente(modelo: str | None = None, **opcoes) -> LLMClient:
-    """Escolhe o cliente pelo ambiente: ``BDGD_LLM_ENDPOINT`` (+ ``BDGD_LLM_TOKEN``) →
-    ``OpenAICompatClient``; senão ``GITHUB_TOKEN`` → ``GitHubModelsClient``; senão
-    ``TokenAusenteError``."""
+@dataclass(frozen=True)
+class Perfil:
+    """Perfil nomeado de provedor (ADR-003): endpoint, modelo padrão e variável do token.
+
+    ``token_padrao`` cobre provedores locais sem chave (Ollama exige o cabeçalho, não o valor).
+    """
+
+    nome: str
+    endpoint: str
+    modelo: str
+    env_token: str
+    descricao: str = ""
+    token_padrao: str | None = None
+    url_modelos: str | None = None
+
+
+PERFIS: dict[str, Perfil] = {
+    "openai": Perfil(
+        "openai",
+        "https://api.openai.com/v1/chat/completions",
+        "gpt-4.1-mini",
+        ENV_OPENAI_KEY,
+        "OpenAI (padrão): tool calling nativo; gpt-4.1/gpt-5 via BDGD_LLM_MODEL",
+    ),
+    "gemini": Perfil(
+        "gemini",
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        "gemini-2.5-flash",
+        ENV_GEMINI_KEY,
+        "Google Gemini pelo endpoint compatível com a OpenAI (Google AI Studio)",
+    ),
+    "ollama": Perfil(
+        "ollama",
+        "http://localhost:11434/v1/chat/completions",
+        "llama3.1:8b",
+        "OLLAMA_API_KEY",
+        "Ollama local (dev offline); qualquer modelo com tool calling (llama3.1, qwen2.5…)",
+        token_padrao="ollama",
+    ),
+    "fake": Perfil("fake", "", "fake", "", "FakeLLMClient determinístico (testes, CI sem segredo)"),
+}
+PROVEDOR_PADRAO = "openai"
+
+
+def cliente_por_perfil(nome: str, modelo: str | None = None, **opcoes) -> LLMClient:
+    """Cliente de um perfil (``openai``, ``gemini``, ``ollama``, ``fake``). Precedência do modelo:
+    argumento → ``BDGD_LLM_MODEL`` → padrão do perfil. Token da variável do perfil (ou
+    ``token_padrao``); ``ValueError`` para perfil desconhecido."""
+    perfil = PERFIS.get(nome.lower().strip()) if nome else None
+    if perfil is None:
+        raise ValueError(f"perfil LLM desconhecido: {nome!r}; use um de {', '.join(PERFIS)}")
+    if perfil.nome == "fake":
+        return fake_soma()
+    token = os.environ.get(perfil.env_token) or perfil.token_padrao
+    return OpenAICompatClient(
+        perfil.endpoint,
+        modelo=modelo or os.environ.get(ENV_MODELO) or perfil.modelo,
+        token=token,
+        env_token=perfil.env_token,
+        url_modelos=perfil.url_modelos,
+        **opcoes,
+    )
+
+
+def cliente_do_ambiente(
+    modelo: str | None = None, provider: str | None = None, **opcoes
+) -> LLMClient:
+    """Escolhe o cliente pelo ambiente, nesta ordem: ``provider``/``BDGD_LLM_PROVIDER`` (perfil da
+    ADR-003) → ``BDGD_LLM_ENDPOINT`` (+ ``BDGD_LLM_TOKEN``, qualquer endpoint compatível) →
+    ``OPENAI_API_KEY`` (perfil ``openai``, o padrão) → ``GEMINI_API_KEY`` (``gemini``) →
+    ``GITHUB_TOKEN`` (``GitHubModelsClient``, aposentado) → ``TokenAusenteError``."""
+    nome = provider or os.environ.get(ENV_PROVIDER)
+    if nome:
+        return cliente_por_perfil(nome, modelo, **opcoes)
     endpoint = os.environ.get(ENV_ENDPOINT)
     if endpoint:
         return OpenAICompatClient(endpoint, modelo=modelo, **opcoes)
+    for nome_perfil in (PROVEDOR_PADRAO, "gemini"):
+        if os.environ.get(PERFIS[nome_perfil].env_token):
+            return cliente_por_perfil(nome_perfil, modelo, **opcoes)
     if os.environ.get(ENV_GITHUB_TOKEN):
         return GitHubModelsClient(modelo=modelo, **opcoes)
     raise TokenAusenteError(
-        f"defina {ENV_ENDPOINT} e {ENV_TOKEN} (provedor compatível com a OpenAI) ou "
-        f"{ENV_GITHUB_TOKEN}; para testes use FakeLLMClient."
+        f"defina {ENV_OPENAI_KEY} (perfil openai, padrão) ou {ENV_GEMINI_KEY} (gemini), ou "
+        f"{ENV_PROVIDER}=ollama para um Ollama local, ou {ENV_ENDPOINT} e {ENV_TOKEN} para outro "
+        f"provedor compatível com a OpenAI; para testes use {ENV_PROVIDER}=fake (FakeLLMClient)."
     )
 
 
@@ -566,13 +648,14 @@ class Conversa:
     execucoes: list[tuple[ToolCall, Any]] = field(default_factory=list)
     hash_auditoria: str | None = None
     """Hash do último registro gravado no ``AuditLog`` (liga a conversa ao log)."""
+    _usos: list[Uso] = field(default_factory=list, repr=False)
+    segundos: float = 0.0
+    """Tempo de parede das chamadas ao modelo (todas as rodadas), para latência/benchmark."""
 
     @property
     def uso_total(self) -> Uso | None:
         """Soma do uso de tokens de todas as rodadas (quando o cliente informa)."""
         return _somar_uso(self._usos)
-
-    _usos: list[Uso] = field(default_factory=list, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
         uso_total = self.uso_total
@@ -588,6 +671,7 @@ class Conversa:
             "uso": None if self.resposta.uso is None else vars(self.resposta.uso),
             "uso_total": None if uso_total is None else vars(uso_total),
             "hash_auditoria": self.hash_auditoria,
+            "segundos": round(self.segundos, 3),
         }
 
 
@@ -636,6 +720,7 @@ def conversar(
     usos: list[Uso] = []
     modelo = getattr(cliente, "modelo", None)
     enviadas_desde = 0
+    t0 = time.perf_counter()
     for rodada in range(1, max_rodadas + 1):
         resposta = cliente.chat(historico, specs)
         if resposta.uso is not None:
@@ -680,7 +765,15 @@ def conversar(
                     ferramentas_executadas=len(execucoes),
                     uso_total=None if uso_total is None else vars(uso_total),
                 ).hash
-            return Conversa(historico, resposta, rodada, execucoes, hash_final, usos)
+            return Conversa(
+                historico,
+                resposta,
+                rodada,
+                execucoes,
+                hash_final,
+                usos,
+                segundos=time.perf_counter() - t0,
+            )
     if audit is not None:
         audit.registrar(
             "conversa.erro",

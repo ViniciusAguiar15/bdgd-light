@@ -14,6 +14,7 @@ from typer.testing import CliRunner
 httpx = pytest.importorskip("httpx")
 
 from bdgd_light.agent import (  # noqa: E402
+    PERFIS,
     SOMA,
     FakeLLMClient,
     Ferramenta,
@@ -31,6 +32,7 @@ from bdgd_light.agent import (  # noqa: E402
     ToolCalls,
     ToolSpec,
     cliente_do_ambiente,
+    cliente_por_perfil,
     conversar,
     fake_soma,
     interpretar_resposta,
@@ -88,7 +90,16 @@ def payload_tool_call(nome: str, argumentos, ident: str | None = "call_1", conte
 @pytest.fixture(autouse=True)
 def sem_segredos(monkeypatch):
     """Garante ambiente limpo: nenhum token/endpoint herdado da máquina do desenvolvedor."""
-    for nome in ("GITHUB_TOKEN", "BDGD_LLM_TOKEN", "BDGD_LLM_ENDPOINT", "BDGD_LLM_MODEL"):
+    for nome in (
+        "GITHUB_TOKEN",
+        "BDGD_LLM_TOKEN",
+        "BDGD_LLM_ENDPOINT",
+        "BDGD_LLM_MODEL",
+        "BDGD_LLM_PROVIDER",
+        "OPENAI_API_KEY",
+        "GEMINI_API_KEY",
+        "OLLAMA_API_KEY",
+    ):
         monkeypatch.delenv(nome, raising=False)
 
 
@@ -343,8 +354,10 @@ def test_tokens_so_por_ambiente(monkeypatch):
         OpenAICompatClient(ENDPOINT)
     with pytest.raises(TokenAusenteError, match="GITHUB_TOKEN"):
         GitHubModelsClient()
-    with pytest.raises(TokenAusenteError, match="BDGD_LLM_ENDPOINT"):
+    padrao = "OPENAI_API_KEY.*GEMINI_API_KEY.*BDGD_LLM_ENDPOINT"
+    with pytest.raises(TokenAusenteError, match=padrao) as e:
         cliente_do_ambiente()
+    assert "BDGD_LLM_PROVIDER=fake" in str(e.value)
     monkeypatch.setenv("GITHUB_TOKEN", "x")
     assert isinstance(cliente_do_ambiente(), GitHubModelsClient)
     monkeypatch.setenv("BDGD_LLM_ENDPOINT", ENDPOINT)
@@ -354,7 +367,71 @@ def test_tokens_so_por_ambiente(monkeypatch):
     assert generico.endpoint == ENDPOINT and generico.modelo == "m"
     # nada hardcoded no pacote: nenhum token literal no código-fonte
     fonte = Path("src/bdgd_light/agent/llm.py").read_text(encoding="utf-8")
-    assert not re.search(r"(ghp|gho|github_pat|sk-)_?[A-Za-z0-9]{10,}", fonte)
+    assert not re.search(r"(ghp|gho|github_pat|sk-|AIza)_?[A-Za-z0-9]{10,}", fonte)
+
+
+# -- perfis de provedor (ADR-003) --------------------------------------------------------------
+
+
+def test_perfil_openai_e_padrao_e_gemini_usa_endpoint_compativel(monkeypatch):
+    assert set(PERFIS) == {"openai", "gemini", "ollama", "fake"}
+    monkeypatch.setenv("OPENAI_API_KEY", "chave-openai")
+    cliente = cliente_do_ambiente()
+    assert type(cliente) is OpenAICompatClient
+    assert cliente.endpoint == "https://api.openai.com/v1/chat/completions"
+    assert cliente.modelo == "gpt-4.1-mini" and cliente.url_modelos.endswith("/v1/models")
+    # explícito > BDGD_LLM_MODEL > padrão do perfil
+    monkeypatch.setenv("BDGD_LLM_MODEL", "gpt-4.1")
+    assert cliente_do_ambiente().modelo == "gpt-4.1"
+    assert cliente_do_ambiente("gpt-5").modelo == "gpt-5"
+    # só GEMINI_API_KEY → gemini; com as duas, openai continua o padrão
+    monkeypatch.setenv("GEMINI_API_KEY", "chave-gemini")
+    assert cliente_do_ambiente().endpoint.startswith("https://api.openai.com/")
+    monkeypatch.delenv("OPENAI_API_KEY")
+    gemini = cliente_do_ambiente()
+    assert gemini.endpoint == (
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    )
+    assert gemini.url_modelos == "https://generativelanguage.googleapis.com/v1beta/openai/models"
+    assert gemini.modelo == "gpt-4.1"  # BDGD_LLM_MODEL ainda vale para qualquer perfil
+    monkeypatch.delenv("BDGD_LLM_MODEL")
+    assert cliente_do_ambiente().modelo == "gemini-2.5-flash"
+
+
+def test_perfil_explicito_e_erros(monkeypatch):
+    # BDGD_LLM_PROVIDER manda mesmo com outra chave presente; a chave do perfil é obrigatória
+    monkeypatch.setenv("OPENAI_API_KEY", "chave-openai")
+    monkeypatch.setenv("BDGD_LLM_PROVIDER", "gemini")
+    with pytest.raises(TokenAusenteError, match="GEMINI_API_KEY"):
+        cliente_do_ambiente()
+    monkeypatch.setenv("GEMINI_API_KEY", "chave-gemini")
+    assert cliente_do_ambiente().endpoint.startswith("https://generativelanguage.googleapis.com/")
+    assert cliente_do_ambiente(provider="openai").endpoint.startswith("https://api.openai.com/")
+    # perfil explícito tem precedência sobre BDGD_LLM_ENDPOINT
+    monkeypatch.setenv("BDGD_LLM_ENDPOINT", ENDPOINT)
+    monkeypatch.setenv("BDGD_LLM_TOKEN", "y")
+    assert cliente_do_ambiente(provider="OpenAI").endpoint.startswith("https://api.openai.com/")
+    monkeypatch.delenv("BDGD_LLM_PROVIDER")
+    assert cliente_do_ambiente().endpoint == ENDPOINT
+    # ollama não exige chave; fake devolve o cliente determinístico
+    ollama = cliente_por_perfil("ollama")
+    assert ollama.endpoint == "http://localhost:11434/v1/chat/completions"
+    assert ollama.modelo == "llama3.1:8b"
+    assert isinstance(cliente_por_perfil("fake"), FakeLLMClient)
+    with pytest.raises(ValueError, match="perfil LLM desconhecido: 'azure'"):
+        cliente_por_perfil("azure")
+
+
+def test_perfil_gemini_envia_chave_e_registra_latencia(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "chave-gemini")
+    mock, pedidos = transporte([(200, payload_texto("5", model="gemini-2.5-flash"))])
+    cliente = cliente_do_ambiente(provider="gemini", transporte=mock)
+    conversa = conversar(cliente, [Message.user("2+3?")], [SOMA])
+    assert conversa.resposta.content == "5" and conversa.resposta.modelo == "gemini-2.5-flash"
+    assert pedidos[0].url.host == "generativelanguage.googleapis.com"
+    assert pedidos[0].headers["authorization"] == "Bearer chave-gemini"
+    assert json.loads(pedidos[0].content)["model"] == "gemini-2.5-flash"
+    assert conversa.segundos >= 0 and conversa.to_dict()["segundos"] == round(conversa.segundos, 3)
 
 
 # -- CLI e script -----------------------------------------------------------------------------
@@ -397,7 +474,18 @@ def test_cli_llm_fake(tmp_path):
 def test_cli_llm_sem_token_falha_com_instrucao():
     r = runner.invoke(app, ["llm", "Quanto é 2 + 3?"])
     assert r.exit_code == 1
-    assert "BDGD_LLM_ENDPOINT" in saida(r) and "GITHUB_TOKEN" in saida(r)
+    texto = saida(r)
+    assert "OPENAI_API_KEY" in texto and "GEMINI_API_KEY" in texto and "BDGD_LLM_ENDPOINT" in texto
+    r = runner.invoke(app, ["llm", "--provider", "gemini", "Quanto é 2 + 3?"])
+    assert r.exit_code == 1 and "GEMINI_API_KEY" in saida(r)
+    r = runner.invoke(app, ["llm", "--provider", "azure", "Quanto é 2 + 3?"])
+    assert r.exit_code == 1 and "perfil LLM desconhecido" in saida(r)
+
+
+def test_cli_llm_provider_fake_e_latencia():
+    r = runner.invoke(app, ["llm", "--provider", "fake", "Quanto é 2 + 3?", "--sem-audit"])
+    assert r.exit_code == 0, r.output
+    assert re.search(r"fake · 2 rodada\(s\), 99 tokens, \d+\.\d s", saida(r))
 
 
 def _carregar_script():
@@ -438,4 +526,31 @@ def test_script_listar_modelos_destaca_tool_calling(monkeypatch, capsys):
     # sem ambiente → orientação e código 2, sem rede
     monkeypatch.delenv("BDGD_LLM_TOKEN")
     assert modulo.main([]) == 2
-    assert "BDGD_LLM_ENDPOINT" in capsys.readouterr().err
+    erro = capsys.readouterr().err
+    assert "OPENAI_API_KEY" in erro and "BDGD_LLM_ENDPOINT" in erro
+
+
+def test_script_listar_modelos_por_perfil_gemini(monkeypatch, capsys):
+    modulo = _carregar_script()
+    catalogo = {
+        "data": [
+            {"id": "models/gemini-2.5-flash", "owned_by": "google"},
+            {"id": "models/embedding-001", "owned_by": "google"},
+        ]
+    }
+    mock, pedidos = transporte([(200, catalogo)])
+    monkeypatch.setattr(
+        modulo,
+        "cliente_do_ambiente",
+        lambda provider=None, **o: cliente_do_ambiente(provider=provider, transporte=mock, **o),
+    )
+    # sem chave: orientação nomeando a variável do perfil, sem rede
+    assert modulo.main(["--provider", "gemini"]) == 2
+    assert "GEMINI_API_KEY" in capsys.readouterr().err and not pedidos
+    monkeypatch.setenv("GEMINI_API_KEY", "chave-gemini")
+    assert modulo.main(["--provider", "gemini", "--tools"]) == 0
+    texto = capsys.readouterr().out
+    assert "Origem: https://generativelanguage.googleapis.com/v1beta/openai/models" in texto
+    assert "models/gemini-2.5-flash" in texto and "embedding" not in texto
+    assert "1 modelos (1 com tool calling)" in texto
+    assert pedidos[0].headers["authorization"] == "Bearer chave-gemini"
