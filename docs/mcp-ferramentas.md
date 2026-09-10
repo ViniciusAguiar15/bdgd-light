@@ -300,8 +300,10 @@ proposta e o operador). `bdgd-light audit ARQUIVO` verifica qualquer uma das dua
 
 ## Pendências
 
-- Console com fila de aprovação (#35). O agente orquestrador/verificador que consome estas
-  ferramentas é o `bdgd_light.agent.orquestrador` (#34, `docs/agent.md`).
+- O agente orquestrador/verificador que consome estas ferramentas é o
+  `bdgd_light.agent.orquestrador` (#34, `docs/agent.md`); o console com fila de aprovação é o
+  `bdgd-light serve` (#35, `docs/console.md`), que reutiliza `mcp_server/humano.py` (mesma
+  identidade de operador, `hitl.jsonl` e regras das rotas humanas do transporte HTTP).
 - Sessão única por processo (um cluster, uma falta). Vários operadores/faltas simultâneas ficam para
   depois do MVP.
 - `inject_fault` assume proteção só no religador do CTMT (sem fusíveis/religadores intermediários);

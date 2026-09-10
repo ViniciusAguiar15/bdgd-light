@@ -167,8 +167,9 @@ anexar a linha correspondente à tabela acima.
 
 ## Limites conhecidos
 
-- O agente é **sequencial e síncrono**: um evento por vez, sem fila interna; o console (#35) é quem
-  encadeia eventos → execuções → propostas.
+- O agente é **sequencial e síncrono**: um evento por vez, sem fila interna; o console (#35,
+  `bdgd-light serve`, [`docs/console.md`](console.md)) é quem encadeia eventos → execuções →
+  propostas, rodando o orquestrador numa thread por evento (`AgenteEmSegundoPlano`).
 - Só uma proposta por execução; propostas anteriores pendentes não são canceladas pelo agente
   (`load_cluster` as expira).
 - O verificador confia no score do gêmeo: sem `--sem-score` ele exige `restore_options(score=true)`;

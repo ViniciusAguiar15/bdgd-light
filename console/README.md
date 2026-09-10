@@ -11,6 +11,12 @@ Sem servidor de tiles: PMTiles é um único arquivo lido por *range requests*, s
 hospedagem estática (GitHub Pages inclusive). Decisões de projeto em
 [`docs/adr/ADR-002-console-maplibre-pmtiles.md`](../docs/adr/ADR-002-console-maplibre-pmtiles.md).
 
+Com o backend `bdgd-light serve` (issue #35) o console ganha o painel **COD · fila e aprovação**:
+injetar a falta do cenário, acompanhar o agente, ler a proposta (manobras, clientes, veredito do
+gêmeo e do verificador, alternativas), **Aprovar e executar** / **Rejeitar** e ver a auditoria; o
+mapa passa a mostrar o estado vivo do gêmeo (`/api/estado.geojson`). Sem backend (GitHub Pages,
+`vite dev` sozinho) o painel fica oculto. Ver [`docs/console.md`](../docs/console.md).
+
 ## Rodar
 
 ```bash
@@ -21,6 +27,23 @@ npm run build         # tsc --noEmit + vite build → dist/
 npm run preview       # serve dist/ (use o mesmo VITE_BASE do build)
 npm run smoke         # abre o Chrome headless (?cenario=tijuca), espera o mapa, conta feições e salva smoke.png
 ```
+
+Com a fila e a aprovação (backend na porta 8000; `npm run dev` faz proxy de `/api` para lá —
+`BDGD_API=` muda o alvo):
+
+```bash
+# noutro terminal, na raiz do repositório:
+BDGD_CONSOLE_TOKEN=demo uv run bdgd-light serve --cluster tijuca --provider fake     # ou --provider gemini
+npm run dev                                   # http://localhost:5173/?cenario=tijuca → painel COD ativo
+npm run build                                 # `serve` publica dist/ em http://127.0.0.1:8000/
+SMOKE_FLUXO=1 SMOKE_TOKEN=demo npm run smoke -- "http://127.0.0.1:8000/?cenario=tijuca"
+#   demo ponta a ponta headless: injeta a falta, espera a proposta, aprova e confere o mapa recolorido
+```
+
+No painel, **operador** (cabeçalho `X-Operador`, vai para a auditoria) e **token**
+(`BDGD_CONSOLE_TOKEN` do backend; vazio se `serve --sem-segredo`) ficam no `localStorage`.
+"injetar falta" manda o cenário nomeado do simulador (`tijuca_cabofrio_tronco`, `ipanema_9210`,
+`taquara_bocari`); com uma falta já tratada vira "reiniciar e injetar falta" (recarrega o cluster).
 
 ## Cenários da demo
 
@@ -66,6 +89,7 @@ a camada `UCBT` agregada por poste) e chama o [tippecanoe](https://github.com/fe
 | `?tiles=` | `?tiles=tiles/TQR.pmtiles` ou uma URL absoluta | PMTiles a abrir (sem `?cenario=`, desliga o cenário padrão e enquadra o bbox); relativo à base do site |
 | `?estado=` | `?estado=exemplos/estado_TQR0007_falta.geojson`, `?estado=none` | GeoJSON de `bdgd-light grafo --geojson` sobreposto (trechos vermelhos = desenergizados); `none` desliga o do cenário |
 | `#z/lat/lon` | `#14/-22.9144/-43.4005` | posição do mapa (MapLibre `hash: true`); sem hash, usa o centro do cenário ou enquadra o bbox do PMTiles |
+| `?api=` | `?api=http://127.0.0.1:8000` | base do backend `bdgd-light serve` (padrão: `api/` na própria origem); se `GET api/estado` falhar, o painel do COD fica oculto |
 
 O painel lateral lista as camadas do PMTiles (`vector_layers` + contagens de `tilestats`) com
 liga/desliga, troca o fundo (satélite Esri, OpenStreetMap ou fundo escuro sem base) e mostra os atributos da
@@ -89,8 +113,9 @@ console/
 ├── src/camadas.ts        simbologia por camada da BDGD (cores por TEN_KV, chaves, ties, BT, UCBT)
 ├── src/icones.ts         ícones desenhados em canvas (chave NA/NF, telecomandada, tie, SE)
 ├── src/painel.ts         painel: cenários, camadas, fundo, atributos, resumo do estado
-├── src/estado.ts         sobreposição do GeoJSON de `bdgd-light grafo`
-├── scripts/smoke.mjs     smoke test via Chrome DevTools Protocol (sem dependências)
+├── src/estado.ts         sobreposição do GeoJSON de `bdgd-light grafo` (e do `/api/estado.geojson` vivo)
+├── src/cod.ts            painel do COD: polling de /api/estado, injetar falta, proposta, aprovar/rejeitar, auditoria
+├── scripts/smoke.mjs     smoke test via Chrome DevTools Protocol (sem dependências); SMOKE_FLUXO=1 = demo ponta a ponta
 └── public/tiles/exemplo_{tijuca,ipanema}.pmtiles, exemplo.pmtiles (TQR);
     public/exemplos/estado_{tijuca,ipanema,TQR0007}_falta.geojson
 ```
@@ -106,3 +131,6 @@ console/
 - `vite preview` precisa do mesmo `VITE_BASE` do build; o servidor de desenvolvimento responde
   `index.html` para arquivos ausentes (SPA), então um `.pmtiles` com caminho errado aparece como
   "cabeçalho inválido" — o painel mostra a dica.
+- O painel do COD só aparece se `GET api/estado` responder na primeira sonda; se o backend subir
+  depois, recarregue a página. Com backend e cluster carregado, o estado vivo substitui o GeoJSON
+  estático do cenário (`?estado=`), que serviria só para ilustrar a falta.
