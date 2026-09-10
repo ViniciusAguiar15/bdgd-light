@@ -12,6 +12,8 @@ from rich.table import Table
 
 from bdgd_light import __version__
 from bdgd_light.grid import (
+    ABRIR,
+    FECHAR,
     ChaveInexistenteError,
     Clientes,
     Cluster,
@@ -20,6 +22,7 @@ from bdgd_light.grid import (
     TrechoInexistenteError,
     estado_geojson,
     ler_camadas,
+    manobra,
 )
 from bdgd_light.ingest.export import TAMANHO_LOTE_PADRAO, CamadaInexistenteError, exportar
 from bdgd_light.ingest.interligacoes import (
@@ -404,6 +407,314 @@ def grafo(
         console.print(f"[green]✔[/] estado gravado em [bold]{geojson}[/]")
 
 
+@app.command()
+def dss(
+    ctmt: Annotated[
+        str | None,
+        typer.Option(
+            "--ctmt",
+            help="COD_ID do(s) alimentador(es) a converter com o bdgd2opendss, por vírgula. Com "
+            "mais de um, monta um Master único do cluster (Circuit no primeiro, Vsource nos "
+            "demais) para simular transferência de carga.",
+        ),
+    ] = None,
+    gdb: Annotated[
+        Path | None,
+        typer.Option(
+            "--gdb",
+            help="Diretório .gdb da BDGD (o bdgd2opendss lê o GDB inteiro). Dispensável se o "
+            "modelo já estiver convertido em --out.",
+        ),
+    ] = None,
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            help="Raiz de saída; o modelo fica em <out>/sub_<SUB>/<CTMT>/ com 36 Masters "
+            "(tipo de dia DU/SA/DO × mês). Se já existir, não reconverte.",
+        ),
+    ] = Path("data/dss"),
+    master: Annotated[
+        Path | None,
+        typer.Option("--master", help="Roda o fluxo direto neste Master .dss, sem converter."),
+    ] = None,
+    gpkg: Annotated[
+        Path | None,
+        typer.Option(
+            "--gpkg",
+            help="GeoPackage do `bdgd-light recortar` (grafo) para traduzir manobras em comandos "
+            "OpenDSS: exigido por --falha, --restaurar, --abrir e --fechar.",
+        ),
+    ] = None,
+    falha: Annotated[
+        str | None,
+        typer.Option(
+            "--falha",
+            help="COD_ID de um trecho SSDMT em falta: abre no gêmeo as chaves que o isolam.",
+        ),
+    ] = None,
+    restaurar: Annotated[
+        str | None,
+        typer.Option(
+            "--restaurar",
+            help="Chave NA (de `grafo --falha`) a fechar depois do isolamento para transferir os "
+            "nós sãos ao alimentador vizinho.",
+        ),
+    ] = None,
+    abrir: Annotated[
+        str | None,
+        typer.Option("--abrir", help="COD_ID de chaves a abrir antes do Solve (vírgula)."),
+    ] = None,
+    fechar: Annotated[
+        str | None,
+        typer.Option("--fechar", help="COD_ID de chaves a fechar antes do Solve (vírgula)."),
+    ] = None,
+    dia: Annotated[
+        str, typer.Option("--dia", help="Tipo de dia do Master a resolver: DU, SA ou DO.")
+    ] = "DU",
+    mes: Annotated[int, typer.Option("--mes", min=1, max=12, help="Mês do Master (1–12).")] = 1,
+    fluxo: Annotated[
+        bool, typer.Option("--fluxo/--sem-fluxo", help="Resolve o fluxo de potência snapshot.")
+    ] = True,
+    vmin: Annotated[float, typer.Option("--vmin", help="Limite inferior de tensão (pu).")] = 0.93,
+    vmax: Annotated[float, typer.Option("--vmax", help="Limite superior de tensão (pu).")] = 1.05,
+    estabilizar: Annotated[
+        bool,
+        typer.Option(
+            "--estabilizar/--sem-estabilizar",
+            help="Se não convergir, aplica em cascata: maxiterations=100, vminpu=0.9 e model=2.",
+        ),
+    ] = True,
+    comando: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--comando",
+            help="Comando OpenDSS extra antes do Solve (repetível), ex.: 'set loadmult=0.6'.",
+        ),
+    ] = None,
+    json_saida: Annotated[
+        Path | None,
+        typer.Option("--json", help="Grava o resumo, piores barras e sobrecargas em JSON."),
+    ] = None,
+    top: Annotated[int, typer.Option("--top", help="Linhas nas tabelas de piores casos.")] = 10,
+) -> None:
+    """Converte alimentadores da BDGD para OpenDSS (bdgd2opendss) e/ou resolve o fluxo de
+    potência com OpenDSSDirect, reportando tensões, violações, perdas e sobrecargas. Com vários
+    --ctmt monta o Master do cluster; com --gpkg aplica manobras do grafo (falta, isolamento e
+    restauração) antes do Solve."""
+    try:
+        from bdgd_light.twin import (
+            comandos_manobras,
+            converter,
+            escolher_master,
+            localizar_pasta,
+            montar_master_cluster,
+            run_powerflow,
+        )
+    except ImportError as erro:
+        _erro(f"{erro} — instale o extra: uv sync --extra twin")
+        return
+    ctmts = _lista(ctmt)
+    if master is None and not ctmts:
+        _erro("informe --ctmt (com --gdb ou modelo já em --out) para converter ou --master.")
+        return
+    if gpkg is None and any(x is not None for x in (falha, restaurar, abrir, fechar)):
+        _erro("--falha, --restaurar, --abrir e --fechar exigem --gpkg com o grafo do recorte.")
+        return
+    try:
+        comandos_dss = _manobras_dss(gpkg, falha, restaurar, abrir, fechar, comandos_manobras)
+        if master is None:
+            pastas = []
+            for cod in ctmts:
+                pasta = localizar_pasta(out, cod)
+                if pasta is not None and gdb is None:
+                    console.print(f"[green]✔[/] modelo de {cod} já existia em [bold]{pasta}[/]")
+                elif gdb is None:
+                    _erro(f"modelo de {cod} não encontrado em {out}; informe --gdb para converter.")
+                    return
+                else:
+                    console.print(f"Convertendo [bold]{cod}[/] com bdgd2opendss (lê o GDB todo)…")
+                    pasta, segundos = converter(gdb, cod, out)
+                    if segundos:
+                        console.print(f"[green]✔[/] modelo em [bold]{pasta}[/] ({segundos:.1f} s)")
+                    else:
+                        console.print(f"[green]✔[/] modelo já existia em [bold]{pasta}[/]")
+                pastas.append(pasta)
+            if len(pastas) == 1 and not comandos_dss:
+                master = escolher_master(pastas[0], dia, mes)
+            else:
+                nome = ("cluster_" if len(ctmts) > 1 else "") + "-".join(ctmts)
+                cenario = "base" if not comandos_dss else "manobras"
+                if falha is not None:
+                    cenario = f"falha_{falha}" + (f"_via_{restaurar}" if restaurar else "")
+                destino = Path(out) / nome / f"Master_{dia.upper()}{mes:02d}_{cenario}.dss"
+                master = montar_master_cluster(
+                    pastas, destino, dia=dia, mes=mes, comandos=comandos_dss, nome=nome
+                )
+                console.print(f"[green]✔[/] Master do cenário em [bold]{master}[/]")
+                comandos_dss = []  # já estão no Master
+        if not fluxo:
+            console.print(f"Master: {master}")
+            return
+        resultado = run_powerflow(
+            master,
+            vmin=vmin,
+            vmax=vmax,
+            estabilizar=estabilizar,
+            comandos_extra=[*(comando or ()), *comandos_dss],
+        )
+    except (
+        FileNotFoundError,
+        ValueError,
+        RuntimeError,
+        ImportError,
+        DataSourceError,
+        ChaveInexistenteError,
+        TrechoInexistenteError,
+    ) as erro:
+        _erro(str(erro))
+        return
+    _imprimir_fluxo(resultado, top)
+    if json_saida is not None:
+        _gravar_fluxo_json(resultado, json_saida, top)
+        console.print(f"[green]✔[/] resumo gravado em [bold]{json_saida}[/]")
+    if not resultado.convergiu:
+        raise typer.Exit(code=2)
+
+
+def _manobras_dss(
+    gpkg: Path | None,
+    falha: str | None,
+    restaurar: str | None,
+    abrir: str | None,
+    fechar: str | None,
+    comandos_manobras,
+) -> list[str]:
+    """Carrega o grafo do recorte e traduz --abrir/--fechar/--falha/--restaurar em comandos DSS."""
+    if gpkg is None:
+        return []
+    camadas = ler_camadas(gpkg)
+    rede: Rede = Feeder(camadas) if len(camadas.ctmt) == 1 else Cluster(camadas)
+    manobras = [manobra(ABRIR, cod) for cod in _lista(abrir)]
+    manobras += [manobra(FECHAR, cod) for cod in _lista(fechar)]
+    if falha is not None:
+        isolamento = rede.isolate_segment(falha)
+        if restaurar is None:
+            manobras += isolamento.manobras
+        else:
+            opcao = next((o for o in rede.restore_options(falha) if o.chave == restaurar), None)
+            if opcao is None:
+                raise ValueError(
+                    f"a chave {restaurar} não restaura a falta em {falha}; "
+                    "veja `bdgd-light grafo --falha`"
+                )
+            manobras += opcao.manobras
+            console.print(
+                f"Falta em [bold]{falha}[/]: abrir {', '.join(isolamento.chaves)}; fechar "
+                f"[bold]{restaurar}[/] transfere {_fmt_int(len(opcao.nos))} nós "
+                f"({_fmt_clientes(opcao.clientes)}) para {opcao.fonte}"
+            )
+    elif restaurar is not None:
+        raise ValueError("--restaurar exige --falha.")
+    comandos = comandos_manobras(rede, manobras)
+    for c in comandos:
+        console.print(f"  [dim]{c[:100]}[/]")
+    return comandos
+
+
+def _imprimir_fluxo(r, top: int) -> None:
+    s = r.resumo()
+    tabela = Table(title=f"Fluxo de potência — {r.circuito} ({r.master.name})", show_header=False)
+    tabela.add_column("campo", style="bold")
+    tabela.add_column("valor")
+    convergiu = "[green]sim[/]" if r.convergiu else "[red]NÃO[/]"
+    linhas = [
+        ("Convergiu", f"{convergiu} ({r.iteracoes} iterações, {r.tempo_s:.2f} s)"),
+        ("Estabilizadores", ", ".join(r.ajustes) or "nenhum"),
+        (
+            "Elementos",
+            f"{_fmt_int(r.n_barras)} barras, {_fmt_int(r.n_nos)} nós, {_fmt_int(r.n_linhas)} "
+            f"linhas, {_fmt_int(r.n_trafos)} trafos, {_fmt_int(r.n_cargas)} cargas",
+        ),
+        (
+            "Potência na fonte",
+            f"{_fmt_int(round(r.potencia_kw))} kW / {_fmt_int(round(r.potencia_kvar))} kvar",
+        ),
+        (
+            "Perdas",
+            f"{_fmt_int(round(r.perdas_kw))} kW"
+            + (f" ({100 * r.perdas_kw / r.potencia_kw:.1f} %)" if r.potencia_kw else ""),
+        ),
+        ("Tensão (nós de fase)", f"mín {r.v_min_pu:.3f} pu, máx {r.v_max_pu:.3f} pu"),
+        (
+            f"Fora de [{r.vmin_ref}, {r.vmax_ref}] pu",
+            f"{_fmt_int(s['n_subtensao'])} sub, {_fmt_int(s['n_sobretensao'])} sobre "
+            f"(de {_fmt_int(s['n_nos_fase'])} nós; {_fmt_int(s['n_desenergizados'])} a 0 pu)",
+        ),
+        ("Sobrecargas (> 100 %)", _fmt_int(s["n_sobrecargas"])),
+    ]
+    if len(r.fontes) > 1:
+        linhas.insert(
+            4,
+            (
+                "Por fonte",
+                "; ".join(
+                    f"{f.fonte} ({f.barra}) {_fmt_int(round(f.kw))} kW"
+                    for f in r.fontes.itertuples(index=False)
+                ),
+            ),
+        )
+    for campo, valor in linhas:
+        tabela.add_row(campo, valor)
+    console.print(tabela)
+    mt = r.tensoes_mt()
+    if mt["ctmt"].nunique() > 1:
+        t = Table(title="Tensão MT por alimentador")
+        for rotulo, alinhamento in [
+            ("CTMT", "left"),
+            ("nós", "right"),
+            ("mín pu", "right"),
+            ("máx pu", "right"),
+        ]:
+            t.add_column(rotulo, justify=alinhamento)
+        for nome, g in mt.groupby("ctmt"):
+            t.add_row(nome, _fmt_int(len(g)), f"{g['v_pu'].min():.3f}", f"{g['v_pu'].max():.3f}")
+        console.print(t)
+    piores = r.piores_barras(top)
+    if not piores.empty and piores["v_pu"].iloc[0] < r.vmin_ref:
+        t = Table(title=f"Piores tensões ({min(top, len(piores))})")
+        for rotulo, alinhamento in [("Nó", "left"), ("kV base", "right"), ("V pu", "right")]:
+            t.add_column(rotulo, justify=alinhamento)
+        for p in piores.itertuples(index=False):
+            t.add_row(p.no, f"{p.kv_base:.3f}", f"{p.v_pu:.3f}")
+        console.print(t)
+    sobre = r.sobrecargas.head(top)
+    if not sobre.empty:
+        t = Table(title=f"Sobrecargas ({min(top, len(sobre))} de {len(r.sobrecargas)})")
+        for rotulo, alinhamento in [
+            ("Elemento", "left"),
+            ("I máx A", "right"),
+            ("I nominal A", "right"),
+            ("Carga %", "right"),
+        ]:
+            t.add_column(rotulo, justify=alinhamento)
+        for e in sobre.itertuples(index=False):
+            t.add_row(
+                e.elemento, f"{e.i_max_a:.1f}", f"{e.i_nominal_a:.1f}", f"{e.carregamento_pct:.0f}"
+            )
+        console.print(t)
+
+
+def _gravar_fluxo_json(r, caminho: Path, top: int) -> None:
+    import json
+
+    dados = r.resumo()
+    dados["piores_barras"] = r.piores_barras(top).to_dict(orient="records")
+    dados["sobrecargas"] = r.sobrecargas.head(top).to_dict(orient="records")
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    caminho.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def _lista(valor: str | None) -> list[str]:
     return [c.strip() for c in (valor or "").split(",") if c.strip()]
 
@@ -428,7 +739,7 @@ def _imprimir_resumo(rede: Rede) -> None:
         ("Ties", f"{r['ties']} ({r['ties_externas']} de chaves de outros CTMT)"),
         ("CTMT externos", ", ".join(r["externos"]) or "nenhum"),
         ("Transformadores", _fmt_int(r["trafos"])),
-        ("Clientes", _fmt_clientes(r["clientes"])),
+        ("Clientes", _fmt_clientes(Clientes.from_dict(r["clientes"]))),
         ("Nós energizados", f"{_fmt_int(r['energizados'])} de {_fmt_int(r['nos'])}"),
     ]
     for campo, valor in linhas:

@@ -103,8 +103,9 @@ normal — nenhuma chave NF fecha um caminho entre dois alimentadores.
 estrutura. UC cujo transformador ou PAC não está na rede MT geram aviso (1 UCMT no cluster TQR).
 
 A rede BT (`SSDBT`, `UNSEBT`, `RAMLIG`) **não entra no grafo**: é radial por transformador e não muda
-a análise de manobras MT; para o gêmeo OpenDSS (issue #5) ela é modelada como carga agregada no
-transformador. `PAC_2`/`PAC_3` do `UNTRMT` (lado BT, `<UNTRMT>_BT_<n>`) são ignorados.
+a análise de manobras MT. No gêmeo OpenDSS ([spike-opendss.md](spike-opendss.md)) o bdgd2opendss a
+modela por completo (segmentos, ramais e uma carga por UC), e é nela que aparecem as violações de
+tensão. `PAC_2`/`PAC_3` do `UNTRMT` (lado BT, `<UNTRMT>_BT_<n>`) são ignorados aqui.
 
 ## Consultas e manobras
 
@@ -122,6 +123,18 @@ transformador. `PAC_2`/`PAC_3` do `UNTRMT` (lado BT, `<UNTRMT>_BT_<n>`) são ign
 Anéis internos (chave NA entre dois pontos do mesmo CTMT, como `CH006` na fixture) aparecem em
 `restore_options` com `fonte` igual ao próprio CTMT — desde que uma das pontas continue energizada.
 
+Cada `OpcaoRestauracao` carrega a **sequência de manobras** explícita em `manobras` — os passos
+`{"acao": "abrir", "chave": …}` do isolamento seguidos de `{"acao": "fechar", "chave": <NA>}` — para o
+agente propor e o operador aprovar passo a passo. `Isolamento.to_dict()`, `OpcaoRestauracao.to_dict()`
+e `Rede.resumo()` são serializáveis em JSON (conjuntos → listas ordenadas, `Clientes` → dict): é o
+que o servidor MCP (fase 3) devolve ao LLM.
+
+> **O grafo não verifica capacidade.** `restore_options` diz *quem* pode ser reenergizado e por qual
+> fonte, mais `clientes_fonte` como indício de carga; **não** confere corrente no tronco receptor nem
+> tensão na ponta transferida. Isso é papel do gêmeo OpenDSS (`bdgd_light.twin`,
+> [spike-opendss.md](spike-opendss.md)), que deve ler o estado `aberta` das chaves deste grafo e
+> resolver o fluxo depois da manobra.
+
 ## Exemplo real — falta no tronco de BOCARI (cluster TQR)
 
 ```bash
@@ -138,7 +151,9 @@ restantes (39 UCBT) não têm NA para nenhuma fonte. É exatamente o cenário FL
 ## Limitações conhecidas
 
 - Sem fases, impedâncias ou limites: a energização é puramente topológica. Corrente, tensão e
-  sobrecarga ficam para o gêmeo OpenDSS (issue #5), que deve usar este grafo para saber o estado.
+  sobrecarga vêm do gêmeo OpenDSS (`bdgd_light.twin`, [spike-opendss.md](spike-opendss.md)); a
+  integração estado das chaves do grafo → `open/close` no circuito ainda não existe (as chaves NA
+  saem comentadas do bdgd2opendss e cada CTMT é um circuito separado).
 - `UNREMT` (reguladores) e `UNCRMT` (capacitores) não são arestas nem nós — estão em série na rede
   pelos PAC de `SSDMT` e não alteram conectividade.
 - A ponta de fora de uma tie ambígua (os dois PAC na própria rede) é `PAC_2` por convenção; 90 casos

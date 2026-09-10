@@ -23,6 +23,14 @@ dependencies = [
     "pyproj>=3.6",
 ]
 
+[tool.uv]
+# bdgd2opendss 1.2.5 exige pywin32/pypiwin32 em Python 3.12 sem marcador de plataforma; em Linux/macOS
+# não há wheel e o `uv sync --extra twin` falha. Só instala no Windows.
+override-dependencies = [
+    "pywin32; sys_platform == 'win32'",
+    "pypiwin32; sys_platform == 'win32'",
+]
+
 [project.optional-dependencies]
 twin = ["opendssdirect.py>=0.9", "bdgd2opendss>=1.2"]
 agent = ["mcp>=1.0", "httpx>=0.27", "pydantic>=2"]

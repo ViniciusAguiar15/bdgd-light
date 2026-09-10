@@ -1,0 +1,1 @@
+New "Load.BT_TR002_1_M1" bus1="TR002_BT_1.1.2.3.4" phases=3 conn=Wye model=2 kv=0.22 kw = 80.000000 pf=0.92 status=variable vmaxpu=1.5 vminpu=0.5 daily="RES-Tipo1_DU"

@@ -1,0 +1,3 @@
+New "Loadshape.default_pv_daily_bt" 24 1 mult=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+New "generator.GD.RJO001.001" phases=3 bus1=TR003_BT_1.1.2.3.4 basefreq=60 conn=Delta kv=0.22 pf=0.92 kw=5.0 daily=default_pv_daily_bt
+New "generator. " phases=1 bus1=TR003_BT_1.2.4 basefreq=60 conn=Wye kv=0.1270170592217177 pf=0.92 kw=2.0 daily=default_pv_daily_bt

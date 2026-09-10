@@ -1,0 +1,26 @@
+! Configuracoes de linha do IEEE 13-node test feeder: matrizes de impedancia de fase (ohm/milha)
+! e de capacitancia (nF/milha, so subterraneas). Ordem das fases segue os bus1/bus2 do Master
+! (ex.: mtx603 e usada em 632.3.2 -> ordem C, B).
+New LineCode.mtx601 nphases=3 basefreq=60 units=mi
+~ rmatrix=(0.3465 | 0.1560 0.3375 | 0.1580 0.1535 0.3414)
+~ xmatrix=(1.0179 | 0.5017 1.0478 | 0.4236 0.3849 1.0348)
+New LineCode.mtx602 nphases=3 basefreq=60 units=mi
+~ rmatrix=(0.7526 | 0.1580 0.7475 | 0.1560 0.1535 0.7436)
+~ xmatrix=(1.1814 | 0.4236 1.1983 | 0.5017 0.3849 1.2112)
+New LineCode.mtx603 nphases=2 basefreq=60 units=mi
+~ rmatrix=(1.3238 | 0.2066 1.3294)
+~ xmatrix=(1.3569 | 0.4591 1.3471)
+New LineCode.mtx604 nphases=2 basefreq=60 units=mi
+~ rmatrix=(1.3238 | 0.2066 1.3294)
+~ xmatrix=(1.3569 | 0.4591 1.3471)
+New LineCode.mtx605 nphases=1 basefreq=60 units=mi
+~ rmatrix=(1.3292)
+~ xmatrix=(1.3475)
+New LineCode.mtx606 nphases=3 basefreq=60 units=mi
+~ rmatrix=(0.7982 | 0.3192 0.7891 | 0.2849 0.3192 0.7982)
+~ xmatrix=(0.4463 | 0.0328 0.4041 | -0.0143 0.0328 0.4463)
+~ cmatrix=(257 | 0 257 | 0 0 257)
+New LineCode.mtx607 nphases=1 basefreq=60 units=mi
+~ rmatrix=(1.3425)
+~ xmatrix=(0.5124)
+~ cmatrix=(236)

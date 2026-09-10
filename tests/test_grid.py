@@ -23,7 +23,9 @@ from typer.testing import CliRunner
 
 from bdgd_light.cli import app
 from bdgd_light.grid import (
+    ABRIR,
     CHAVE,
+    FECHAR,
     TIE,
     TRECHO,
     ChaveInexistenteError,
@@ -33,6 +35,7 @@ from bdgd_light.grid import (
     Rede,
     TrechoInexistenteError,
     estado_geojson,
+    manobra,
 )
 from bdgd_light.ingest.recorte import recortar
 
@@ -223,6 +226,40 @@ def test_isolar_trecho_de_tronco_e_restaurar_pela_tie(rjo001: Feeder):
     rjo001.close_switch("CH003")
     assert rjo001.energized_nodes() == nos("RJO001", 0, 3, 4, 5, 6, 7)
     assert rjo001.energized_by("RJO001_MT_4") == "RJO002"
+
+
+def test_to_dict_serializavel_e_sequencia_de_manobras(rjo001: Feeder):
+    iso = rjo001.isolate_segment("SEG001")
+    d = iso.to_dict()
+    json.dumps(d)
+    assert d["chaves"] == ["CH001", "CH008"]
+    assert d["zona"] == sorted(nos("RJO001", 1, 2))
+    assert d["desligados"] == sorted(nos("RJO001", 3, 4, 5, 6))
+    assert d["clientes_desligados"] == {"ucbt": 3, "ucmt": 1, "trafos": 1, "kva": 75.0, "total": 4}
+    assert d["manobras"] == iso.manobras == [manobra(ABRIR, "CH001"), manobra(ABRIR, "CH008")]
+
+    opcoes = rjo001.restore_options("SEG001")
+    assert opcoes[0].manobras == [
+        {"acao": "abrir", "chave": "CH001"},
+        {"acao": "abrir", "chave": "CH008"},
+        {"acao": "fechar", "chave": "CH003"},
+    ]
+    o = opcoes[0].to_dict()
+    json.dumps(o)
+    assert o["nos"] == sorted(nos("RJO001", 3, 4, 5, 6))
+    assert o["clientes"]["total"] == 4 and o["clientes_fonte"]["total"] == 0
+    assert o["manobras"][-1] == {"acao": FECHAR, "chave": "CH003"}
+    # executar a sequência reproduz o estado previsto
+    for passo in opcoes[0].manobras:
+        (rjo001.open_switch if passo["acao"] == ABRIR else rjo001.close_switch)(passo["chave"])
+    assert rjo001.energized_nodes() == nos("RJO001", 0, 3, 4, 5, 6, 7)
+    assert Clientes.from_dict(o["clientes"]) == opcoes[0].clientes
+    with pytest.raises(ValueError):
+        manobra("religar", "CH001")
+
+    r = rjo001.resumo()
+    json.dumps(r)
+    assert r["clientes"]["ucbt"] == 4 and r["clientes"]["total"] == 5
 
 
 # --- cluster -----------------------------------------------------------------------------------
