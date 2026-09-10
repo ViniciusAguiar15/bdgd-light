@@ -569,3 +569,82 @@ uv run bdgd-light agente --pergunta "quantos km tem o ALC9925?" --cluster tijuca
    tem `embed`).
 4. O `run_powerflow` do cluster Tijuca inteiro (MT+BT) segue com índices BT contaminados (#44); o
    score MT não é afetado.
+
+
+### Fechamento
+
+PR #46 (`feat(agent): orquestrador + verificador HITL`, Closes #34): CI verde de primeira (test
+3.11/3.12, console, llm-smoke), squash → `main` `b577a6a` às 14:11.
+
+## 8. #35 — console F3: fila, proposta, aprovação humana e demo ponta a ponta (14:11–15:00)
+
+| | |
+|---|---|
+| Branch | `feat/console-f3` (a partir de `main` `b577a6a`, pós-PR #46) |
+| PR | ver "Fechamento" |
+| docs/review | **PR-12 pedidos 1–2** aplicados em commit próprio `475d2ef`: identidade do operador (`X-Operador` + segredo `BDGD_CONSOLE_TOKEN` via `Authorization: Bearer`/`X-Console-Token`, `compare_digest`) nas rotas humanas do MCP http e do console, gravada em `aprovada_por` e `hitl.jsonl`; `GET /estado` devolve `audit_n` e o `hash` da última entrada. Apareceram **PR-13** (revisão do #45, aprovado, sem pedidos) e **PR-14** (revisão do #46, aprovado; 3 pedidos explicitamente para o #36: compactar `restore_options`/`get_topology`, rodar OpenAI, documentar uma recusa forçada do verificador) — versionados em `889928f`; os pedidos vão para o #36 |
+| Módulos | `src/bdgd_light/console/api.py` (`criar_app`, `AgenteEmSegundoPlano`), `src/bdgd_light/mcp_server/humano.py` (`Autorizador`, `aprovar`, `rejeitar`, `executar_proposta`, `hitl_log`), CLI `serve`, `SessaoCOD.alternativas`, `console/src/cod.ts` + `index.html`/`style.css`/`vite.config.ts` (proxy `/api`), `scripts/smoke.mjs` (`SMOKE_FLUXO`), `docs/console.md`, `tests/test_console_api.py` (6) + `tests/test_humano.py` (6) |
+
+### Decisões
+
+1. **Backend FastAPI no mesmo processo** (`bdgd-light serve`, extra `console` = fastapi + uvicorn):
+   `SessaoCOD` + `Orquestrador` + `FilaEventos` compartilhados; o console compilado é servido em `/`
+   (sem pasta `dist`, só a API e o `vite dev` faz proxy de `/api`). CORS só para localhost.
+2. **Agente em thread por evento** (`AgenteEmSegundoPlano`): uma execução por vez (409 enquanto
+   ocupado), estado consultável (`evento_atual`, `erro`, últimas 20 execuções) dentro de
+   `/api/estado`. `sincrono=True` nos testes.
+3. **Aprovar = executar** no console (um clique do operador; `executar: false` no corpo para só
+   aprovar). No MCP http o padrão continua ser devolver o token. Rejeitar uma proposta aprovada e não
+   executada revoga o token.
+4. **`humano.py` compartilhado** entre `servidor.py` (rotas do transporte http) e a API do console —
+   uma só regra de identidade/segredo e um só `hitl.jsonl`. `mcp` e `serve` ganharam `--sem-segredo`
+   (demo local); sem a flag e sem a variável as decisões respondem 503 (modo `bloqueado`, que o
+   painel mostra).
+5. **Polling de 2 s** em `/api/estado` (sem WebSocket); o mapa recarrega `/api/estado.geojson` na
+   fonte `estado` já existente só quando o `hash` da auditoria muda. Com backend e cluster carregado,
+   o estado vivo substitui o GeoJSON estático do cenário.
+6. **Painel oculto sem backend** (Pages segue funcionando): a primeira sonda a `api/estado` decide.
+   Operador e token ficam no `localStorage`; "injetar falta" manda o cenário nomeado do simulador
+   correspondente ao cenário do console; com falta já tratada vira "reiniciar e injetar falta"
+   (`recarregar: true` → `load_cluster` → rede normal, propostas expiradas).
+7. **Alternativas e veredito na proposta**: `SessaoCOD.alternativas(id)` devolve as opções de
+   `restore_options` com o último score (viáveis primeiro, a escolhida, maior margem) — leitura, não é
+   ferramenta do modelo. O veredito do verificador vive na execução do agente, e
+   `/api/propostas/{id}` o anexa a partir de `AgenteEmSegundoPlano.execucoes`.
+8. `POST /api/eventos` sem `tipo` infere pelo alvo (trecho → falta permanente, CTMT → pico, chave →
+   indisponível) — antes um `{"trecho": ...}` sorteava o tipo e o teste acabou tratando "chave
+   indisponível".
+9. **SIGILL do OpenDSS entre threads** (custou ~40 min): com o agente numa thread e os handlers HTTP
+   no threadpool do Starlette, o processo morria com `Illegal instruction`. Experimentos isolados:
+   qualquer chamada ao DSS C-API de uma thread diferente da que **importou** `opendssdirect` mata o
+   processo (macOS arm64, `opendssdirect 0.9.4`/`dss_python 0.15.7`), inclusive via
+   `DSS.NewContext()`. Solução: `twin.powerflow.no_motor` encaminha import e chamadas para um
+   `ThreadPoolExecutor(1)` (`_MOTOR`); `run_powerflow` e `score.ampacidade_tronco` passam por ele.
+   O que ainda derrubava o pytest: `pytest.importorskip("opendssdirect")` na coleta importava o
+   módulo na thread principal — trocado por `importlib.util.find_spec` em 6 arquivos e
+   `tests/conftest.py` falha a coleta se voltar (`pytest_collection_finish`). Registrado em
+   `docs/console.md`.
+
+### Validação
+
+```bash
+uv run ruff check . && uv run ruff format . && uv run pytest        # 251 passed (239 + 6 humano + 6 console API)
+uv run pytest tests/test_console_api.py tests/test_humano.py -q      # API, autorização, fluxo injetar→propor→aprovar, reinício
+cd console && npm run check && npm run build                          # tsc + vite (dist/ servido por `serve`)
+BDGD_CONSOLE_TOKEN=demo uv run bdgd-light serve --cluster tijuca --provider fake --estado /tmp/serve-demo/estado --fila /tmp/serve-demo/eventos.jsonl
+cd console && SMOKE_FLUXO=1 SMOKE_TOKEN=demo node scripts/smoke.mjs "http://127.0.0.1:8000/?cenario=tijuca"
+```
+
+Demo ponta a ponta local (Tijuca, operador fake, Chrome headless): rodada 1 — proposta P-0001
+(abrir 11035901, fechar 974020904 → ALC9946, 4.036 UCBT, margem 46 %, Vmin 1,027 pu) em **17,2 s**,
+aprovada e executada com mapa recolorido em **19,6 s** (467 → 72 trechos desenergizados); rodada 2
+(reiniciar e injetar) em **14,7 s**. Auditoria íntegra (18 e 36 registros). Critério "< 30 s"
+atendido; com Gemini soma-se ~20–30 s de LLM (`docs/agent.md`).
+
+### Pendências
+
+1. Screenshot/GIF da demo no README (o smoke salva `smoke.png`; não versionar imagem pesada — talvez
+   um recorte do painel).
+2. SSE/WebSocket no lugar do polling se a fila crescer; várias sessões/operadores.
+3. O `serve --provider gemini` foi só fumaça manual (sobe e responde); a demo com LLM real fica para
+   o benchmark (#36), que passa pela mesma API.
