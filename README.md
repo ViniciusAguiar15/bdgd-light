@@ -13,7 +13,7 @@ arquitetura (e alternativas descartadas) em [`docs/adr/ADR-001-stack.md`](docs/a
 ```
 src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim)
   catalogo.py          IDs da BDGD por distribuidora/ano, camadas-chave, domínios TEN_NOM e TIP_UNID
-  cli.py               CLI `bdgd-light` (typer): export, inventario, vizinhos, recortar, grafo, dss
+  cli.py               CLI `bdgd-light` (typer): export, inventario, vizinhos, recortar, grafo, dss, llm
   ingest/export.py     exportação de camadas para GeoParquet/Parquet/GeoPackage, em lotes
   ingest/parquet.py    leitura das camadas exportadas com filtros empurrados ao pyarrow
   ingest/interligacoes.py  detecção geométrica de chaves NA de interligação entre CTMT
@@ -24,15 +24,18 @@ src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim
   twin/convert.py      BDGD → OpenDSS via bdgd2opendss (36 Masters por CTMT); twin/powerflow.py
                        resolve o fluxo com OpenDSSDirect (tensões, violações, perdas, sobrecargas);
                        twin/cluster.py monta o Master do cluster e traduz manobras do grafo em DSS
+  agent/llm.py         interface LLMClient (chat com tool calling), FakeLLMClient para testes,
+                       OpenAICompatClient (qualquer API chat/completions) e preset GitHubModelsClient
 scripts/
   baixar_bdgd.py       baixa e extrai a BDGD (Light 2025 por padrão)
   listar_camadas.py    lista as camadas do .gdb
   converter.py         camada → GeoJSON (EPSG:4326) com recorte por bbox
+  listar_modelos.py    lista os modelos do provedor LLM configurado (destaca tool calling)
 index.html             visor Leaflet legado (será substituído pelo console MapLibre)
 docs/                  plano, ADRs (adr/ADR-001-stack.md), notas da BDGD Light 2025 (bdgd-light-2025.md),
                        regras de junção entre camadas (bdgd-relacoes.md), escolha dos alimentadores
                        (escopo-alimentadores.md), mapeamento BDGD → grafo (grid-modelo.md),
-                       spike OpenDSS (spike-opendss.md)
+                       spikes OpenDSS (spike-opendss.md) e LLM (spike-llm.md)
 tests/                 pytest (fixtures sintéticas; dados reais nunca vão para o git)
   fixtures/            bdgd_mini.gpkg (BDGD sintética, 21 camadas, 3 CTMT com interligações
                        geométricas), bairro_sintetico.geojson e gerar_fixture.py, que os (re)cria;
@@ -330,6 +333,45 @@ TQR0007 (Light 2025, Master DU01): 6.334 barras, 12.312 cargas, converge em 5 it
 ligação com centenas de metros cadastrados na própria BDGD. Cluster TQR (3 alimentadores, 18.554
 barras, 33.340 cargas): 9 iterações, 1,2 s; a restauração de BOCARI via PARNAIBA leva o disjuntor de
 149 A a 221 A e a MT transferida fica em ≥ 1,004 pu, sem sobrecarga na MT.
+
+### `bdgd-light llm` — cliente LLM com *tool calling* (spike da issue #7)
+
+Exemplo mínimo do agente: manda a pergunta ao modelo com a ferramenta `soma(a, b)` disponível,
+executa as chamadas que ele pedir e imprime a resposta. Precisa do extra `agent`
+(`uv sync --extra agent`).
+
+```bash
+uv run bdgd-light llm --fake "Quanto é 2 + 3?"                       # cliente fake, sem rede
+#   ⚙ soma({"a": 2.0, "b": 3.0}) → 5.0
+#   O resultado é 5.
+export BDGD_LLM_ENDPOINT=https://SEU-PROVEDOR/v1/chat/completions   # API compatível com a OpenAI
+export BDGD_LLM_TOKEN=...   BDGD_LLM_MODEL=gpt-4.1-mini              # segredos só por ambiente
+uv run bdgd-light llm "Quanto é 2 + 3?" --json data/conversa.json    # grava a conversa completa
+uv run scripts/listar_modelos.py --tools                             # modelos com tool calling
+```
+
+| opção | padrão | descrição |
+|---|---|---|
+| `PERGUNTA` | — | mensagem do usuário |
+| `--fake` | off | `FakeLLMClient` determinístico que imita um modelo chamando `soma` |
+| `--endpoint` | `$BDGD_LLM_ENDPOINT` | URL `…/chat/completions`; sem ela e com `GITHUB_TOKEN`, usa o preset GitHub Models |
+| `--modelo` | `$BDGD_LLM_MODEL` | id do modelo |
+| `--sistema` | assistente do COD | mensagem de sistema |
+| `--json` | — | grava mensagens, chamadas de ferramenta, resultados e uso de tokens |
+
+O **GitHub Models foi aposentado em 30/07/2026** (a API responde `410
+github_models_retirement_brownout`); `GitHubModelsClient` continua como *preset* que falha com uma
+mensagem clara, e o cliente real é `OpenAICompatClient` (Azure AI Foundry, OpenAI, Ollama local…).
+Detalhes, limites e recomendação em [`docs/spike-llm.md`](docs/spike-llm.md). Em Python:
+
+```python
+from bdgd_light.agent import Message, SOMA, cliente_do_ambiente, conversar, fake_soma
+
+cliente = fake_soma()  # ou cliente_do_ambiente() com BDGD_LLM_ENDPOINT/BDGD_LLM_TOKEN
+conversa = conversar(cliente, [Message.user("Quanto é 2 + 3?")], [SOMA])
+conversa.resposta.content  # 'O resultado é 5.'
+conversa.to_dict()  # histórico serializável (base do log de auditoria)
+```
 
 ## Fluxo de trabalho
 

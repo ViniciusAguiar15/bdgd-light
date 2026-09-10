@@ -166,7 +166,7 @@ Resultados:
 Pendente: nada para a issue. Fica anotado para o #5: o gêmeo OpenDSS deve ler o estado das chaves
 deste grafo (`aberta`) em vez de `P_N_OPE` direto.
 
-## 3. Issue #5 — spike bdgd2opendss + OpenDSSDirect (21:50–22:45)
+## 3. Issue #5 — spike bdgd2opendss + OpenDSSDirect (21:50–22:36)
 
 | | |
 |---|---|
@@ -280,7 +280,7 @@ UC) fica para o score elétrico (próximo passo sugerido).
 Pendente: nada para a issue. Não implementado (documentado): Master a partir do GPKG do recorte
 (decisão 9 do spike) e score elétrico das opções de restauração.
 
-## 4. Issue #8 — ADR-001 stack e arquitetura (22:45–23:00)
+## 4. Issue #8 — ADR-001 stack e arquitetura (22:36–22:42)
 
 | | |
 |---|---|
@@ -312,3 +312,57 @@ Decisões tomadas:
 
 Pendente: nada. Para validar: ler `docs/adr/ADR-001-stack.md` e conferir se as decisões propostas
 8–11 refletem o que o mantenedor quer para F1/F3 (as issues #4 e #7 desta fila seguem a ADR).
+
+## 5. Issue #7 — spike GitHub Models / `LLMClient` (22:42–22:58)
+
+| | |
+|---|---|
+| Branch | `feat/llm-client` (de `main` `6c763e1`) |
+| PR | ver seção "PRs abertos/mergeados" no fim |
+| Origem | `docs/backlog/07-spike-github-models.md` |
+
+`docs/review/` sem arquivo novo depois de `PR-03.md`.
+
+**Achado principal: o GitHub Models não existe mais.** Não havia `GITHUB_TOKEN` no ambiente; usei o
+token OAuth do `gh` (`gho_…`) para a spike e tanto `GET /catalog/models` quanto
+`POST /inference/chat/completions` responderam `410 github_models_retirement_brownout`. A
+documentação oficial confirma a aposentadoria completa em **30/07/2026** (playground, catálogo,
+inferência, BYOK), apontando para Azure AI Foundry ou Copilot. Portanto não há limites de taxa/tokens
+a observar nem modelo do catálogo a recomendar.
+
+Entregue: `bdgd_light.agent` (`llm.py`) com `LLMClient` (Protocol), `Message`/`ToolSpec`/`ToolCall`/
+`Text`/`ToolCalls`/`Uso`, `interpretar_resposta`, `FakeLLMClient` + `fake_soma()`,
+`OpenAICompatClient` (httpx, 429 com `Retry-After`, `listar_modelos`), `GitHubModelsClient`
+(*preset*), `cliente_do_ambiente`, laço `conversar` com `Conversa.to_dict()`, ferramenta `soma`;
+CLI `bdgd-light llm` (`--fake`, `--endpoint`, `--modelo`, `--json`); `scripts/listar_modelos.py`;
+28 testes sem rede (`FakeLLMClient` + `httpx.MockTransport`); `docs/spike-llm.md`; README; CI passa
+a instalar `--extra agent`; ADR-001 decisão 10 marcada como **alterada**.
+
+Decisões tomadas:
+- **Interface preservada, provedor trocado**: o cliente real é `OpenAICompatClient` (qualquer API
+  `chat/completions` compatível com a OpenAI — Azure AI Foundry, OpenAI, Ollama/LM Studio locais),
+  configurado só por `BDGD_LLM_ENDPOINT`/`BDGD_LLM_TOKEN`/`BDGD_LLM_MODEL`. Sem SDK de provedor.
+- `GitHubModelsClient` **fica** (subclasse de 30 linhas com endpoint/catálogo/cabeçalhos do GitHub e
+  `GITHUB_TOKEN`) porque backlog, plano e ADR o citam; ao receber 410 lança
+  `ServicoIndisponivelError` com a explicação e a orientação de migrar. Sai quando a F3 escolher o
+  provedor.
+- Erros tipados (`TokenAusenteError`, `LimiteDeTaxaError(retry_after)`, `ServicoIndisponivelError`,
+  `RespostaInvalidaError`); laço tolerante (ferramenta desconhecida/exceção → `{"erro": …}` para o
+  modelo; `max_rodadas=5`); `temperature=0` por padrão.
+- Modelo padrão `gpt-4.1-mini` (OpenAI/Azure, *tool calling* nativo); recomendação F3: Azure AI
+  Foundry ou Ollama local (`llama3.1:8b`, `qwen2.5:7b`) para desenvolvimento offline.
+- Testes garantem "segredos só por ambiente": fixture `autouse` limpa `GITHUB_TOKEN`/`BDGD_LLM_*` e
+  um teste varre `llm.py` contra padrões de token.
+- Não adicionei dependência nova: `httpx` já estava no extra `agent`.
+
+Pendente: escolher o provedor real e cadastrar `BDGD_LLM_TOKEN` como *secret* (F3). Para validar:
+
+```bash
+uv sync --extra agent
+uv run bdgd-light llm --fake "Quanto é 2 + 3?"                 # ⚙ soma({"a": 2.0, "b": 3.0}) → 5.0 / O resultado é 5.
+GITHUB_TOKEN=$(gh auth token) uv run bdgd-light llm "Quanto é 2 + 3?"   # exit 1: 410 … aposentado em 30/07/2026
+uv run pytest tests/test_llm.py -q                             # 28 passed, sem rede
+# com um provedor compatível com a OpenAI (ex.: Ollama local)
+BDGD_LLM_ENDPOINT=http://localhost:11434/v1/chat/completions BDGD_LLM_TOKEN=ollama \
+  BDGD_LLM_MODEL=llama3.1:8b uv run bdgd-light llm "Quanto é 2 + 3?"
+```

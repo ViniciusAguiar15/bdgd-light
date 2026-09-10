@@ -582,6 +582,84 @@ def dss(
         raise typer.Exit(code=2)
 
 
+@app.command()
+def llm(
+    pergunta: Annotated[
+        str, typer.Argument(help="Pergunta para o modelo, ex.: 'Quanto é 2 + 3?'.")
+    ],
+    fake: Annotated[
+        bool,
+        typer.Option(
+            "--fake",
+            help="Usa o cliente fake determinístico (sem rede) que imita um modelo chamando "
+            "a ferramenta soma(a, b).",
+        ),
+    ] = False,
+    modelo: Annotated[
+        str | None,
+        typer.Option("--modelo", help="Id do modelo (padrão: env BDGD_LLM_MODEL)."),
+    ] = None,
+    endpoint: Annotated[
+        str | None,
+        typer.Option(
+            "--endpoint",
+            help="URL …/chat/completions compatível com a OpenAI (padrão: env BDGD_LLM_ENDPOINT; "
+            "sem ela, GITHUB_TOKEN → GitHub Models, aposentado em 30/07/2026).",
+        ),
+    ] = None,
+    sistema: Annotated[
+        str,
+        typer.Option("--sistema", help="Mensagem de sistema."),
+    ] = "Você é o assistente do COD. Use a ferramenta soma quando precisar somar números.",
+    json_saida: Annotated[
+        Path | None,
+        typer.Option("--json", help="Grava a conversa completa (mensagens, ferramentas, uso)."),
+    ] = None,
+) -> None:
+    """Exemplo mínimo de *tool calling* do spike GitHub Models (issue #7): envia a pergunta ao
+    modelo com a ferramenta soma(a, b) disponível, executa as chamadas pedidas e imprime a
+    resposta. Segredos só por variável de ambiente (BDGD_LLM_TOKEN ou GITHUB_TOKEN)."""
+    import json
+
+    try:
+        from bdgd_light.agent import (
+            SOMA,
+            LLMError,
+            Message,
+            OpenAICompatClient,
+            cliente_do_ambiente,
+            conversar,
+            fake_soma,
+        )
+    except ImportError as erro:
+        _erro(f"{erro} — instale o extra: uv sync --extra agent")
+        return
+    try:
+        if fake:
+            cliente = fake_soma()
+        elif endpoint:
+            cliente = OpenAICompatClient(endpoint, modelo=modelo)
+        else:
+            cliente = cliente_do_ambiente(modelo)
+        conversa = conversar(cliente, [Message.system(sistema), Message.user(pergunta)], [SOMA])
+    except LLMError as erro:
+        _erro(str(erro))
+        return
+    for chamada, resultado in conversa.execucoes:
+        args = json.dumps(chamada.arguments, ensure_ascii=False)
+        console.print(f"[cyan]⚙ {chamada.name}({args}) → {resultado}[/]")
+    console.print(conversa.resposta.content)
+    rotulo = conversa.resposta.modelo or getattr(cliente, "modelo", "?")
+    uso = conversa.resposta.uso
+    tokens = f", {uso.total_tokens} tokens" if uso else ""
+    console.print(f"[dim]{rotulo} · {conversa.rodadas} rodada(s){tokens}[/]")
+    if json_saida is not None:
+        json_saida.write_text(
+            json.dumps(conversa.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        console.print(f"[green]✔[/] conversa gravada em [bold]{json_saida}[/]")
+
+
 def _manobras_dss(
     gpkg: Path | None,
     falha: str | None,
