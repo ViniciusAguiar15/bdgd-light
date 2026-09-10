@@ -37,6 +37,9 @@ src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim
   mcp_server/          servidor MCP das ferramentas de rede (sessao.py = domínio: cluster carregado,
                        falta simulada, propostas com aprovação humana e auditoria; servidor.py = camada
                        MCP stdio/http + rotas de aprovação); docs/mcp-ferramentas.md
+  sim/                 simulador de eventos (faltas permanentes/transitórias por km, pico de carga,
+                       chave telecomandada indisponível; cenários nomeados da demo) + fila JSONL
+                       em data/eventos/; docs/sim.md
 console/               console do operador: Vite + TypeScript + MapLibre GL JS lendo PMTiles
                        (public/tiles/exemplo_{tijuca,ipanema}.pmtiles = clusters da demo; exemplo.pmtiles
                        = TQR, regressão), seletor de cenário, sobreposição do estado do grafo,
@@ -561,6 +564,25 @@ passo = p["proximo_passo"]  # {"acao": "abrir", "chave": "…"}
 s.set_switch(
     passo["chave"], "aberta" if passo["acao"] == "abrir" else "fechada", approval_token=token
 )
+```
+
+### `bdgd-light sim` — simulador de eventos e fila para o agente
+
+Gera eventos com semente sobre um cluster (issue #33): `falta_permanente` em trecho MT (sorteado
+ponderando por km, ou `--trecho`), `falta_transitoria` (religador religa), `pico_carga` (`loadmult`
+1,15–1,6 num CTMT) e `chave_indisponivel` (telecomando fora). Cada evento é uma linha JSON na fila
+`data/eventos/eventos.jsonl` (`id`, `tipo`, `cluster`, `hora`, `trecho`|`ctmt`|`chave`, `detalhes`
+com religador, chaves com indicação e clientes que ficariam sem tensão) que o agente consome e o
+console mostra. Cenários nomeados `tijuca_cabofrio_tronco`, `ipanema_9210` (negativo) e
+`taquara_bocari` fixam os alvos da demo. O simulador não altera a rede — quem manobra é o agente,
+com aprovação humana. Formato e decisões em [`docs/sim.md`](docs/sim.md).
+
+```bash
+uv run bdgd-light sim --listar                                 # cenários nomeados
+uv run bdgd-light sim --cenario tijuca_cabofrio_tronco         # cenário A da demo → fila
+uv run bdgd-light sim --cluster ipanema --emitir 5 --seed 42   # 5 eventos reprodutíveis
+uv run bdgd-light sim --cluster tijuca --tipo falta --json     # 1 falta sorteada, em JSON Lines
+uv run bdgd-light sim --mostrar 5                              # últimos 5 da fila
 ```
 
 ## Console (mapa do operador)

@@ -419,3 +419,71 @@ curl -s localhost:8765/estado | head -c 300; uv run bdgd-light aprovar
    `data/dss/gpkg/` populado.
 4. #34 consome `SessaoCOD` em processo (ou o servidor via stdio); #35 usa `GET /estado`,
    `GET /propostas` e `POST /propostas/{id}/aprovar`.
+
+### Fechamento
+
+PR [#43](https://github.com/ViniciusAguiar15/bdgd-light/pull/43) — CI verde na **3ª tentativa**
+(1ª: `mcp.server.mcpserver` inexistente no `mcp` 1.10.1 do CI; 2ª: `issubclass()` com anotação string
+no 3.11) — merge squash em `main` `c4ef76b` às 13:19. Limite de 3 correções foi usado até o fim, mas
+não estourado.
+
+## 6. #33 — simulador de eventos e fila (13:20–13:45)
+
+| | |
+|---|---|
+| Branch | `feat/sim-eventos` (a partir de `main` `c4ef76b`, pós-PR #43) |
+| PR | ver "Fechamento" |
+| docs/review | nada novo (PR-09 continua reservado para #34) |
+| Módulo | `src/bdgd_light/sim/eventos.py` (`Evento`, `Cenario`/`CENARIOS`, `Simulador`, `FilaEventos`, `normalizar_tipo`), CLI `sim`, `docs/sim.md`, `tests/test_sim.py` (18 testes) |
+
+### Decisões
+
+1. **O simulador não mexe na rede.** Ele descreve o evento (e o que aconteceria se o religador
+   abrisse: `sem_tensao_se_religador_abrir`) e deixa a mudança de estado para o agente via
+   `inject_fault`/`set_switch` do MCP — assim há uma única porta de entrada auditada para alterar o
+   gêmeo, e o evento continua válido mesmo se o agente demorar a tratá-lo.
+2. **Fila = JSONL só de acréscimo** (`data/eventos/eventos.jsonl`), ids `E-0001…` continuando a
+   numeração entre processos; sem ack/remoção — o consumidor guarda o índice. Zero dependência, dá
+   para acompanhar com `tail -f`, e o arquivo vira registro do que foi injetado.
+3. **Sorteio de trecho ponderado por `comp` (m)**: trechos longos falham mais (proporcional à
+   exposição). Tipos com pesos 5:3:2:1 favorecendo faltas permanentes (o caso de uso FLISR).
+4. **Cenários nomeados** com alvos fixos de `escopo-cidade.md`/`spike-opendss.md`
+   (`tijuca_cabofrio_tronco` = `11304252`, `ipanema_9210` = `11409068` negativo, `taquara_bocari` =
+   `11798327`). Com o recorte carregado, o cenário confere que o trecho existe (cenário de outro
+   cluster = erro); sem recorte (CI, máquina sem `data/`), o CLI emite o evento "magro" com aviso —
+   suficiente para o agente chamar `load_cluster` + `inject_fault`.
+5. `resolver_cluster` saiu de `SessaoCOD._resolver_cluster` para função de módulo em
+   `mcp_server.sessao` (importável sem o SDK `mcp`), reutilizada pelo CLI `sim`; `CLUSTERS` continua
+   a fonte única dos nomes da demo.
+6. `chaves_com_indicacao` = chaves fechadas no caminho fonte→falta (mesma simplificação da
+   `locate_fault`); `religador` = a primeira delas. No cluster sintético, SEG002 devolve
+   `["CH008", "CH001"]`.
+7. Erros: trecho/chave inexistentes reaproveitam `TrechoInexistenteError`/`ChaveInexistenteError` do
+   grafo; CTMT fora do cluster e tipo inválido são `ValueError`. No CLI tudo vira `Erro: …` + código 1
+   e **nada é publicado**.
+
+### Validação
+
+```bash
+uv run ruff check . && uv run ruff format . && uv run pytest         # 218 passed (200 + 18 novos)
+uv run pytest tests/test_sim.py -q                                    # semente, sorteio por km, cenários, fila, CLI
+uv run bdgd-light sim --listar
+uv run bdgd-light sim --cluster tijuca --emitir 3 --seed 42           # com o recorte em data/feeders
+uv run bdgd-light sim --cenario tijuca_cabofrio_tronco --json
+uv run bdgd-light sim --cenario ipanema_9210 --feeders /tmp/nada      # sem recorte: aviso + evento magro
+uv run bdgd-light sim --mostrar 5
+# smoke feito aqui sobre /tmp/mini (recorte RJO001+RJO002): reprodutibilidade com seed 42 (6 eventos
+# iguais), distribuição do sorteio ~ km (SEG008 270 m: 524/2000 vs SEG006 67 m: 114/2000), fila com
+# ids sequenciais e listar(desde), erros de uso com exit 1
+```
+
+### Pendências
+
+1. Os cenários nomeados só foram exercitados "magros" e sobre o cluster sintético aqui (a checagem de
+   existência do trecho é testada com o cenário errado); rodar `uv run bdgd-light sim --cenario
+   tijuca_cabofrio_tronco` com `data/feeders/cluster_tijuca.gpkg` para ver os detalhes reais
+   (religador e ~4 mil UCBT sem tensão).
+2. Push da fila para o console (`GET /eventos?desde=n` no servidor HTTP do MCP) fica para #35; #34
+   consome `FilaEventos.listar(desde=)` em processo.
+3. Sem fusíveis/religadores intermediários nem indicadores de falta em campo — telemetria = chaves
+   fechadas no caminho.
