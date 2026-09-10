@@ -163,6 +163,20 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return e;
 }
 
+/** Uma linha explicando por que a alternativa não foi a proposta (pedido PR-15): o motivo do
+ *  score quando inviável; senão a comparação com a escolhida (margem, clientes, telecomando). */
+function motivoDescarte(a: Alternativa, escolhida: Alternativa | undefined): string {
+  if (a.score && !a.score.viavel) return a.score.motivos?.length ? a.score.motivos.join("; ") : "inviável";
+  if (!a.tlcd && escolhida?.tlcd) return "sem telecomando";
+  if (!escolhida) return "não escolhida";
+  const m = a.score?.margem_disjuntor;
+  const me = escolhida.score?.margem_disjuntor;
+  if (m != null && me != null && m < me) return `margem ${pct(m)} < ${pct(me)} da escolhida`;
+  if (a.clientes.ucbt < escolhida.clientes.ucbt)
+    return `atende ${a.clientes.ucbt} UCBT < ${escolhida.clientes.ucbt}`;
+  return "equivalente à escolhida";
+}
+
 function pct(v: number | null | undefined): string {
   return v === null || v === undefined ? "—" : `${Math.round(v * 100)}%`;
 }
@@ -481,6 +495,7 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
       const det = el("details", {});
       det.append(el("summary", {}, `alternativas (${p.alternativas.length})`));
       const ul = el("ul", {});
+      const escolhida = p.alternativas.find((a) => a.escolhida);
       for (const a of p.alternativas)
         ul.append(
           el(
@@ -490,7 +505,7 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
               (a.score
                 ? ` · ${a.score.viavel ? "viável" : "inviável"} · margem ${pct(a.score.margem_disjuntor)}`
                 : " · sem score") +
-              (a.escolhida ? " ← escolhida" : ""),
+              (a.escolhida ? " ← escolhida" : ` · ${motivoDescarte(a, escolhida)}`),
           ),
         );
       det.append(ul);
