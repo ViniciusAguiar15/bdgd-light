@@ -856,6 +856,163 @@ def audit(
         console.print(tabela)
 
 
+@app.command()
+def mcp(
+    cluster: Annotated[
+        str | None,
+        typer.Option(
+            "--cluster",
+            help="Cluster a carregar ao subir: nome da demo (tijuca, ipanema, taquara) ou caminho "
+            "de um GeoPackage do recorte. Sem ele, o modelo chama load_cluster.",
+        ),
+    ] = None,
+    listar: Annotated[
+        bool,
+        typer.Option("--listar", help="Só imprime as ferramentas (nome, argumentos, descrição)."),
+    ] = False,
+    transporte: Annotated[
+        str, typer.Option("--transporte", help="stdio (padrão, para clientes locais) ou http.")
+    ] = "stdio",
+    host: Annotated[str, typer.Option("--host", help="Endereço do transporte http.")] = "127.0.0.1",
+    porta: Annotated[int, typer.Option("--porta", help="Porta do transporte http.")] = 8765,
+    feeders: Annotated[
+        Path, typer.Option("--feeders", help="Pasta dos recortes (GeoPackages).")
+    ] = Path("data/feeders"),
+    dss_out: Annotated[
+        Path,
+        typer.Option(
+            "--dss-out", help="Modelos OpenDSS do gêmeo (convertidos do GPKG se faltarem)."
+        ),
+    ] = Path("data/dss/gpkg"),
+    estado: Annotated[
+        Path,
+        typer.Option(
+            "--estado",
+            help="Pasta de estado da sessão: audit.jsonl (auditoria encadeada) e propostas.json "
+            "(fila de aprovação, compartilhada com `bdgd-light aprovar`).",
+        ),
+    ] = Path("data/agent"),
+    dia: Annotated[str, typer.Option("--dia", help="Tipo de dia das cargas: DU, SA ou DO.")] = "DU",
+    mes: Annotated[int, typer.Option("--mes", min=1, max=12, help="Mês das cargas.")] = 1,
+) -> None:
+    """Sobe o servidor MCP com as ferramentas de rede (grafo + gêmeo OpenDSS) para um agente:
+    load_cluster, get_topology, inject_fault, locate/isolate_fault, restore_options (com score
+    elétrico), run_powerflow, propose_plan e set_switch — que só executa com token emitido por
+    aprovação humana (`bdgd-light aprovar`). Toda chamada vai para o log de auditoria."""
+    try:
+        from bdgd_light.mcp_server import SessaoCOD
+        from bdgd_light.mcp_server.servidor import descritores, servir
+    except ImportError as erro:
+        _erro(f"{erro} — instale o extra: uv sync --extra agent")
+        return
+    if listar:
+        tabela = Table("ferramenta", "argumentos", "descrição", title="Ferramentas MCP bdgd-light")
+        for d in descritores():
+            props = d["parameters"].get("properties", {})
+            obrig = set(d["parameters"].get("required", []))
+            args = ", ".join(f"{k}{'' if k in obrig else '?'}" for k in props) or "—"
+            tabela.add_row(d["name"], args, d["description"])
+        console.print(tabela)
+        return
+    # em stdio o stdout é o canal do protocolo: mensagens humanas vão para stderr
+    saida = Console(stderr=True) if transporte == "stdio" else console
+    sessao = SessaoCOD(
+        feeders=feeders, dss_out=dss_out, estado_dir=estado, dia=dia.upper(), mes=mes
+    )
+    if cluster is not None:
+        try:
+            r = sessao.load_cluster(cluster)
+        except (FileNotFoundError, DataSourceError, ValueError) as erro:
+            saida.print(f"[red]Erro:[/] {erro}")
+            raise typer.Exit(code=1) from None
+        saida.print(
+            f"[green]✔[/] {r['cluster']}: {_fmt_int(r['resumo']['nos'])} nós, "
+            f"{r['resumo']['chaves']} chaves, {r['resumo']['ties']} ties; religadores "
+            f"{', '.join(f'{k}={v}' for k, v in r['religadores'].items())}"
+        )
+    endereco = f" em http://{host}:{porta}/mcp · aprovação: POST /propostas/<id>/aprovar"
+    saida.print(
+        f"[dim]MCP ({transporte}{endereco if transporte == 'http' else ''}) · propostas: "
+        f"{estado / 'propostas.json'} · auditoria: {estado / 'audit.jsonl'}[/]"
+    )
+    try:
+        servir(sessao, transporte, host=host, port=porta)
+    except ValueError as erro:
+        saida.print(f"[red]Erro:[/] {erro}")
+        raise typer.Exit(code=1) from None
+
+
+@app.command()
+def aprovar(
+    proposta_id: Annotated[
+        str | None,
+        typer.Argument(help="Id da proposta (ex.: P-0001). Sem id, lista a fila."),
+    ] = None,
+    estado: Annotated[
+        Path,
+        typer.Option("--estado", help="Pasta de estado da sessão (a mesma de `bdgd-light mcp`)."),
+    ] = Path("data/agent"),
+    rejeitar: Annotated[
+        bool, typer.Option("--rejeitar", help="Rejeita em vez de aprovar.")
+    ] = False,
+    motivo: Annotated[str, typer.Option("--motivo", help="Motivo da rejeição.")] = "",
+    operador: Annotated[
+        str | None, typer.Option("--operador", help="Quem decide (padrão: usuário do sistema).")
+    ] = None,
+    validade: Annotated[
+        int, typer.Option("--validade", help="Validade do token de aprovação, em segundos.")
+    ] = 1800,
+) -> None:
+    """Lado humano do HITL: lista, aprova (emitindo o token que libera set_switch na ordem da
+    proposta) ou rejeita propostas criadas pelo agente via servidor MCP."""
+    import getpass
+
+    from bdgd_light.agent.audit import AuditLog
+    from bdgd_light.mcp_server import FilaPropostas, SessaoError
+
+    fila = FilaPropostas(estado / "propostas.json")
+    if proposta_id is None:
+        if not len(fila):
+            console.print(f"[yellow]nenhuma proposta em {estado / 'propostas.json'}[/]")
+            return
+        tabela = Table("id", "status", "falta", "fechar", "fonte", "clientes", "manobras", "viável")
+        for p in fila.listar():
+            viavel = "—" if not p.score else ("sim" if p.score.get("viavel") else "não")
+            tabela.add_row(
+                p.id,
+                p.status,
+                p.falta or "—",
+                p.chave or "(só isolar)",
+                p.fonte,
+                str(p.clientes.get("total", "—")),
+                " → ".join(f"{m['acao']} {m['chave']}" for m in p.manobras),
+                viavel,
+            )
+        console.print(tabela)
+        return
+    quem = operador or getpass.getuser()
+    # cadeia própria do lado humano (o servidor mantém a dele em audit.jsonl; o hash do token e
+    # aprovada_por/aprovada_em no registro de set_switch ligam as duas)
+    hitl = AuditLog(estado / "hitl.jsonl")
+    try:
+        if rejeitar:
+            p = fila.rejeitar(proposta_id, operador=quem, motivo=motivo)
+            hitl.registrar("hitl.rejeicao", proposta=p.to_dict(com_token=False), operador=quem)
+            console.print(
+                f"[red]✘[/] {p.id} rejeitada por {quem}" + (f": {motivo}" if motivo else "")
+            )
+        else:
+            p = fila.aprovar(proposta_id, operador=quem, validade_s=validade)
+            hitl.registrar("hitl.aprovacao", proposta=p.to_dict(com_token=False), operador=quem)
+            console.print(
+                f"[green]✔[/] {p.id} aprovada por {quem} até {p.expira_em} — sequência: "
+                + " → ".join(f"{m['acao']} {m['chave']}" for m in p.manobras)
+            )
+            console.print(f"approval_token: [bold]{p.token}[/]", soft_wrap=True)
+    except SessaoError as erro:
+        _erro(str(erro))
+
+
 def _resumir(valor, limite: int = 60) -> str:
     if isinstance(valor, dict) and "tipo" in valor:  # resposta de uma rodada
         if valor.get("tool_calls"):
@@ -870,19 +1027,18 @@ def _resumir(valor, limite: int = 60) -> str:
 def _score_opcoes(opcoes, rede: Rede, gpkg: Path, dss_out: Path | None, *, dia, mes, vmin, vmax):
     """Monta o Master base do cluster (convertendo do GPKG o que faltar) e pontua as opções."""
     try:
-        from bdgd_light.twin import localizar_pasta, montar_master_cluster, score_eletrico
+        from bdgd_light.twin import preparar_master_cluster, score_eletrico
     except ImportError as erro:
         raise ImportError(f"{erro} — instale o extra: uv sync --extra twin") from erro
     out = Path("data/dss/gpkg") if dss_out is None else dss_out
-    pastas = []
-    for cod in rede.ctmts:
-        pasta = localizar_pasta(out, cod)
-        if not _tem_master(pasta, dia, mes):
-            pasta = _converter_gpkg(gpkg, cod, out, dia, mes)
-        pastas.append(pasta)
-    nome = ("cluster_" if len(rede.ctmts) > 1 else "") + "-".join(rede.ctmts)
-    master = montar_master_cluster(
-        pastas, out / nome / f"Master_{dia.upper()}{mes:02d}_base.dss", dia=dia, mes=mes, nome=nome
+    inicio = time.perf_counter()
+    master = preparar_master_cluster(
+        gpkg,
+        rede.ctmts,
+        out,
+        dia=dia,
+        mes=mes,
+        ao_converter=lambda cod, conv: _imprimir_conversao(cod, conv, mes, inicio),
     )
     inicio = time.perf_counter()
     scores = score_eletrico(opcoes, rede, master, vmin=vmin, vmax=vmax)
@@ -1002,6 +1158,11 @@ def _converter_gpkg(gpkg: Path, cod: str, out: Path, dia: str, mes: int) -> Path
 
     inicio = time.perf_counter()
     conv = converter_ctmt(gpkg, cod, out, dias=DIAS, meses=[mes])
+    _imprimir_conversao(cod, conv, mes, inicio)
+    return conv.pasta
+
+
+def _imprimir_conversao(cod: str, conv, mes: int, inicio: float) -> None:
     n = conv.contagem
     resumo = ", ".join(
         f"{n.get(k, 0)} {rotulo}"
@@ -1023,7 +1184,6 @@ def _converter_gpkg(gpkg: Path, cod: str, out: Path, dia: str, mes: int) -> Path
     )
     for aviso in conv.avisos:
         console.print(f"[yellow]Aviso:[/] {aviso}")
-    return conv.pasta
 
 
 def _manobras_dss(

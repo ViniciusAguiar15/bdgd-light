@@ -1,7 +1,12 @@
 """Gêmeo elétrico: conversão BDGD → OpenDSS (bdgd2opendss ou direto do GPKG do recorte) e fluxo
 de potência (OpenDSSDirect)."""
 
-from bdgd_light.twin.cluster import comandos_manobras, montar_master_cluster
+from bdgd_light.twin.cluster import (
+    comandos_manobras,
+    montar_master_cluster,
+    nome_master_cluster,
+    preparar_master_cluster,
+)
 from bdgd_light.twin.convert import (
     converter,
     corrigir_bancos_monofasicos,
@@ -46,7 +51,9 @@ __all__ = [
     "listar_masters",
     "localizar_pasta",
     "montar_master_cluster",
+    "nome_master_cluster",
     "ordenar_scores",
+    "preparar_master_cluster",
     "run_powerflow",
     "score_eletrico",
     "trechos_tronco",
