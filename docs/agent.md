@@ -108,7 +108,7 @@ imprime isso; `--saida arquivo.json` grava.
 
 Pedido da revisão PR-14: a `SessaoCOD`/MCP continua devolvendo os dados completos (console,
 verificador e clientes MCP precisam deles), mas a mensagem `tool` que vai ao LLM é reduzida —
-listas de nós viram contagens (`n_desligados`, `zona.n_nos`), manobras viram `"abrir 11035901"`,
+listas de nós viram contagens (`n_desligados`, `zona.n_nos`), manobras ficam só com `acao`/`chave`,
 `restore_options` traz as 5 primeiras opções detalhadas (`top_n_opcoes`) e as demais em uma linha
 (`outras_opcoes`: chave, fonte, clientes, viável, margem, primeiro motivo), `get_topology` troca a
 lista de chaves por contagens (`chaves_resumo`; `get_switch_state` para uma chave), `run_powerflow`
@@ -148,6 +148,9 @@ não checa tensão/corrente), `--sem-compactar` (retornos íntegros ao modelo), 
 (mesma pasta do `mcp` e do `aprovar`: a proposta aparece em `bdgd-light aprovar`), `--dia/--mes`,
 `--seed`, `--json`, `--saida`. Sai com código 1 quando a execução termina com `erro` (sem proposta
 em falta permanente, rodadas esgotadas, provedor indisponível).
+
+O benchmark do agente (`bdgd-light bench`, 30 tarefas, pass@k, ordenação, tokens por acerto,
+OpenAI × Gemini × fake) está em [`docs/bench.md`](bench.md).
 
 ## Validação com modelos reais (2026-09-10)
 
@@ -193,6 +196,36 @@ falta e religar o religador (o número que interessa ao operador e que `isolate_
 proposta estava certa; o texto, não. Por isso o benchmark (#36) pontua também a **correção
 numérica do resumo** (a resposta tem de conter o número esperado, com tolerância), e não só a
 proposta/sequência de ferramentas.
+
+### Recusa do verificador forçada (ciclo de replanejamento)
+
+Nas execuções reais acima o verificador aprovou a primeira proposta (0 recusas); para ver o *gate*
+segurar e o modelo replanejar, aperte o limite de tensão só do verificador — `--vmin` vale para o
+`Verificador`, enquanto o `restore_options(score=True)` que o modelo chama continua com o padrão
+0,93 pu, então o modelo vê 10 opções viáveis e propõe a primeira:
+
+```bash
+uv run bdgd-light agente --cenario taquara_bocari --provider fake --vmin 1.01 \
+  --estado /tmp/ag-recusa/estado --saida /tmp/ag-recusa/taquara_vmin101.json
+```
+
+```
+verificador recusou chave=11053620: tensão MT fora de [1.01, 1.05] pu: mín 1.009, máx 1.045
+verificador recusou chave=11056672: tensão MT fora de [1.01, 1.05] pu: mín 0.998, máx 1.045
+Proposta P-0002 (pendente): fechar 789941518 · fonte TQR33859 · 1984 clientes · abrir 11026473 →
+abrir 22826994 → abrir 528574225 → abrir 790615689 → fechar 10924213 → fechar 789941518
+Verificador: ok · … tensao_mt=✔ …
+fake-operador · 7 rodada(s), 0 replanejamento(s), 6 chamada(s) · ferramentas 15.4s
+```
+
+Sequência: `locate → isolate → restore_options → propose_plan ×3` — as duas primeiras chamadas
+de `propose_plan` voltam com `ok=false` e `problemas=[…]` (não criam proposta; ficam em
+`recusas_verificador` do JSON), o modelo lê o problema e propõe a próxima opção com Vmin acima de
+1,01 pu (789941518, margem 62 %). O contador `replanejamentos` só conta os ciclos em que o modelo
+encerrou sem proposta e foi mandado replanejar; `--replanejar 2` limita esses ciclos, e cada
+recusa consome uma rodada de `--max-rodadas`. Com `--vmin 1.03` em `tijuca_cabofrio_tronco`
+nenhuma opção passa (Vmin 1,018–1,027 pu) e a execução termina com `erro` após esgotar as
+opções — o *gate* nunca deixa passar uma manobra fora dos limites.
 
 ## Limites conhecidos
 
