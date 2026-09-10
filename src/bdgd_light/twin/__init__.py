@@ -19,6 +19,13 @@ from bdgd_light.twin.gpkg2dss import (
     listar_ctmts,
 )
 from bdgd_light.twin.powerflow import ESTABILIZADORES, PowerFlowResult, run_powerflow
+from bdgd_light.twin.score import (
+    ScoreEletrico,
+    ampacidade_tronco,
+    ordenar_scores,
+    score_eletrico,
+    trechos_tronco,
+)
 
 __all__ = [
     "DIAS",
@@ -26,6 +33,8 @@ __all__ = [
     "ConversaoGpkg",
     "GpkgInvalidoError",
     "PowerFlowResult",
+    "ScoreEletrico",
+    "ampacidade_tronco",
     "comandos_manobras",
     "converter",
     "converter_ctmt",
@@ -37,5 +46,8 @@ __all__ = [
     "listar_masters",
     "localizar_pasta",
     "montar_master_cluster",
+    "ordenar_scores",
     "run_powerflow",
+    "score_eletrico",
+    "trechos_tronco",
 ]
