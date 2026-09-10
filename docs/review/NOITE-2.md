@@ -433,7 +433,7 @@ não estourado.
 |---|---|
 | Branch | `feat/sim-eventos` (a partir de `main` `c4ef76b`, pós-PR #43) |
 | PR | ver "Fechamento" |
-| docs/review | nada novo (PR-09 continua reservado para #34) |
+| docs/review | **novos `PR-11.md` (revisão do #42) e `PR-12.md` (revisão do #43)**, ambos aprovados. PR-11: pedido 2 (ranking elétrico no cenário A de `escopo-cidade.md`) e pedido 3 (issue [#44](https://github.com/ViniciusAguiar15/bdgd-light/issues/44) "diagnóstico de convergência") aplicados aqui em commit próprio; pedido 1 (`COR_NOM` do Manual) depende do PDF do mantenedor — pendente. PR-12: pedidos 1–2 (identidade do operador nas rotas HTTP, `hash` da auditoria em `GET /estado`) vão para #35 e o pedido 3 (sessão Tijuca completa em `docs/mcp-ferramentas.md`) para #34, como a revisão indica. PR-09 continua reservado para #34 |
 | Módulo | `src/bdgd_light/sim/eventos.py` (`Evento`, `Cenario`/`CENARIOS`, `Simulador`, `FilaEventos`, `normalizar_tipo`), CLI `sim`, `docs/sim.md`, `tests/test_sim.py` (18 testes) |
 
 ### Decisões
