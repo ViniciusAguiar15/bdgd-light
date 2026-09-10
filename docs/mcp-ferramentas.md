@@ -61,7 +61,7 @@ sempre `{ucbt, ucmt, trafos, kva, total}`; `sem_tensao` é `{n_nos, clientes}`.
 | `isolate_fault` | — | `Isolamento.to_dict()` (`chaves`, `zona`, `desligados`, `clientes_zona`, `clientes_desligados`, `manobras`) + `religador`, `religar_apos_isolar`, `reenergizados_ao_religar`, `sequencia` (só o que ainda falta manobrar) | não (plano) |
 | `downstream_customers` | `no?` ou `chave?` (exatamente um) | `referencia, tipo, energizado_por, n_nos, clientes` — quem perde tensão sem esse nó/chave | não |
 | `restore_options` | `score?=true`, `vmin?=0.93`, `vmax?=1.05` | `desligados`, `n_opcoes`, `score` (master, limites, tempo, viáveis), `opcoes[]` (chave NA, fonte, tlcd, clientes recuperados, `manobras` ordenadas e `score` = veredito elétrico de `twin.score_eletrico`: `i_disjuntor_a`, `i_nominal_a`, `margem_disjuntor`, `vmin/vmax_mt_pu`, `sobrecargas_mt`, `perdas_kw`, `viavel`, `motivos`). Ordem: viáveis → maior margem → mais clientes | não (gêmeo) |
-| `run_powerflow` | `manobras?=[]` (`[{acao: abrir\|fechar, chave}]`), `vmin?`, `vmax?` | fluxo no estado atual + manobras: `convergiu`, `vmin/vmax_pu`, `violacoes`, `piores_barras`, `sobrecargas` (%), `perdas_kw`, `fontes_kw`, `fontes_a`, `comandos_dss`, `manobras_aplicadas` | não (gêmeo) |
+| `run_powerflow` | `manobras?=[]` (`[{acao: abrir\|fechar, chave}]`), `vmin?`, `vmax?`, `loadmult?=1.0` (0 < x ≤ 5, pico de carga) | fluxo no estado atual + manobras: `convergiu`, `vmin/vmax_pu`, `violacoes`, `piores_barras`, `sobrecargas` (%), `perdas_kw`, `fontes_kw`, `fontes_a`, `comandos_dss`, `manobras_aplicadas` | não (gêmeo) |
 | `propose_plan` | `chave?` (NA a fechar; sem ela: só isolar e religar), `justificativa?` | `Proposta` (`id` P-0001…, `status=pendente`, `manobras`, `clientes`, `score`, `ja_satisfeitas`, `proximo_passo`, `n_passos`, `token=null`) | sim: cria proposta **pendente** |
 | `get_proposal` | `proposta_id` | `Proposta`; se aprovada por humano, traz o `approval_token` | não |
 | `set_switch` | `chave`, `estado` (`aberta`/`fechada`), `approval_token?` | `executado, chave, estado, proposta, aprovada_por, aprovada_em, passo, n_passos, proposta_status, sem_tensao` | **sim, só com token válido e só o próximo passo da proposta** |
@@ -152,6 +152,108 @@ Resultado: dos 5 clientes sem tensão após a atuação do religador, 4 voltam p
 (margem de 92 % no disjuntor, tensões dentro de 0,93–1,05 pu); só o cliente da zona em falta segue
 desligado, como esperado.
 
+## Exemplo — falta no tronco do ALC9925 (cluster Tijuca, dados reais)
+
+Sessão completa do cenário A da demo (`docs/escopo-cidade.md`), gerada com a BDGD real e gravada,
+chamada a chamada, em [`docs/agent/sessao-tijuca.json`](agent/sessao-tijuca.json) (12 entradas:
+argumentos e resultado integral de cada ferramenta, mais a aprovação humana; tokens mascarados).
+É a base dos exemplos anotados do agente (`docs/agent/exemplos.yaml`). Abaixo, o essencial de
+cada passo — listas longas de nós/trechos resumidas com `"..."`.
+
+```jsonc
+// load_cluster {"cluster": "tijuca"}
+{"cluster": "cluster_tijuca", "gpkg": "data/feeders/cluster_tijuca.gpkg",
+ "religadores": {"ALC9925": "10927447", "RCP9882": "10924906", "ALC9946": "10924969", "URG29983": "10926271"},
+ "resumo": {"ctmt": ["ALC9925", "RCP9882", "ALC9946", "URG29983"], "nos": 1662, "trechos": 1528, "km": 20.432,
+            "chaves": 148, "chaves_NA": 35, "chaves_NF": 113, "ties": 23, "ties_externas": 10,
+            "externos": ["ALC683", "ALC740", "RCP0001", "RCP33216", "RCP33308", "RCP9821", "URG29706", "URG29970", "URG30000"],
+            "trafos": 235, "clientes": {"ucbt": 16248, "ucmt": 9, "trafos": 235, "kva": 31565.0, "total": 16257}}}
+
+// inject_fault {"trecho": "11304252"}  → o religador 10927447 (ALC9925) abre
+{"trecho": "11304252", "ctmt": "ALC9925", "fonte": "ALC9925", "religador": "10927447",
+ "chaves_com_indicacao": ["10927447"],
+ "sem_tensao": {"n_nos": 356, "clientes": {"ucbt": 4036, "ucmt": 6, "trafos": 63, "kva": 8960.0, "total": 4042}}}
+
+// locate_fault {}  → zona entre o religador e a NF 11035901 (34 trechos de tronco, sem clientes)
+{"trecho": "11304252", "ctmt": "ALC9925", "religador": "10927447", "ultima_indicacao": "10927447",
+ "zona": {"nos": ["ALC9925_MT_1040991", "..."], "trechos": ["10961554", "11304252", "..."],
+          "clientes": {"total": 0, "...": "..."}},
+ "chaves_fronteira": ["10927447", "11035901"], "sem_tensao": {"n_nos": 356, "clientes": {"total": 4042, "...": "..."}}}
+
+// isolate_fault {}  → o religador já está aberto; basta abrir 11035901. A falta está colada no
+// religador, então religar não recupera ninguém (religar_apos_isolar=false)
+{"trecho": "11304252", "chaves": ["10927447", "11035901"], "zona": ["..."], "desligados": ["... 315 nós ..."],
+ "clientes_zona": {"total": 0, "...": "..."},
+ "clientes_desligados": {"ucbt": 4036, "ucmt": 6, "trafos": 63, "kva": 8960.0, "total": 4042},
+ "manobras": [{"acao": "abrir", "chave": "10927447"}, {"acao": "abrir", "chave": "11035901"}],
+ "religador": "10927447", "religar_apos_isolar": false, "reenergizados_ao_religar": null,
+ "sequencia": [{"acao": "abrir", "chave": "11035901"}]}
+
+// restore_options {"score": true}  → 10 opções topológicas, 4 viáveis no gêmeo (10 s)
+{"trecho": "11304252", "desligados": {"n_nos": 315, "clientes": {"total": 4042, "...": "..."}}, "n_opcoes": 10,
+ "score": {"master": "data/dss/gpkg/cluster_ALC9925-RCP9882-ALC9946-URG29983/Master_DU01_base.dss",
+           "vmin": 0.93, "vmax": 1.05, "tempo_s": 9.99, "viaveis": 4},
+ "opcoes": [
+   {"chave": "974020904", "ctmt_chave": "ALC9946", "fonte": "ALC9946", "tlcd": true, "tip_unid": "32", "externa": false,
+    "clientes": {"total": 4042, "...": "..."}, "clientes_fonte": {"ucbt": 2993, "kva": 5685.0, "total": 2993, "...": "..."},
+    "manobras": [{"acao": "abrir", "chave": "11035901"}, {"acao": "fechar", "chave": "974020904"}], "n_nos": 315,
+    "score": {"fonte": "ALC9946", "convergiu": true, "i_disjuntor_a": 319.5, "i_nominal_a": 591.5,
+              "margem_disjuntor": 0.460, "vmin_mt_pu": 1.027, "vmax_mt_pu": 1.045, "sobrecargas_mt": [],
+              "carregamento_max_mt_pct": 84.1, "perdas_kw": 803.6, "viavel": true, "motivos": [],
+              "ajustes": ["maxiterations=100", "vminpu=0.9"], "tempo_s": 1.35}},
+   {"chave": "529355823", "fonte": "ALC9946", "tlcd": false, "score": {"margem_disjuntor": 0.460, "viavel": true, "...": "..."}},
+   {"chave": "746851189", "fonte": "RCP9882", "tlcd": true,
+    "score": {"i_disjuntor_a": 351.4, "i_nominal_a": 438.1, "margem_disjuntor": 0.198, "vmin_mt_pu": 1.018, "viavel": true, "...": "..."}},
+   {"chave": "23313112", "fonte": "RCP9882", "tlcd": false, "score": {"margem_disjuntor": 0.198, "viavel": true, "...": "..."}},
+   {"chave": "977361689", "fonte": "URG29983", "tlcd": true,
+    "score": {"i_disjuntor_a": 345.7, "i_nominal_a": 591.5, "margem_disjuntor": 0.415, "vmin_mt_pu": 1.014,
+              "sobrecargas_mt": ["Line.smt_11051956"], "carregamento_max_mt_pct": 179.5, "viavel": false,
+              "motivos": ["1 trecho(s) MT acima de 100 % (Line.smt_11051956 180 %)"]}},
+   {"chave": "11006808", "fonte": "URG29983", "score": {"viavel": false, "motivos": ["... Line.smt_11051956 180 %"]}},
+   {"chave": "11006815", "fonte": "URG29983", "score": {"viavel": false, "motivos": ["... Line.smt_11051956 180 %"]}},
+   {"chave": "1009901594", "fonte": "URG29706", "externa": true,
+    "score": {"convergiu": false, "viavel": false, "motivos": ["fonte URG29706 fora do cluster (sem modelo)"]}},
+   {"chave": "11035887", "fonte": "URG29706", "externa": true, "score": {"viavel": false, "...": "..."}},
+   {"chave": "494303815", "fonte": "ALC740", "externa": true, "score": {"viavel": false, "...": "..."}}]}
+
+// propose_plan {"chave": "974020904", "justificativa": "maior margem no disjuntor (46 %) entre as opções viáveis; recupera os 4042 clientes"}
+{"id": "P-0001", "criada_em": "2026-09-10T17:01:03+00:00", "cluster": "cluster_tijuca", "falta": "11304252",
+ "chave": "974020904", "fonte": "ALC9946",
+ "manobras": [{"acao": "abrir", "chave": "11035901"}, {"acao": "fechar", "chave": "974020904"}],
+ "clientes": {"total": 4042, "...": "..."}, "score": {"viavel": true, "margem_disjuntor": 0.460, "...": "..."},
+ "ja_satisfeitas": ["10927447"], "status": "pendente", "token": null,
+ "proximo_passo": {"acao": "abrir", "chave": "11035901"}, "n_passos": 2}
+
+// set_switch {"chave": "11035901", "estado": "aberta"}  → erro (is_error=true)
+"manobra abrir 11035901 recusada: sem token de aprovação válido (peça aprovação humana da proposta)"
+
+// $ bdgd-light aprovar P-0001 --operador operadora   → status "aprovada", expira em 30 min
+// get_proposal {"proposta_id": "P-0001"}  → {"status": "aprovada", "token": "***", "aprovada_por": "operadora", ...}
+
+// set_switch {"chave": "11035901", "estado": "aberta", "approval_token": "***"}
+{"executado": true, "chave": "11035901", "estado": "aberta", "proposta": "P-0001", "passo": 1, "n_passos": 2,
+ "proposta_status": "aprovada", "sem_tensao": {"clientes": {"total": 4042, "...": "..."}}}
+
+// set_switch {"chave": "974020904", "estado": "fechada", "approval_token": "***"}
+{"executado": true, "chave": "974020904", "estado": "fechada", "proposta": "P-0001", "passo": 2, "n_passos": 2,
+ "proposta_status": "executada", "sem_tensao": {"n_nos": 0, "clientes": {"total": 0, "...": "..."}}}
+
+// run_powerflow {}  → estado pós-manobra no gêmeo do cluster inteiro (MT+BT)
+{"convergiu": true, "iteracoes": 6, "n_barras": 10030, "perdas_kw": 803.6, "potencia_kw": 13233.4,
+ "fontes_a": {"source": 0.0, "rcp9882": 161.4, "alc9946": 319.5, "urg29983": 156.3},
+ "manobras_aplicadas": [{"acao": "abrir", "chave": "11035901"}, {"acao": "abrir", "chave": "10927447"},
+                        {"acao": "fechar", "chave": "974020904"}], "...": "..."}
+```
+
+Leitura: a zona em falta é só tronco (0 clientes), então isolar e transferir por `974020904`
+recupera os 4042 clientes; ALC9946 fica a 320 A de 591,5 A (margem 46 %), Vmin MT 1,027 pu. As
+três NA para URG29983 têm margem parecida (42 %) mas o caminho passa pelo gargalo
+`Line.smt_11051956` (180 %) — o grafo aprovaria, o gêmeo recusa. RCP9882 é viável com margem de
+20 %. Fontes fora do cluster (URG29706, ALC740) não têm modelo e saem como inviáveis. A corrente
+"source" 0 A é o ALC9925 com o religador aberto. Os índices BT do `run_powerflow` do cluster
+(`v_min_pu`, `n_subtensao`) continuam contaminados pelo problema de convergência da BT da Tijuca
+(#44) — o score usa só a MT e não é afetado.
+
 ## Auditoria
 
 Cada chamada gera um registro em `audit.jsonl` (formato do `AuditLog`: `seq`, `ts`, `tipo`, `dados`,
@@ -198,8 +300,8 @@ proposta e o operador). `bdgd-light audit ARQUIVO` verifica qualquer uma das dua
 
 ## Pendências
 
-- Agente orquestrador/verificador que consome estas ferramentas (#34) e console com fila de
-  aprovação (#35).
+- Console com fila de aprovação (#35). O agente orquestrador/verificador que consome estas
+  ferramentas é o `bdgd_light.agent.orquestrador` (#34, `docs/agent.md`).
 - Sessão única por processo (um cluster, uma falta). Vários operadores/faltas simultâneas ficam para
   depois do MVP.
 - `inject_fault` assume proteção só no religador do CTMT (sem fusíveis/religadores intermediários);

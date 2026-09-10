@@ -1172,8 +1172,8 @@ def agente(
         str | None,
         typer.Option(
             "--provider",
-            help="openai (padrão), gemini, ollama, github ou fake (operador roteirizado, sem "
-            "rede). Sem ele, segue BDGD_LLM_PROVIDER e as chaves presentes no ambiente.",
+            help="openai (padrão), gemini, ollama ou fake (operador roteirizado, sem rede). "
+            "Sem ele, segue BDGD_LLM_PROVIDER e as chaves presentes no ambiente.",
         ),
     ] = None,
     modelo: Annotated[
