@@ -279,3 +279,36 @@ UC) fica para o score elétrico (próximo passo sugerido).
 
 Pendente: nada para a issue. Não implementado (documentado): Master a partir do GPKG do recorte
 (decisão 9 do spike) e score elétrico das opções de restauração.
+
+## 4. Issue #8 — ADR-001 stack e arquitetura (22:45–23:00)
+
+| | |
+|---|---|
+| Branch | `docs/adr-001` (de `main` `283a368`) |
+| PR | ver seção "PRs abertos/mergeados" no fim |
+| Origem | `docs/backlog/08-adr-stack.md` |
+
+`docs/review/` sem arquivo novo depois de `PR-03.md` (nada a aplicar antes desta issue).
+
+Entregue: `docs/adr/ADR-001-stack.md` (uma ADR curta por decisão — contexto → decisão →
+consequências — e tabela de alternativas descartadas), linkada no README (introdução e estrutura de
+`docs/`). Sem código; a tríade `ruff check / ruff format / pytest` foi rodada mesmo assim.
+
+Decisões tomadas:
+- Uma única ADR numerada (ADR-001) cobrindo toda a stack, como pede o backlog, em vez de uma ADR por
+  tema; futuras mudanças ganham ADR-002+ em `docs/adr/`.
+- Separei **decisões aceitas** (1–7: uv + CLI typer; GeoParquet/Parquet + GPKG; ties geométricas
+  ≤ 2 m em EPSG:31983 e cluster TQR; OpenDSS via bdgd2opendss + OpenDSSDirect; networkx separado
+  do gêmeo; HITL nível 2 com verificador determinístico e log só de acréscimo; Conventional
+  Commits/PR por issue) de **decisões propostas** (8–11: MapLibre + PMTiles, MCP, GitHub Models
+  atrás de `LLMClient`, benchmark/simulador), porque as últimas ainda não foram exercitadas — as
+  issues #4 e #7 as confirmam ou revisam.
+- Incorporei os números que justificaram cada decisão (43 camadas, SSDMT 1,0 M, UCBT_tab 5,0 M,
+  TQR0007 em 180 s / 0,5 s, cluster em 1,2 s, raio de 2 m vs 50 m) para a ADR ser verificável
+  contra `docs/spike-opendss.md`, `docs/bdgd-relacoes.md` e `docs/bdgd-light-2025.md`.
+- Registrei o formato do log de auditoria (JSON Lines com hash do registro anterior) e a regra "nada
+  de `set_switch` sem token de aprovação" como decisão, não como implementação — ainda não há
+  código de agente.
+
+Pendente: nada. Para validar: ler `docs/adr/ADR-001-stack.md` e conferir se as decisões propostas
+8–11 refletem o que o mantenedor quer para F1/F3 (as issues #4 e #7 desta fila seguem a ADR).

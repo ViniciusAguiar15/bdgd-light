@@ -5,7 +5,8 @@ POC/MVP de um **Centro de Operação da Distribuição (COD) agêntico** sobre a
 gêmeo digital em OpenDSS) como ferramentas para um agente de IA que monitora eventos, propõe manobras
 (ex.: FLISR) e as submete à aprovação de um operador humano, num console com mapa.
 
-Plano completo, módulos e fases em [`docs/PLANO.md`](docs/PLANO.md).
+Plano completo, módulos e fases em [`docs/PLANO.md`](docs/PLANO.md); decisões de stack e
+arquitetura (e alternativas descartadas) em [`docs/adr/ADR-001-stack.md`](docs/adr/ADR-001-stack.md).
 
 ## Estrutura
 
@@ -28,9 +29,10 @@ scripts/
   listar_camadas.py    lista as camadas do .gdb
   converter.py         camada → GeoJSON (EPSG:4326) com recorte por bbox
 index.html             visor Leaflet legado (será substituído pelo console MapLibre)
-docs/                  plano, ADRs, notas da BDGD Light 2025 (bdgd-light-2025.md), regras de junção
-                       entre camadas (bdgd-relacoes.md), escolha dos alimentadores (escopo-alimentadores.md),
-                       mapeamento BDGD → grafo (grid-modelo.md), spike OpenDSS (spike-opendss.md)
+docs/                  plano, ADRs (adr/ADR-001-stack.md), notas da BDGD Light 2025 (bdgd-light-2025.md),
+                       regras de junção entre camadas (bdgd-relacoes.md), escolha dos alimentadores
+                       (escopo-alimentadores.md), mapeamento BDGD → grafo (grid-modelo.md),
+                       spike OpenDSS (spike-opendss.md)
 tests/                 pytest (fixtures sintéticas; dados reais nunca vão para o git)
   fixtures/            bdgd_mini.gpkg (BDGD sintética, 21 camadas, 3 CTMT com interligações
                        geométricas), bairro_sintetico.geojson e gerar_fixture.py, que os (re)cria;
