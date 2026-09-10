@@ -618,6 +618,51 @@ class Rede:
     def customers_downstream(self, no: str) -> Clientes:
         return self.customers(self.downstream(no))
 
+    def caminho_da_fonte(self, no: str) -> list[str]:
+        """Nós do caminho (BFS) da fonte que energiza ``no`` até ele; vazio se sem tensão."""
+        fonte = self.energized_by(no)
+        if fonte is None:
+            return []
+        inicio = self.fontes.get(fonte)
+        if inicio is None:  # energizado por nó externo
+            inicio = next(
+                n
+                for n, d in self.grafo.nodes(data=True)
+                if d.get("tipo") == "externo" and d["ctmt"] == fonte
+            )
+        pai: dict[str, str | None] = {inicio: None}
+        fila = deque([inicio])
+        while fila and no not in pai:
+            u = fila.popleft()
+            for v in self.grafo.neighbors(u):
+                if v not in pai and self._passavel(u, v, set()):
+                    pai[v] = u
+                    fila.append(v)
+        if no not in pai:
+            return []
+        caminho = [no]
+        while (anterior := pai[caminho[-1]]) is not None:
+            caminho.append(anterior)
+        return caminho[::-1]
+
+    def chaves_no_caminho(self, no: str) -> list[str]:
+        """Chaves (fechadas) entre a fonte e ``no``, na ordem fonte → nó."""
+        caminho = self.caminho_da_fonte(no)
+        chaves = []
+        for u, v in zip(caminho, caminho[1:], strict=False):
+            chave = self._chave_da_aresta(self.grafo.edges[u, v])
+            if chave:
+                chaves.append(chave)
+        return chaves
+
+    def downstream_switch(self, cod: str) -> set[str]:
+        """Nós que perdem tensão se a chave ``cod`` abrir (vazio se já está aberta)."""
+        if self._aresta_chave(cod)["aberta"]:
+            return set()
+        antes = self._energizacao()
+        depois = self._bfs(abertas_extra={cod})
+        return {n for n in antes if n not in depois and not _externo(n)}
+
     # --- chaves ---------------------------------------------------------------------------------
 
     def _aresta_chave(self, cod: str) -> dict:

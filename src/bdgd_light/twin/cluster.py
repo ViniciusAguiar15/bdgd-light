@@ -12,10 +12,11 @@ Line`` da chave mais um jumper até o ``PAC_VIZ`` da tie geométrica (as ties n�
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
 from bdgd_light.grid.rede import ABRIR, FECHAR, TIE, ChaveInexistenteError, Rede
+from bdgd_light.twin.convert import escolher_master, localizar_pasta
 
 # arquivos de elementos redirecionados de cada CTMT, na ordem do Master original
 _ARQUIVOS = (
@@ -173,3 +174,49 @@ def montar_master_cluster(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(linhas), encoding="utf-8")
     return out
+
+
+def nome_master_cluster(ctmts: Sequence[str]) -> str:
+    """Nome da pasta/circuito do cluster em ``data/dss/gpkg`` (``cluster_A-B`` ou o CTMT)."""
+    return ("cluster_" if len(ctmts) > 1 else "") + "-".join(ctmts)
+
+
+def preparar_master_cluster(
+    gpkg: Path | str,
+    ctmts: Sequence[str],
+    out: Path | str,
+    *,
+    dia: str = "DU",
+    mes: int = 1,
+    ao_converter: Callable[[str, object], None] | None = None,
+) -> Path:
+    """Garante o modelo OpenDSS de cada CTMT em ``out`` (convertendo do GPKG do recorte o que
+    faltar) e escreve o Master **base** do cluster (sem manobras) em
+    ``<out>/<nome>/Master_<DIA><MM>_base.dss``.
+
+    ``ao_converter(ctmt, conversao)`` é chamado após cada conversão (ex.: para imprimir).
+    """
+    from bdgd_light.twin.gpkg2dss import DIAS, converter_ctmt
+
+    out = Path(out)
+    pastas: list[Path] = []
+    for cod in ctmts:
+        pasta = localizar_pasta(out, cod)
+        if pasta is None or not _tem_master(pasta, dia, mes):
+            conv = converter_ctmt(gpkg, cod, out, dias=DIAS, meses=[mes])
+            pasta = conv.pasta
+            if ao_converter is not None:
+                ao_converter(cod, conv)
+        pastas.append(pasta)
+    nome = nome_master_cluster(list(ctmts))
+    return montar_master_cluster(
+        pastas, out / nome / f"Master_{dia.upper()}{mes:02d}_base.dss", dia=dia, mes=mes, nome=nome
+    )
+
+
+def _tem_master(pasta: Path, dia: str, mes: int) -> bool:
+    try:
+        escolher_master(pasta, dia, mes)
+    except (FileNotFoundError, ValueError):
+        return False
+    return True
