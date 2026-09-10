@@ -917,6 +917,50 @@ class SessaoCOD:
         )
         return p.to_dict()
 
+    def alternativas(self, proposta_id: str) -> list[dict[str, Any]]:
+        """Opções de restauração da falta de uma proposta (topologia + último score elétrico),
+        para o console mostrar o que o agente descartou. Leitura: não é ferramenta do modelo nem
+        entra na auditoria; ``[]`` se a proposta já foi executada ou é de outra sessão."""
+        p = self.propostas.obter(proposta_id)
+        rede = self.rede
+        if (
+            rede is None
+            or p.falta is None
+            or p.falta != self.falta
+            or p.cluster != self.nome
+            or p.status == "executada"
+        ):
+            return []
+        try:
+            opcoes = self._plano().restore_options(p.falta)
+        except (KeyError, ValueError, TrechoInexistenteError):
+            return []
+        saida = []
+        for o in opcoes:
+            sc = self._scores.get(o.chave)
+            saida.append(
+                {
+                    "chave": o.chave,
+                    "fonte": o.fonte,
+                    "tlcd": o.tlcd,
+                    "externa": o.externa,
+                    "clientes": o.clientes.to_dict(),
+                    "escolhida": o.chave == p.chave,
+                    "score": sc,
+                }
+            )
+        # ordem do ranking elétrico quando existe (viáveis primeiro, a escolhida, maior margem),
+        # senão a topológica
+        if any(a["score"] for a in saida):
+            saida.sort(
+                key=lambda a: (
+                    not (a["score"] or {}).get("viavel", False),
+                    not a["escolhida"],
+                    -((a["score"] or {}).get("margem_disjuntor") or -math.inf),
+                )
+            )
+        return saida
+
     def estado(self) -> dict[str, Any]:
         """Foto da sessão (console/CLI): cluster, falta, religador, propostas, sem tensão e o
         ``hash`` da última entrada da auditoria (o console mostra "trilha íntegra")."""
