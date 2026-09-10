@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>bdgd-light · console</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <div id="mapa"></div>
+    <aside id="painel">
+      <header>
+        <h1>bdgd-light</h1>
+        <p id="subtitulo">console do COD · BDGD Light</p>
+      </header>
+      <section>
+        <h2>Base</h2>
+        <div id="bases"></div>
+      </section>
+      <section>
+        <h2>Camadas</h2>
+        <div id="camadas"></div>
+      </section>
+      <section id="secao-estado" hidden>
+        <h2>Estado do grafo</h2>
+        <div id="estado"></div>
+      </section>
+      <section>
+        <h2>Tiles</h2>
+        <form id="form-tiles">
+          <input id="url-tiles" type="text" spellcheck="false" />
+          <button type="submit">abrir</button>
+        </form>
+        <p id="info-tiles" class="dica"></p>
+      </section>
+      <footer>
+        <p id="erro" class="erro" hidden></p>
+        <p class="dica">
+          Gere tiles com <code>uv run bdgd-light tiles --gpkg data/feeders/X.gpkg --out
+          console/public/tiles/X.pmtiles</code> e abra <code>?tiles=tiles/X.pmtiles</code>.
+          Estado do grafo: <code>?estado=URL.geojson</code> (saída de
+          <code>bdgd-light grafo --geojson</code>).
+        </p>
+      </footer>
+    </aside>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

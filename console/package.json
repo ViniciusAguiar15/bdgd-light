@@ -1,0 +1,22 @@
+{
+  "name": "bdgd-light-console",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Console do COD agêntico: mapa MapLibre GL JS + PMTiles dos alimentadores da BDGD (Light)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "check": "tsc --noEmit",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "maplibre-gl": "^6.9.0",
+    "pmtiles": "^4.5.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  }
+}
