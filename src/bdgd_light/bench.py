@@ -826,17 +826,19 @@ def comparativo(rodadas_por_rotulo: Mapping[str, Sequence[Rodada]], k: int) -> s
 
 
 def carregar_comparativo(pasta: Path | str) -> dict[str, list[Rodada]]:
-    """Todas as rodadas dos CSVs de ``pasta`` agrupadas por provedor·modo (a última data de cada
-    rótulo, para o comparativo não misturar versões)."""
-    por_rotulo: dict[str, list[Rodada]] = {}
+    """Rodadas dos CSVs de ``pasta`` agrupadas por provedor·modo — só o arquivo mais recente (nome
+    ``<data>-<rótulo>.csv``) de cada rótulo, para o comparativo não misturar versões; um arquivo
+    pode acumular execuções de datas diferentes (``bench --acrescentar``)."""
+    por_rotulo: dict[str, tuple[str, list[Rodada]]] = {}
     for csv_path in sorted(Path(pasta).glob("*.csv")):
+        por_arquivo: dict[str, list[Rodada]] = {}
         for r in ler_csv(csv_path):
-            por_rotulo.setdefault(_rotulo(r), []).append(r)
-    saida: dict[str, list[Rodada]] = {}
-    for rotulo, rs in por_rotulo.items():
-        ultima = max(r.data for r in rs)
-        saida[rotulo] = [r for r in rs if r.data == ultima]
-    return saida
+            por_arquivo.setdefault(_rotulo(r), []).append(r)
+        for rotulo, rs in por_arquivo.items():
+            atual = por_rotulo.get(rotulo)
+            if atual is None or csv_path.name >= atual[0]:
+                por_rotulo[rotulo] = (csv_path.name, rs)
+    return {rotulo: rs for rotulo, (_, rs) in por_rotulo.items()}
 
 
 def _commit() -> str:
@@ -933,6 +935,10 @@ def relatorio_markdown(
 def _fmt_valor(v: Any) -> str:
     if v is None:
         return "—"
+    if isinstance(v, bool):
+        return str(v)
+    if isinstance(v, int) or (isinstance(v, float) and v.is_integer()):
+        return _num(v, 0)
     if isinstance(v, float):
         return _num(v, 3 if abs(v) < 100 else 1)
     if isinstance(v, list | tuple | set):

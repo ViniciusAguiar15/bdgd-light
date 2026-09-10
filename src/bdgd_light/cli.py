@@ -1423,6 +1423,14 @@ def bench(
     sem_relatorio: Annotated[
         bool, typer.Option("--sem-relatorio", help="Não grava CSV/Markdown; só imprime.")
     ] = False,
+    acrescentar: Annotated[
+        bool,
+        typer.Option(
+            "--acrescentar",
+            help="Acumula no CSV do dia (mesmo provedor/modo) em vez de sobrescrever — para rodar "
+            "os níveis em etapas; o relatório cobre tudo o que está no arquivo.",
+        ),
+    ] = False,
     feeders: Annotated[Path, typer.Option("--feeders")] = Path("data/feeders"),
     dss_out: Annotated[Path, typer.Option("--dss-out")] = Path("data/dss/gpkg"),
     estado: Annotated[
@@ -1543,12 +1551,24 @@ def bench(
     if sem_relatorio:
         return
     nome = nome_relatorio(config)
-    csv_path = escrever_csv(rodadas, saida / f"{nome}.csv")
+    csv_path = saida / f"{nome}.csv"
+    todas = list(rodadas)
+    if acrescentar and csv_path.exists():
+        from bdgd_light.bench import ler_csv
+
+        anteriores = ler_csv(csv_path)
+        todas = anteriores + todas
+        console.print(
+            f"[dim]acrescentando às {len(anteriores)} execuções já em {csv_path} "
+            f"({len(todas)} no total)[/]"
+        )
+    csv_path = escrever_csv(todas, csv_path)
     comp = comparativo(carregar_comparativo(saida), k)
+    todas_tarefas = carregar_tarefas(tarefas) if acrescentar else lista
     md = relatorio_markdown(
-        rodadas,
+        todas,
         config,
-        tarefas=lista,
+        tarefas=todas_tarefas,
         arquivo_tarefas=tarefas,
         csv_path=csv_path,
         comparativo_md=comp,

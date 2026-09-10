@@ -5,9 +5,10 @@
 # Campos: id, nivel, cluster, pergunta (ou evento: falta_permanente), falta (trecho injetado antes),
 # referencia (ferramentas na ordem esperada), gabarito (ferramenta + argumentos + campo lido do retorno;
 # `melhor_opcao` = chaves eletricamente equivalentes à melhor opção de restore_options), verificar
-# (resposta numérica | proposta), unidade, tolerancia_rel (padrão 0,02) / tolerancia_abs (padrão 0,5),
-# escala (multiplica o gabarito: margem em fração → %), esperado (documental — valor da BDGD 2023 do
-# recorte; `bdgd-light bench --gabarito` recalcula e confere).
+# (resposta numérica | proposta), unidade, tolerancia_rel / tolerancia_abs (padrão: contagens inteiras
+# exigem o valor exato, ±0,5; grandezas fracionárias aceitam ±2 %), escala (multiplica o gabarito:
+# margem em fração → %), esperado (documental — valor da BDGD 2023 do recorte; `bdgd-light bench
+# --gabarito` recalcula e confere).
 #
 # O acerto numérico aceita qualquer número da resposta final dentro da tolerância (formatos pt-BR).
 # Observação da revisão (docs/review/RESULTADOS-OPENAI.md): o resumo deve ser numericamente correto —

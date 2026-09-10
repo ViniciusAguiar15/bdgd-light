@@ -263,7 +263,7 @@ def test_csv_ida_e_volta_relatorio_e_comparativo(tmp_path):
     assert len(linhas) == 2 and linhas[0]["acerto"] == "1" and linhas[1]["acerto"] == "0"
     lidas = ler_csv(caminho)
     assert lidas == rodadas
-    # uma versão antiga do mesmo rótulo não entra no comparativo; outro provedor entra
+    # um arquivo antigo do mesmo rótulo não entra no comparativo; outro provedor entra
     escrever_csv(
         [_rodada("S01", "simple", False, data="2025-12-31T00:00:00+00:00")],
         tmp_path / "2025-12-31-fake.csv",
@@ -275,6 +275,7 @@ def test_csv_ida_e_volta_relatorio_e_comparativo(tmp_path):
     por_rotulo = carregar_comparativo(tmp_path)
     assert set(por_rotulo) == {"fake", "openai"}
     assert all(r.data.startswith("2026") for r in por_rotulo["fake"])
+    assert len(por_rotulo["fake"]) == 2
     tabela = comparativo(por_rotulo, k=1)
     assert "| fake |" in tabela and "| openai |" in tabela and "pass@1 hard" in tabela
     config = Configuracao(provider="fake", k=1, n=1, seed=1)
@@ -406,6 +407,31 @@ def test_cli_bench_gabarito_e_relatorio(recorte, dss_out, tmp_path):
     assert len(ler_csv(csvs[0])) == 3
     texto = mds[0].read_text(encoding="utf-8")
     assert "| total | 3 | 3 | 100 % |" in texto and "| fake |" in texto
+    # --acrescentar acumula no CSV do dia e o relatório passa a cobrir todas as execuções
+    r = runner.invoke(
+        app,
+        [
+            "bench",
+            "--provider",
+            "fake",
+            "--k",
+            "2",
+            "--n",
+            "1",
+            "--seed",
+            "1",
+            "--ids",
+            "H02",
+            "--saida",
+            str(saida),
+            "--acrescentar",
+            *_args(recorte, dss_out, tmp_path),
+        ],  # fmt: skip
+    )
+    assert r.exit_code == 0, r.output
+    assert "acrescentando às 3 execuções" in r.output
+    assert len(ler_csv(csvs[0])) == 4
+    assert "| total | 4 | 4 | 100 % |" in mds[0].read_text(encoding="utf-8")
     r = runner.invoke(
         app,
         ["bench", "--json", "--sem-relatorio", "--ids", "S01", *_args(recorte, dss_out, tmp_path)],
