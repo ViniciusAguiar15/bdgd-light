@@ -1,0 +1,1 @@
+New "Load.MT_UCMT001_M1" bus1="RJO001_MT_5.1.2.3" phases=3 conn=Delta model=2 kv=13.2 kw = 200.000000 pf=0.92 status=variable vmaxpu=1.5 vminpu=0.5 daily="RES-Tipo1_DU"

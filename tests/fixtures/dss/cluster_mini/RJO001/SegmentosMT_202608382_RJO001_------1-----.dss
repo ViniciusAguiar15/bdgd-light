@@ -1,0 +1,4 @@
+New "Line.SMT_SEG001" phases=3 bus1="RJO001_MT_1.1.2.3" bus2="RJO001_MT_2.1.2.3" linecode="CA_50_3" length=0.103000000 units=km
+New "Line.SMT_SEG002" phases=3 bus1="RJO001_MT_3.1.2.3" bus2="RJO001_MT_4.1.2.3" linecode="CA_50_3" length=0.103000000 units=km
+New "Line.SMT_SEG003" phases=3 bus1="RJO001_MT_4.1.2.3" bus2="RJO001_MT_5.1.2.3" linecode="CA_50_3" length=0.103000000 units=km
+New "Line.SMT_SEG006" phases=3 bus1="RJO001_MT_4.1.2.3" bus2="RJO001_MT_6.1.2.3" linecode="CA_50_3" length=0.066000000 units=km

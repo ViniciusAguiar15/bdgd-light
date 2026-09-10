@@ -1,0 +1,4 @@
+New "Line.CMT_CH008" phases=3 bus1="RJO001_MT_0.1.2.3" bus2="RJO001_MT_1.1.2.3" r1=0.001 r0=0.001 x1=0.0 x0=0.0 c1=0.0 c0=0.0  switch = T length=0.00100
+New "Line.CMT_CH001" phases=3 bus1="RJO001_MT_2.1.2.3" bus2="RJO001_MT_3.1.2.3" r1=0.001 r0=0.001 x1=0.0 x0=0.0 c1=0.0 c0=0.0  switch = T length=0.00100
+!New "Line.CMT_CH003" phases=3 bus1="RJO001_MT_5.1.2.3" bus2="RJO001_MT_7.1.2.3" r1=0.001 r0=0.001 x1=0.0 x0=0.0 c1=0.0 c0=0.0  switch = T length=0.00100
+!New "Line.CMT_CH006" phases=3 bus1="RJO001_MT_5.1.2.3" bus2="RJO001_MT_6.1.2.3" r1=0.001 r0=0.001 x1=0.0 x0=0.0 c1=0.0 c0=0.0  switch = T length=0.00100

@@ -1,0 +1,14 @@
+clear
+Redirect "CircuitoMT_202608382_RJO002_------1-----.dss"
+Redirect "CodCondutor_202608382_RJO002_------1-----.dss"
+Redirect "SegmentosMT_202608382_RJO002_------1-----.dss"
+Redirect "ChavesMT_202608382_RJO002_------1-----.dss"
+Redirect "TransformadorMTMTMTBT_202608382_RJO002_------1-----.dss"
+Redirect "CurvaCarga_202608382_RJO002_------1-----.dss"
+Redirect "CargasBT_DU01_202608382_RJO002_------1-----.dss"
+Set mode = daily
+Set Voltagebases = [0.22 13.2]
+Calc Voltagebases
+Set tolerance = 0.0001
+Set maxcontroliter = 10
+!Solve

@@ -1,0 +1,2 @@
+New "Transformer.TRF_TR002A" phases=3 windings=2 buses=["RJO002_MT_4.1.2.3" "TR002_BT_1.1.2.3.4"] conns=[Delta Wye] kvs=[13.2 0.22]  kvas=[112.5 112.5] %loadloss=1.217778 %noloadloss=0.297778
+New "Reactor.TRF_TR002A_R" phases=1 bus1=TR002_BT_1.4 R=15 X=0 basefreq=60
