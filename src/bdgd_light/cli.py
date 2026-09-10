@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Annotated
 
@@ -423,27 +424,30 @@ def dss(
         str | None,
         typer.Option(
             "--ctmt",
-            help="COD_ID do(s) alimentador(es) a converter com o bdgd2opendss, por vírgula. Com "
-            "mais de um, monta um Master único do cluster (Circuit no primeiro, Vsource nos "
-            "demais) para simular transferência de carga.",
+            help="COD_ID do(s) alimentador(es), por vírgula (padrão com --gpkg: todos os CTMT do "
+            "GeoPackage). Com mais de um, monta um Master único do cluster (Circuit no primeiro, "
+            "Vsource nos demais) para simular transferência de carga.",
         ),
     ] = None,
     gdb: Annotated[
         Path | None,
         typer.Option(
             "--gdb",
-            help="Diretório .gdb da BDGD (o bdgd2opendss lê o GDB inteiro). Dispensável se o "
-            "modelo já estiver convertido em --out.",
+            help="Diretório .gdb da BDGD para converter com o bdgd2opendss (lê o GDB inteiro). "
+            "Dispensável se o modelo já estiver em --out ou se houver --gpkg (conversão direta "
+            "do recorte).",
         ),
     ] = None,
     out: Annotated[
-        Path,
+        Path | None,
         typer.Option(
             "--out",
-            help="Raiz de saída; o modelo fica em <out>/sub_<SUB>/<CTMT>/ com 36 Masters "
-            "(tipo de dia DU/SA/DO × mês). Se já existir, não reconverte.",
+            help="Raiz de saída: bdgd2opendss grava em <out>/sub_<SUB>/<CTMT>/ (36 Masters); a "
+            "conversão do GPKG grava em <out>/<CTMT>/ (Masters DU/SA/DO do mês pedido). Padrão: "
+            "data/dss (bdgd2opendss) ou data/dss/gpkg (conversão do GPKG). Modelo já existente "
+            "em <out> não é reconvertido.",
         ),
-    ] = Path("data/dss"),
+    ] = None,
     master: Annotated[
         Path | None,
         typer.Option("--master", help="Roda o fluxo direto neste Master .dss, sem converter."),
@@ -452,10 +456,18 @@ def dss(
         Path | None,
         typer.Option(
             "--gpkg",
-            help="GeoPackage do `bdgd-light recortar` (grafo) para traduzir manobras em comandos "
-            "OpenDSS: exigido por --falha, --restaurar, --abrir e --fechar.",
+            help="GeoPackage do `bdgd-light recortar`: sem --gdb e sem modelo em --out, o Master "
+            "é gerado direto dele (bdgd_light.twin.gpkg2dss, sem FileGDB); é também o grafo que "
+            "traduz manobras em comandos OpenDSS (--falha, --restaurar, --abrir, --fechar).",
         ),
     ] = None,
+    reconverter: Annotated[
+        bool,
+        typer.Option(
+            "--reconverter",
+            help="Com --gpkg: regenera o modelo do recorte mesmo se já existir em --out.",
+        ),
+    ] = False,
     falha: Annotated[
         str | None,
         typer.Option(
@@ -508,15 +520,16 @@ def dss(
     ] = None,
     top: Annotated[int, typer.Option("--top", help="Linhas nas tabelas de piores casos.")] = 10,
 ) -> None:
-    """Converte alimentadores da BDGD para OpenDSS (bdgd2opendss) e/ou resolve o fluxo de
-    potência com OpenDSSDirect, reportando tensões, violações, perdas e sobrecargas. Com vários
-    --ctmt monta o Master do cluster; com --gpkg aplica manobras do grafo (falta, isolamento e
-    restauração) antes do Solve."""
+    """Converte alimentadores da BDGD para OpenDSS (bdgd2opendss a partir do GDB, ou direto do
+    GeoPackage do recorte) e/ou resolve o fluxo de potência com OpenDSSDirect, reportando
+    tensões, violações, perdas e sobrecargas. Com vários --ctmt monta o Master do cluster; com
+    --gpkg aplica manobras do grafo (falta, isolamento e restauração) antes do Solve."""
     try:
         from bdgd_light.twin import (
             comandos_manobras,
             converter,
             escolher_master,
+            listar_ctmts,
             localizar_pasta,
             montar_master_cluster,
             run_powerflow,
@@ -525,9 +538,18 @@ def dss(
         _erro(f"{erro} — instale o extra: uv sync --extra twin")
         return
     ctmts = _lista(ctmt)
+    modo_gpkg = gpkg is not None and gdb is None and master is None
+    if out is None:  # não mistura os modelos do GPKG com as pastas sub_*/ do bdgd2opendss
+        out = Path("data/dss/gpkg") if modo_gpkg else Path("data/dss")
     if master is None and not ctmts:
-        _erro("informe --ctmt (com --gdb ou modelo já em --out) para converter ou --master.")
-        return
+        if not modo_gpkg:
+            _erro(
+                "informe --ctmt (com --gdb, --gpkg ou modelo já em --out) para converter "
+                "ou --master."
+            )
+            return
+        ctmts = listar_ctmts(gpkg)
+        console.print(f"CTMT do GeoPackage: [bold]{', '.join(ctmts)}[/]")
     if gpkg is None and any(x is not None for x in (falha, restaurar, abrir, fechar)):
         _erro("--falha, --restaurar, --abrir e --fechar exigem --gpkg com o grafo do recorte.")
         return
@@ -537,10 +559,15 @@ def dss(
             pastas = []
             for cod in ctmts:
                 pasta = localizar_pasta(out, cod)
-                if pasta is not None and gdb is None:
+                if modo_gpkg and (reconverter or not _tem_master(pasta, dia, mes)):
+                    pasta = _converter_gpkg(gpkg, cod, out, dia, mes)
+                elif pasta is not None and gdb is None:
                     console.print(f"[green]✔[/] modelo de {cod} já existia em [bold]{pasta}[/]")
                 elif gdb is None:
-                    _erro(f"modelo de {cod} não encontrado em {out}; informe --gdb para converter.")
+                    _erro(
+                        f"modelo de {cod} não encontrado em {out}; informe --gdb (bdgd2opendss) "
+                        "ou --gpkg (conversão do recorte)."
+                    )
                     return
                 else:
                     console.print(f"Convertendo [bold]{cod}[/] com bdgd2opendss (lê o GDB todo)…")
@@ -823,6 +850,49 @@ def _resumir(valor, limite: int = 60) -> str:
     else:
         texto = str(valor)
     return texto if len(texto) <= limite else texto[: limite - 1] + "…"
+
+
+def _tem_master(pasta: Path | None, dia: str, mes: int) -> bool:
+    """A pasta já tem o Master do tipo de dia/mês pedidos?"""
+    if pasta is None:
+        return False
+    from bdgd_light.twin import escolher_master
+
+    try:
+        escolher_master(pasta, dia, mes)
+    except (FileNotFoundError, ValueError):
+        return False
+    return True
+
+
+def _converter_gpkg(gpkg: Path, cod: str, out: Path, dia: str, mes: int) -> Path:
+    """Gera (ou regenera) o modelo OpenDSS de ``cod`` direto do GeoPackage do recorte."""
+    from bdgd_light.twin import DIAS, converter_ctmt
+
+    inicio = time.perf_counter()
+    conv = converter_ctmt(gpkg, cod, out, dias=DIAS, meses=[mes])
+    n = conv.contagem
+    resumo = ", ".join(
+        f"{n.get(k, 0)} {rotulo}"
+        for k, rotulo in (
+            ("SSDMT", "trechos MT"),
+            ("UNSEMT", "chaves MT"),
+            ("unidades_trafo", "trafos"),
+            ("SSDBT", "trechos BT"),
+            ("UCBT_tab", "cargas BT"),
+            ("PIP", "IP"),
+            ("UCMT_tab", "cargas MT"),
+        )
+        if k in n
+    )
+    console.print(
+        f"[green]✔[/] {cod} convertido do GeoPackage em [bold]{conv.pasta}[/] "
+        f"({time.perf_counter() - inicio:.1f} s): {resumo}; {len(conv.masters)} Masters "
+        f"DU/SA/DO do mês {mes:02d}"
+    )
+    for aviso in conv.avisos:
+        console.print(f"[yellow]Aviso:[/] {aviso}")
+    return conv.pasta
 
 
 def _manobras_dss(

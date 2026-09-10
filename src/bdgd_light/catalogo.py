@@ -92,6 +92,7 @@ CAMADAS_CHAVE = {
     "UGBT": "geração distribuída BT",
     "UGMT_tab": "geração distribuída MT (energia mensal, tabela)",
     "UGBT_tab": "geração distribuída BT (energia mensal, tabela)",
+    "PIP": "pontos de iluminação pública (energia mensal, tabela)",
     "PONNOT": "pontos notáveis (postes)",
     "RAMLIG": "ramais de ligação",
     "SEGCON": "segmentos de condutor (catálogo de cabos, tabela)",

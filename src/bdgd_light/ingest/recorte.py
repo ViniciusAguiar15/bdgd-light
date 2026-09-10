@@ -5,7 +5,7 @@ Cada camada é filtrada pela regra de junção documentada em ``docs/bdgd-relaco
 - ``CTMT``: ``COD_ID``.
 - Camadas MT com coluna ``CTMT`` (SSDMT, UNSEMT, UNTRMT, UNREMT, UNCRMT, UCMT/UCMT_tab,
   UGMT/UGMT_tab).
-- Camadas BT (SSDBT, UNSEBT, RAMLIG, UCBT/UCBT_tab, UGBT/UGBT_tab): pelo transformador
+- Camadas BT (SSDBT, UNSEBT, RAMLIG, UCBT/UCBT_tab, UGBT/UGBT_tab, PIP): pelo transformador
   (``UNI_TR_MT`` ∈ UNTRMT selecionados), que é quem define o alimentador; a coluna ``CTMT`` dessas
   camadas só é usada se não houver UNTRMT.
 - ``PONNOT`` (postes): ``COD_ID`` ∈ ``PN_CON``/``PN_CON_1``/``PN_CON_2`` das feições selecionadas.
@@ -55,7 +55,7 @@ CAMADAS_POR_CTMT = [
     "UGMT",
     "UGMT_tab",
 ]
-CAMADAS_POR_TRAFO = ["SSDBT", "UNSEBT", "RAMLIG", "UCBT", "UCBT_tab", "UGBT", "UGBT_tab"]
+CAMADAS_POR_TRAFO = ["SSDBT", "UNSEBT", "RAMLIG", "UCBT", "UCBT_tab", "UGBT", "UGBT_tab", "PIP"]
 EQUIPAMENTOS = {  # camada de equipamento → (coluna de ligação, camadas de unidades)
     "EQTRMT": ("UNI_TR_MT", ["UNTRMT"]),
     "EQSE": ("UN_SE", ["UNSEMT", "UNSEBT"]),
@@ -64,7 +64,7 @@ EQUIPAMENTOS = {  # camada de equipamento → (coluna de ligação, camadas de u
 }
 CATALOGOS = {  # catálogo → (coluna que o referencia, camadas que a têm)
     "SEGCON": ("TIP_CND", ["SSDMT", "SSDBT", "RAMLIG"]),
-    "CRVCRG": ("TIP_CC", ["UCBT_tab", "UCMT_tab", "UCBT", "UCMT"]),
+    "CRVCRG": ("TIP_CC", ["UCBT_tab", "UCMT_tab", "UCBT", "UCMT", "PIP"]),
 }
 COLUNAS_PN = ["PN_CON", "PN_CON_1", "PN_CON_2"]
 # ordem de gravação no GeoPackage

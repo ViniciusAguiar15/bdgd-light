@@ -41,13 +41,14 @@ Regra usada pelo recorte (`recortar`) para decidir o que pertence a um CTMT, e c
 | `UNSEBT` | ponto | `UNI_TR_MT` ∈ UNTRMT do CTMT | `UNI_TR_MT`, `PN_CON` |
 | `RAMLIG` | tabela (Light) | `UNI_TR_MT` ∈ UNTRMT do CTMT | `UNI_TR_MT`, `PAC_1`, `PAC_2`, `PN_CON_1`, `PN_CON_2`, `TIP_CND` |
 | `UCBT_tab`, `UGBT_tab` | tabela | `UNI_TR_MT` ∈ UNTRMT do CTMT (**não** pela coluna `CTMT` da tabela, ver abaixo) | `UNI_TR_MT`, `CTMT`, `PAC`, `PN_CON`, `TIP_CC`, `ENE_01..12` / `POT_INST` |
+| `PIP` | tabela (Light) | `UNI_TR_MT` ∈ UNTRMT do CTMT (iluminação pública; o bdgd2opendss a modela como carga `BT_IP<COD_ID>`) | `UNI_TR_MT`, `CTMT`, `PAC`, `PN_CON`, `TIP_CC`, `ENE_01..12` |
 | `UCBT`, `UCMT`, `UGBT`, `UGMT` | (inexistentes na Light 2025) | mesmas regras das `*_tab`, se existirem | — |
 | `PONNOT` | ponto | `COD_ID` ∈ união de `PN_CON`, `PN_CON_1`, `PN_CON_2` de todas as camadas já selecionadas (não tem `CTMT`) | `COD_ID` |
 | `EQTRMT` | tabela | `UNI_TR_MT` ∈ UNTRMT do CTMT | `UNI_TR_MT`, `POT_NOM`, `TEN_PRI` |
 | `EQSE` | tabela | `UN_SE` ∈ UNSEMT ∪ UNSEBT do CTMT | `UN_SE` |
 | `EQRE`, `EQCR` | tabela | `UN_RE` ∈ UNREMT / `UN_CR` ∈ UNCRMT | `UN_RE`, `UN_CR` |
 | `SEGCON` | tabela (catálogo de cabos) | `COD_ID` ∈ `TIP_CND` de SSDMT ∪ SSDBT ∪ RAMLIG selecionados | `COD_ID` |
-| `CRVCRG` | tabela (curvas de carga) | `COD_ID` ∈ `TIP_CC` de UCBT_tab ∪ UCMT_tab selecionadas | `COD_ID` |
+| `CRVCRG` | tabela (curvas de carga) | `COD_ID` ∈ `TIP_CC` de UCBT_tab ∪ UCMT_tab ∪ PIP selecionadas | `COD_ID` |
 | `INTERLIGACOES` | ponto (**calculada**) | `CTMT` **ou** `CTMT_VIZ` é o alimentador | ver "Interligação entre alimentadores" |
 
 Camadas ausentes no Parquet são puladas com aviso (a Light 2025 não tem `UCBT`/`UCMT`/`UGBT`/`UGMT`

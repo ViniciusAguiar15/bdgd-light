@@ -24,9 +24,11 @@ src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim
                        → PMTiles para o console
   grid/rede.py         grafo MT (networkx) do alimentador/cluster: fonte, chaves, ties, isolamento,
                        restauração; grid/geojson.py exporta o estado em GeoJSON 4326
-  twin/convert.py      BDGD → OpenDSS via bdgd2opendss (36 Masters por CTMT); twin/powerflow.py
-                       resolve o fluxo com OpenDSSDirect (tensões, violações, perdas, sobrecargas);
-                       twin/cluster.py monta o Master do cluster e traduz manobras do grafo em DSS
+  twin/gpkg2dss.py     GPKG do recorte → OpenDSS direto (paridade com o bdgd2opendss, sem FileGDB);
+                       twin/convert.py BDGD → OpenDSS via bdgd2opendss (36 Masters por CTMT);
+                       twin/powerflow.py resolve o fluxo com OpenDSSDirect (tensões, violações,
+                       perdas, sobrecargas); twin/cluster.py monta o Master do cluster e traduz
+                       manobras do grafo em DSS
   agent/llm.py         interface LLMClient (chat com tool calling), FakeLLMClient para testes,
                        OpenAICompatClient (qualquer API chat/completions) com perfis openai/gemini/
                        ollama/fake (ADR-003) e preset GitHubModelsClient (aposentado);
@@ -207,7 +209,8 @@ uv run bdgd-light recortar --parquet data/parquet --ctmt TQR0007 --out data/feed
 
 Camadas do GPKG, na ordem: `CTMT`, `SUB`, `UNTRAT` (subestação inteira do CTMT), `SSDMT`, `UNSEMT`,
 `UNTRMT`, `UNREMT`, `UNCRMT`, `UCMT_tab`, `UGMT_tab` (pela coluna `CTMT`), `SSDBT`, `UNSEBT`, `RAMLIG`,
-`UCBT_tab`, `UGBT_tab` (pelo transformador `UNI_TR_MT`), `PONNOT` (postes referenciados por `PN_CON*`),
+`UCBT_tab`, `UGBT_tab`, `PIP` (pelo transformador `UNI_TR_MT`), `PONNOT` (postes referenciados por
+`PN_CON*`),
 `EQTRMT`, `EQSE`, `EQRE`, `EQCR` (equipamentos das unidades), `SEGCON`, `CRVCRG` (só os códigos usados) e
 `INTERLIGACOES` — camada calculada com as chaves NA de interligação que envolvem o CTMT, dos dois
 lados (`COD_ID`, `CTMT`, `CTMT_VIZ`, `SSDMT_VIZ`, `PAC_VIZ`, `DIST_M`, `TLCD`, `TIP_UNID`, `EM_SUB`). As
@@ -274,16 +277,23 @@ restauram 1.984 via PARNAIBA (3 telecomandadas) ou CURUMAU (1 telecomandada).
 
 ### `bdgd-light dss` — alimentador em OpenDSS, fluxo de potência e manobras
 
-Converte CTMT com o [bdgd2opendss](https://github.com/PauloRadatz/bdgd2opendss) (precisa do `.gdb`
-inteiro; ≈3 min) e resolve o fluxo de potência snapshot com OpenDSSDirect, reportando tensões por
-nó, violações fora de 0,93–1,05 pu, perdas e sobrecargas. Com vários `--ctmt` monta um Master único
-do cluster (uma `Vsource` por alimentador) e, com `--gpkg` (recorte do `bdgd-light recortar`),
-traduz as manobras do grafo — falta, isolamento e restauração pela tie — em comandos OpenDSS antes
-do `Solve`. Requer `uv sync --extra twin`. Relatório do spike (o que o conversor precisou,
-resultados, FLISR no gêmeo e decisões) em [`docs/spike-opendss.md`](docs/spike-opendss.md).
+Gera o modelo OpenDSS de um CTMT **direto do GeoPackage do recorte** (`twin.gpkg2dss`, ≈1 s por
+alimentador, sem FileGDB) ou com o [bdgd2opendss](https://github.com/PauloRadatz/bdgd2opendss)
+(`--gdb`; lê o `.gdb` inteiro, ≈3 min) e resolve o fluxo de potência snapshot com OpenDSSDirect,
+reportando tensões por nó, violações fora de 0,93–1,05 pu, perdas e sobrecargas. Com vários
+`--ctmt` monta um Master único do cluster (uma `Vsource` por alimentador) e, com `--gpkg` (recorte
+do `bdgd-light recortar`), traduz as manobras do grafo — falta, isolamento e restauração pela tie —
+em comandos OpenDSS antes do `Solve`. Requer `uv sync --extra twin`. Relatório do spike (o que o
+conversor precisou, paridade do gpkg2dss com o bdgd2opendss, FLISR no gêmeo e decisões) em
+[`docs/spike-opendss.md`](docs/spike-opendss.md).
 
 ```bash
-# converte (ou reaproveita data/dss/sub_<SUB>/TQR0007/) e resolve o Master de dia útil de janeiro
+# Master direto do recorte (data/dss/gpkg/TQR0007/Master_DU01_gpkg_TQR0007.dss) + fluxo de dia útil
+uv run bdgd-light dss --gpkg data/feeders/TQR0007.gpkg --json data/dss/gpkg/TQR0007_DU01.json
+# cluster Tijuca (demo, cenário A) sem GDB: converte os 4 CTMT do GPKG, falta no tronco de CABOFRIO
+# e restauração pela TLCD 974020904 (ALC9946); --reconverter regenera modelos já existentes
+uv run bdgd-light dss --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 --restaurar 974020904
+# com o bdgd2opendss (ou reaproveitando data/dss/sub_<SUB>/TQR0007/): Master de dia útil de janeiro
 uv run bdgd-light dss --gdb data/Light_382_2025-12-31_V11_20260824-0926.gdb --ctmt TQR0007 \
     --out data/dss --json data/dss/TQR0007_fluxo_DU01.json
 # só o fluxo, em qualquer Master .dss, com um comando OpenDSS antes do Solve
@@ -293,11 +303,20 @@ uv run bdgd-light dss --master "data/dss/sub__10385871/TQR0007/Master_SA07_20260
 # pelo grafo e restauração fechando a tie telecomandada 1007642983 (via PARNAIBA)
 uv run bdgd-light dss --ctmt TQR0007,TQR33859,TQR33862 --out data/dss \
     --gpkg data/feeders/cluster_TQR0007-TQR33859-TQR33862.gpkg --falha 11798327 --restaurar 1007642983
-# cluster Tijuca (demo, cenário A): falta no tronco de CABOFRIO e restauração por outra SE
+# o mesmo cenário sobre os modelos do bdgd2opendss (--out data/dss para não usar data/dss/gpkg)
 uv run bdgd-light dss --gdb data/Light_382_2025-12-31_V11_20260824-0926.gdb \
     --ctmt ALC9925,ALC9946,URG29983,RCP9882 --out data/dss --gpkg data/feeders/cluster_tijuca.gpkg \
-    --falha 11304252 --restaurar 746851189
+    --falha 11304252 --restaurar 974020904
 ```
+
+O conversor do GPKG reproduz a modelagem do bdgd2opendss (mesmas tabelas de códigos, fórmulas de kW
+por curva de carga, nomes de elementos — `Line.SMT_<SSDMT>`, `Transformer.TRF_<UNTRMT>A`,
+`Load.BT_<RAMAL>_M1`… — e calendário DU/SA/DO): em TQR0007 os arquivos de elementos saem idênticos e
+o fluxo dá as mesmas perdas e tensões. Diferenças conscientes: bancos `DF`/`DA` já como `phases=1`
+com as perdas do conjunto divididas entre as unidades (bdgd2opendss#35/#36), elementos sem caminho
+até a fonte **comentados** em vez de omitidos, só os Masters DU/SA/DO do mês pedido. A iluminação
+pública (`PIP`) vira `Load.BT_IP<COD_ID>` como no bdgd2opendss — recortes gerados antes da camada
+entrar no catálogo precisam de `bdgd-light export --layers PIP` e novo `recortar`.
 
 Bancos de unidades monofásicas (`UNTRMT.TIP_TRAFO = DF`) saem do bdgd2opendss como trifásicos com
 barras de 2 nós, o que aterra um vértice do delta; `converter()` corrige isso ao gerar ou reaproveitar
@@ -306,12 +325,13 @@ na primeira reutilização.
 
 | opção | padrão | descrição |
 |---|---|---|
-| `--ctmt` | — | alimentador(es) por vírgula; com mais de um, escreve `<out>/cluster_<A>-<B>…/Master_<dia><mês>_<cenário>.dss` |
-| `--gdb` | — | diretório `.gdb` da BDGD; dispensável se o modelo já estiver em `--out` |
-| `--out` | `data/dss` | raiz da saída; o modelo fica em `<out>/sub_<SUB>/<CTMT>/` com 36 Masters (DU/SA/DO × mês). Se já existir, não reconverte |
+| `--ctmt` | todos os CTMT do `--gpkg` | alimentador(es) por vírgula; com mais de um, escreve `<out>/cluster_<A>-<B>…/Master_<dia><mês>_<cenário>.dss` |
+| `--gdb` | — | diretório `.gdb` da BDGD para converter com o bdgd2opendss; dispensável se o modelo já estiver em `--out` ou se houver `--gpkg` |
+| `--out` | `data/dss/gpkg` (GPKG) / `data/dss` (bdgd2opendss) | raiz da saída: o gpkg2dss grava em `<out>/<CTMT>/` (Masters DU/SA/DO do mês); o bdgd2opendss em `<out>/sub_<SUB>/<CTMT>/` (36 Masters). Modelo existente não é reconvertido |
+| `--reconverter` | — | com `--gpkg`: regenera o modelo do recorte mesmo se já existir em `--out` |
 | `--dia` / `--mes` | `DU` / `1` | Master a resolver |
 | `--master` | — | resolve direto este `.dss`, sem converter |
-| `--gpkg` | — | grafo do recorte para traduzir manobras (exigido por `--falha`, `--restaurar`, `--abrir`, `--fechar`) |
+| `--gpkg` | — | GeoPackage do recorte: sem `--gdb`/`--master`, gera o Master direto dele; é também o grafo que traduz manobras (exigido por `--falha`, `--restaurar`, `--abrir`, `--fechar`) |
 | `--falha` | — | trecho SSDMT em falta: abre no gêmeo as chaves que o isolam (as de `grafo --falha`) |
 | `--restaurar` | — | chave NA a fechar depois do isolamento (cria a `Line` da chave + jumper até o `PAC_VIZ` da tie) |
 | `--abrir` / `--fechar` | — | chaves avulsas a manobrar antes do `Solve` (vírgula) |
@@ -328,12 +348,15 @@ from bdgd_light.grid import Cluster
 from bdgd_light.twin import (
     comandos_manobras,
     converter,
+    converter_ctmt,
     escolher_master,
     montar_master_cluster,
     run_powerflow,
 )
 
-pasta, segundos = converter(
+conv = converter_ctmt("data/feeders/TQR0007.gpkg", "TQR0007", "data/dss/gpkg")  # direto do recorte
+conv.pasta, conv.masters, conv.contagem, conv.avisos  # Master_DU01/SA01/DO01_gpkg_TQR0007.dss
+pasta, segundos = converter(  # ou com o bdgd2opendss, a partir do GDB
     "data/Light_382_2025-12-31_V11_20260824-0926.gdb", "TQR0007", "data/dss"
 )
 r = run_powerflow(escolher_master(pasta, "DU", 1))  # snapshot de pico
