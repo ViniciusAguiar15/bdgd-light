@@ -53,7 +53,7 @@ class PowerFlowResult:
     n_cargas: int
     tensoes: pd.DataFrame  # barra, no, fase, kv_base, v_pu
     correntes: pd.DataFrame  # elemento, tipo, i_max_a, i_nominal_a, carregamento_pct
-    fontes: pd.DataFrame  # fonte (Vsource), barra, kw, kvar fornecidos
+    fontes: pd.DataFrame  # fonte (Vsource), barra, kw, kvar fornecidos, i_a (corrente máx. de fase)
     perdas_kw: float
     perdas_kvar: float
     potencia_kw: float
@@ -173,16 +173,19 @@ def _fontes(dss) -> pd.DataFrame:
     i = dss.Vsources.First()
     while i:
         p = dss.CktElement.TotalPowers()
+        # corrente de fase máxima no terminal 1 da Vsource = corrente no disjuntor do alimentador
+        mags = dss.CktElement.CurrentsMagAng()[0::2][: int(dss.CktElement.NumPhases())]
         linhas.append(
             (
                 dss.Vsources.Name(),
                 dss.CktElement.BusNames()[0].split(".")[0],
                 -float(p[0]),
                 -float(p[1]),
+                max((float(m) for m in mags), default=float("nan")),
             )
         )
         i = dss.Vsources.Next()
-    return pd.DataFrame(linhas, columns=["fonte", "barra", "kw", "kvar"])
+    return pd.DataFrame(linhas, columns=["fonte", "barra", "kw", "kvar", "i_a"])
 
 
 def _correntes(dss) -> pd.DataFrame:

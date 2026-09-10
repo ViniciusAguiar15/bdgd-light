@@ -29,13 +29,17 @@ from bdgd_light.ingest.recorte import recortar  # noqa: E402
 from bdgd_light.twin import (  # noqa: E402
     ESTABILIZADORES,
     PowerFlowResult,
+    ampacidade_tronco,
     comandos_manobras,
     converter,
     escolher_master,
     listar_masters,
     localizar_pasta,
     montar_master_cluster,
+    ordenar_scores,
     run_powerflow,
+    score_eletrico,
+    trechos_tronco,
 )
 
 runner = CliRunner()
@@ -460,6 +464,121 @@ def test_cli_dss_cluster_com_falha_e_restauracao(grafos, tmp_path):
     )  # fmt: skip
     assert r.exit_code == 0, r.output
     assert "RJO001/Master_DU01_manobras.dss" in compacto(r)
+
+
+# --- score elétrico das opções de restauração (issue #18) ---------------------------------------
+
+
+CHAVES_SCORE = {
+    "chave", "fonte", "convergiu", "i_disjuntor_a", "i_nominal_a", "margem_disjuntor",
+    "vmin_mt_pu", "vmax_mt_pu", "sobrecargas_mt", "carregamento_max_mt_pct", "perdas_kw",
+    "viavel", "motivos", "ajustes", "tempo_s", "clientes", "tlcd",
+}  # fmt: skip
+
+
+@pytest.fixture
+def master_base(tmp_path) -> Path:
+    pastas = [CLUSTER_MINI / "RJO001", CLUSTER_MINI / "RJO002"]
+    return montar_master_cluster(pastas, tmp_path / "b.dss")
+
+
+def test_trechos_tronco(cluster_mini: Cluster, master_base):
+    # PAC da fonte → disjuntor (chave NF) → primeiro trecho de cada ramo
+    assert trechos_tronco(cluster_mini, "RJO001") == ["SEG001"]
+    assert trechos_tronco(cluster_mini, "RJO002") == ["SEG004"]
+    assert trechos_tronco(cluster_mini, "RJO999") == []
+    run_powerflow(master_base)
+    assert ampacidade_tronco(cluster_mini, "RJO002") == 200.0  # normamps do SEG004 no modelo
+    assert ampacidade_tronco(cluster_mini, "RJO999") != ampacidade_tronco(cluster_mini, "RJO999")
+
+
+def test_score_eletrico_viavel(cluster_mini: Cluster, master_base):
+    opcoes = cluster_mini.restore_options("SEG001")
+    assert {o.chave for o in opcoes} == {"CH003", "CH005"}
+    assert all(o.fonte == "RJO002" for o in opcoes)
+    scores = score_eletrico(opcoes, cluster_mini, master_base)
+    assert [s.chave for s in scores] == ["CH003", "CH005"]  # margens iguais a 0,1 %: ordem do grafo
+    assert all(s.convergiu and s.viavel and s.motivos == [] and s.ajustes == [] for s in scores)
+    s = scores[0]
+    assert s.fonte == "RJO002" and s.opcao is opcoes[0]
+    # RJO002 passa a levar 83 + 50 + 200 kW a 13,2 kV (~16 A) num tronco de 200 A
+    assert s.i_nominal_a == 200.0 and 14 < s.i_disjuntor_a < 18
+    assert s.margem_disjuntor == pytest.approx((200 - s.i_disjuntor_a) / 200)
+    assert 1.03 < s.vmin_mt_pu <= s.vmax_mt_pu <= 1.045 + 1e-6
+    assert s.sobrecargas_mt == [] and 5 < s.carregamento_max_mt_pct < 12
+    assert 0 < s.perdas_kw < 10 and s.tempo_s > 0
+    d = s.to_dict()
+    assert set(d) == CHAVES_SCORE and d["clientes"]["ucbt"] == 3 and d["tlcd"] is True
+    json.dumps(d)  # NaN nunca vaza para o JSON
+
+
+def test_score_eletrico_inviavel_por_sobrecarga(cluster_mini: Cluster, master_base):
+    opcoes = cluster_mini.restore_options("SEG001")
+    # carga ×25 força ~330 A no tronco de 200 A de RJO002 e sobrecarrega trechos MT
+    pesados = score_eletrico(opcoes, cluster_mini, master_base, comandos_base=["set loadmult=25"])
+    assert len(pesados) == 2 and not any(p.viavel for p in pesados)
+    p = next(p for p in pesados if p.chave == "CH003")
+    assert p.convergiu and p.i_disjuntor_a > 200 and p.margem_disjuntor < 0
+    assert p.sobrecargas_mt and all(e.startswith("Line.smt_") for e in p.sobrecargas_mt)
+    assert p.carregamento_max_mt_pct > 100
+    assert any("acima de 100 %" in m and "Line.smt_" in m for m in p.motivos)
+    assert any(m.startswith("I disjuntor") and "> 200 A" in m for m in p.motivos)
+    # corrente nominal informada (CTMT → A) sobrepõe a ampacidade do tronco
+    nominal = score_eletrico(opcoes, cluster_mini, master_base, nominais={"RJO002": 10.0})
+    assert all(not n.viavel and n.i_nominal_a == 10.0 and n.sobrecargas_mt == [] for n in nominal)
+    assert nominal[0].motivos == ["I disjuntor 16 A > 10 A nominal"]
+    # tensão fora da faixa também derruba a opção
+    apertado = score_eletrico(opcoes, cluster_mini, master_base, vmin=1.045)
+    assert all(not a.viavel and a.motivos[0].startswith("Vmin MT") for a in apertado)
+
+
+def test_score_eletrico_ordenacao_e_fonte_externa(cluster_mini: Cluster, master_base):
+    from dataclasses import replace
+
+    opcoes = cluster_mini.restore_options("SEG001")
+    viaveis = score_eletrico(opcoes, cluster_mini, master_base)
+    inviaveis = score_eletrico(opcoes, cluster_mini, master_base, nominais={"RJO002": 10.0})
+    folgado = replace(viaveis[1], margem_disjuntor=0.99)
+    externa = replace(opcoes[0], chave="CH777", fonte="URG999", externa=True)
+    [ext] = score_eletrico([externa], cluster_mini, master_base)
+    assert (
+        not ext.convergiu
+        and not ext.viavel
+        and ext.motivos == ["fonte URG999 fora do cluster (sem modelo)"]
+    )
+    assert ext.to_dict()["i_disjuntor_a"] is None and ext.tempo_s == 0
+    # viável → maior margem → UCBT; sem referência (NaN) por último entre os inviáveis
+    ordem = ordenar_scores([inviaveis[0], ext, viaveis[0], folgado])
+    assert [o.chave for o in ordem] == ["CH005", "CH003", "CH003", "CH777"]
+    assert ordem[0] is folgado and ordem[2] is inviaveis[0]
+
+
+def test_cli_grafo_score(grafos, tmp_path):
+    out = tmp_path / "dss"
+    shutil.copytree(CLUSTER_MINI, out)  # modelos "já convertidos" em <out>/<CTMT>/
+    r = runner.invoke(
+        app,
+        ["grafo", "--gpkg", str(grafos["cluster"]), "--falha", "SEG001", "--score",
+         "--dss-out", str(out)],
+    )  # fmt: skip
+    assert r.exit_code == 0, r.output
+    texto = compacto(r)  # a 80 colunas o Rich dobra os cabeçalhos: só título e rodapé são estáveis
+    assert "Opçõesderestauração(2)—scoreelétricoMT" in texto
+    assert "✔2opçõesavaliadasnogêmeoMaster_DU01_base.dss" in texto
+    assert "NÃO" not in texto and "✘" not in texto
+    assert (out / "cluster_RJO001-RJO002" / "Master_DU01_base.dss").exists()
+    # com sobrecarga forçada via corrente nominal apertada: motivo impresso e "NÃO"
+    r = runner.invoke(
+        app,
+        ["grafo", "--gpkg", str(grafos["cluster"]), "--falha", "SEG001", "--score",
+         "--dss-out", str(out), "--vmin", "1.045"],
+    )  # fmt: skip
+    assert r.exit_code == 0, r.output
+    texto = compacto(r)
+    assert "NÃO" in texto and "✘CH003:VminMT" in texto
+    # sem --falha o --score é ignorado; sem modelo e sem conversão possível → erro claro
+    r = runner.invoke(app, ["grafo", "--gpkg", str(grafos["cluster"]), "--score"])
+    assert r.exit_code == 0 and "score" not in compacto(r).lower()
 
 
 @pytest.mark.skipif(not TQR0007.exists(), reason="Master real de TQR0007 ausente (bdgd-light dss)")

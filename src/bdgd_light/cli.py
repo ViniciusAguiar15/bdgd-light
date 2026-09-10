@@ -345,9 +345,40 @@ def grafo(
             help="Inclui como ties as chaves NA dentro do polígono da SE (padrão: ignora).",
         ),
     ] = False,
+    score: Annotated[
+        bool,
+        typer.Option(
+            "--score/--sem-score",
+            help="Com --falha: roda o fluxo de potência de cada opção no gêmeo OpenDSS "
+            "(twin.score_eletrico) e acrescenta as colunas elétricas MT à tabela, ordenando por "
+            "viável → margem do disjuntor → UCBT. Usa o modelo em --dss-out (converte do GPKG se "
+            "faltar).",
+        ),
+    ] = False,
+    dss_out: Annotated[
+        Path | None,
+        typer.Option(
+            "--dss-out",
+            help="Raiz dos modelos OpenDSS por CTMT (<out>/<CTMT>/) para --score. Padrão: "
+            "data/dss/gpkg.",
+        ),
+    ] = None,
+    dia: Annotated[
+        str, typer.Option("--dia", help="Tipo de dia das cargas em --score: DU, SA ou DO.")
+    ] = "DU",
+    mes: Annotated[
+        int, typer.Option("--mes", min=1, max=12, help="Mês das cargas em --score (1–12).")
+    ] = 1,
+    vmin: Annotated[
+        float, typer.Option("--vmin", help="Limite inferior de tensão MT (pu) em --score.")
+    ] = 0.93,
+    vmax: Annotated[
+        float, typer.Option("--vmax", help="Limite superior de tensão MT (pu) em --score.")
+    ] = 1.05,
 ) -> None:
     """Monta o grafo MT do alimentador (nós = PAC; arestas = trechos SSDMT e chaves UNSEMT),
-    energiza a partir do disjuntor da SE e simula falta, isolamento e restauração via ties."""
+    energiza a partir do disjuntor da SE e simula falta, isolamento e restauração via ties; com
+    --score, valida cada opção de restauração no gêmeo OpenDSS."""
     try:
         camadas = ler_camadas(gpkg)
         rede: Rede = (
@@ -383,33 +414,17 @@ def grafo(
             f"  desligados restauráveis: {len(isolamento.desligados)} nós, "
             f"{_fmt_clientes(isolamento.clientes_desligados)}"
         )
-        if opcoes:
-            tabela = Table(title=f"Opções de restauração ({len(opcoes)})")
-            for rotulo, alinhamento in [
-                ("Fechar", "left"),
-                ("Chave de", "left"),
-                ("Fonte", "left"),
-                ("TLCD", "center"),
-                ("Nós", "right"),
-                ("UCBT", "right"),
-                ("UCMT", "right"),
-                ("kVA", "right"),
-                ("UC na fonte", "right"),
-            ]:
-                tabela.add_column(rotulo, justify=alinhamento, overflow="fold")
-            for o in opcoes:
-                tabela.add_row(
-                    o.chave + (" (externa)" if o.externa else ""),
-                    o.ctmt_chave,
-                    o.fonte,
-                    "sim" if o.tlcd else "não",
-                    _fmt_int(len(o.nos)),
-                    _fmt_int(o.clientes.ucbt),
-                    _fmt_int(o.clientes.ucmt),
-                    _fmt_int(int(o.clientes.kva)),
-                    _fmt_int(o.clientes_fonte.total) if o.fonte in rede.ctmts else "?",
+        scores = None
+        if opcoes and score:
+            try:
+                scores = _score_opcoes(
+                    opcoes, rede, gpkg, dss_out, dia=dia, mes=mes, vmin=vmin, vmax=vmax
                 )
-            console.print(tabela)
+            except (FileNotFoundError, ValueError, RuntimeError, ImportError) as erro:
+                _erro(str(erro))
+                return
+        if opcoes:
+            _imprimir_opcoes(opcoes, rede, scores)
         elif isolamento.desligados:
             console.print("  [red]nenhuma chave NA restaura os nós desligados[/]")
         rede.isolate_segment(falha, aplicar=True)
@@ -850,6 +865,122 @@ def _resumir(valor, limite: int = 60) -> str:
     else:
         texto = str(valor)
     return texto if len(texto) <= limite else texto[: limite - 1] + "…"
+
+
+def _score_opcoes(opcoes, rede: Rede, gpkg: Path, dss_out: Path | None, *, dia, mes, vmin, vmax):
+    """Monta o Master base do cluster (convertendo do GPKG o que faltar) e pontua as opções."""
+    try:
+        from bdgd_light.twin import localizar_pasta, montar_master_cluster, score_eletrico
+    except ImportError as erro:
+        raise ImportError(f"{erro} — instale o extra: uv sync --extra twin") from erro
+    out = Path("data/dss/gpkg") if dss_out is None else dss_out
+    pastas = []
+    for cod in rede.ctmts:
+        pasta = localizar_pasta(out, cod)
+        if not _tem_master(pasta, dia, mes):
+            pasta = _converter_gpkg(gpkg, cod, out, dia, mes)
+        pastas.append(pasta)
+    nome = ("cluster_" if len(rede.ctmts) > 1 else "") + "-".join(rede.ctmts)
+    master = montar_master_cluster(
+        pastas, out / nome / f"Master_{dia.upper()}{mes:02d}_base.dss", dia=dia, mes=mes, nome=nome
+    )
+    inicio = time.perf_counter()
+    scores = score_eletrico(opcoes, rede, master, vmin=vmin, vmax=vmax)
+    console.print(
+        f"[green]✔[/] {len(scores)} opções avaliadas no gêmeo [bold]{master.name}[/] "
+        f"({time.perf_counter() - inicio:.1f} s)"
+    )
+    return scores
+
+
+def _fmt_pu(x: float) -> str:
+    return "—" if x != x else f"{x:.3f}".replace(".", ",")
+
+
+def _imprimir_opcoes(opcoes, rede: Rede, scores=None) -> None:
+    """Tabela das opções de restauração; com ``scores`` (twin.score_eletrico) acrescenta as
+    colunas elétricas MT e segue a ordem dos scores (viável → margem → UCBT)."""
+    if scores is None:
+        titulo = f"Opções de restauração ({len(opcoes)})"
+        colunas = [
+            ("Fechar", "left"),
+            ("Chave de", "left"),
+            ("Fonte", "left"),
+            ("TLCD", "center"),
+            ("Nós", "right"),
+            ("UCBT", "right"),
+            ("UCMT", "right"),
+            ("kVA", "right"),
+            ("UC na fonte", "right"),
+        ]
+        linhas = [(o, None) for o in opcoes]
+    else:
+        # ordem dos scores (viável → margem → UCBT); colunas de rede reduzidas para caber
+        titulo = f"Opções de restauração ({len(opcoes)}) — score elétrico MT"
+        colunas = [
+            ("Fechar", "left"),
+            ("Fonte", "left"),
+            ("TLCD", "center"),
+            ("UCBT", "right"),
+            ("UCMT", "right"),
+            ("Conv.", "center"),
+            ("I disj. A", "right"),
+            ("I nom. A", "right"),
+            ("Margem", "right"),
+            ("Vmin MT", "right"),
+            ("Sobrec. MT", "right"),
+            ("Perdas kW", "right"),
+            ("Viável", "center"),
+        ]
+        linhas = [(sc.opcao, sc) for sc in scores]
+    tabela = Table(title=titulo)
+    for rotulo, alinhamento in colunas:
+        tabela.add_column(rotulo, justify=alinhamento, overflow="fold")
+    for o, sc in linhas:
+        celulas = [o.chave + (" (externa)" if o.externa else "")]
+        if sc is None:
+            celulas += [
+                o.ctmt_chave,
+                o.fonte,
+                "sim" if o.tlcd else "não",
+                _fmt_int(len(o.nos)),
+                _fmt_int(o.clientes.ucbt),
+                _fmt_int(o.clientes.ucmt),
+                _fmt_int(int(o.clientes.kva)),
+                _fmt_int(o.clientes_fonte.total) if o.fonte in rede.ctmts else "?",
+            ]
+        else:
+            margem = sc.margem_disjuntor
+            celulas += [
+                o.fonte,
+                "sim" if o.tlcd else "não",
+                _fmt_int(o.clientes.ucbt),
+                _fmt_int(o.clientes.ucmt),
+                "sim" if sc.convergiu else "[red]não[/]",
+                "—" if sc.i_disjuntor_a != sc.i_disjuntor_a else _fmt_int(round(sc.i_disjuntor_a)),
+                "—" if sc.i_nominal_a != sc.i_nominal_a else _fmt_int(round(sc.i_nominal_a)),
+                "—" if margem != margem else f"{100 * margem:.0f} %",
+                _fmt_pu(sc.vmin_mt_pu),
+                _fmt_int(len(sc.sobrecargas_mt)),
+                "—" if sc.perdas_kw != sc.perdas_kw else _fmt_int(round(sc.perdas_kw)),
+                "[green]sim[/]" if sc.viavel else "[red]NÃO[/]",
+            ]
+        tabela.add_row(*celulas)
+    console.print(tabela)
+    if scores is not None:
+        for sc in scores:
+            if sc.motivos:
+                console.print(f"  [red]✘[/] {sc.chave}: {'; '.join(sc.motivos)}")
+        ajustes = {tuple(sc.ajustes) for sc in scores if sc.convergiu and sc.ajustes}
+        if len(ajustes) == 1 and all(sc.ajustes or not sc.convergiu for sc in scores):
+            rotulos = ", ".join(next(iter(ajustes)))
+            console.print(f"  [yellow]![/] estabilizadores em todas as opções: {rotulos}")
+        elif ajustes:
+            for sc in scores:
+                if sc.ajustes:
+                    console.print(
+                        f"  [yellow]![/] {sc.chave}: estabilizadores {', '.join(sc.ajustes)}"
+                    )
 
 
 def _tem_master(pasta: Path | None, dia: str, mes: int) -> bool:
