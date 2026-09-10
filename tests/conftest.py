@@ -35,6 +35,24 @@ def pytest_collection_finish(session: pytest.Session) -> None:
         )
 
 
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    session.config._bdgd_exitstatus = int(exitstatus)  # type: ignore[attr-defined]
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """Se a suíte usou o gêmeo, sai com ``os._exit`` (depois dos ``atexit``): a finalização da
+    biblioteca DSS C-API na thread principal derruba o processo com SIGSEGV no Linux mesmo com a
+    suíte verde (``twin.powerflow.encerrar_processo``)."""
+    if "bdgd_light.twin.powerflow" not in sys.modules:
+        return
+    from bdgd_light.twin.powerflow import encerrar_processo, motor_usado
+
+    if motor_usado():
+        encerrar_processo(getattr(config, "_bdgd_exitstatus", 0))
+
+
 @pytest.fixture(scope="session")
 def gerador() -> ModuleType:
     return carregar_gerador()

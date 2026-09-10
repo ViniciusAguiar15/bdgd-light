@@ -665,3 +665,30 @@ achados corrigidos no caminho (commit `fix(agent)`/`feat(console)` abaixo):
 2. SSE/WebSocket no lugar do polling se a fila crescer; várias sessões/operadores.
 3. Demo com OpenAI real não feita (`OPENAI_API_KEY` ausente nesta máquina); Gemini validado acima. O
    benchmark (#36) passa pela mesma API.
+4. Motor OpenDSS em subprocesso (isolar a DSS C-API da thread e da finalização do processo) — issue
+   própria aberta no fechamento abaixo.
+
+### Fechamento
+
+- **PR #47** aberto 15:02 com `Closes #35`. CI vermelho na 1ª rodada: `test (3.11)` e `test (3.12)`
+  com **245 passed, 8 skipped** e depois `exit code 139` (SIGSEGV na saída do interpretador); job
+  `console` verde. Investigação (≈1 h, tentativa 1/3):
+  - repros mínimos (import na thread `opendss` + `exit`) limpos em `python:3.12-bookworm` e
+    `ubuntu:24.04` amd64; a suíte completa num `ubuntu:24.04` limpo (uv + Python 3.12.14) reproduziu
+    **exit 139 uma vez em três** rodadas idênticas; em imagem com o venv pré-construído, 0/4 → falha
+    **não determinística** de finalização, dependente de layout/ordem de destruição;
+  - `dss._cffi_api_util.CffiApiUtil.__del__` chama a biblioteca no `exit()`; neutralizá-lo não bastou.
+    Variante com a thread do motor *daemon* **trava** na saída (a biblioteca fica sem a thread dona);
+  - hipótese: finalizador da unidade Free Pascal roda na thread principal depois que a thread do
+    motor (dona do heap/TLS) terminou → use-after-free. macOS não é afetado.
+  - **mitigação adotada** (`fix(twin)`): `twin.powerflow.encerrar_processo(codigo)` — se o motor foi
+    usado (`motor_usado()`), *flush* + `atexit._run_exitfuncs()` + `os._exit(codigo)`; chamado pelo
+    novo entry point `bdgd_light.cli:main` (captura o `SystemExit` do Typer) e por
+    `pytest_unconfigure(trylast)` em `tests/conftest.py`. Sem o motor, `sys.exit` normal. Validado
+    localmente: suíte exit 0 (253 testes), `bdgd-light --help` 0, `agente --provider fake` 0, cenário
+    inválido 1.
+- Mantenedor deixou `docs/review/PR-15.md` (aprovado; 3 pedidos para o #36/fila seguinte: modo passo a
+  passo no console, motivo de descarte por alternativa, GIF/capturas no README) e
+  `docs/review/RESULTADOS-OPENAI.md` (linhas OpenAI já incorporadas em `docs/agent.md` no `cd224bb`;
+  a observação do Ipanema entra em `docs/backlog/15-benchmark.md` no PR do #36). O pedido 2 (motivo
+  de descarte) é barato e entra no #36 junto da compactação; 1 e 3 ficam registrados como pendência.

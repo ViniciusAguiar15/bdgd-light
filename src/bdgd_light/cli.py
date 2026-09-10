@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Annotated
@@ -1970,5 +1971,21 @@ def _fmt_int(n: int) -> str:
     return f"{n:,}".replace(",", ".")
 
 
+def main() -> None:
+    """Entry point ``bdgd-light``: roda o Typer e, se o gêmeo OpenDSS foi usado, encerra o processo
+    sem a finalização da biblioteca (``twin.powerflow.encerrar_processo``; SIGSEGV na saída em
+    Linux)."""
+    codigo = 0
+    try:
+        app()
+    except SystemExit as exc:
+        codigo = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+    try:
+        from bdgd_light.twin.powerflow import encerrar_processo
+    except ImportError:  # sem o extra twin nada foi carregado
+        sys.exit(codigo)
+    encerrar_processo(codigo)
+
+
 if __name__ == "__main__":
-    app()
+    main()

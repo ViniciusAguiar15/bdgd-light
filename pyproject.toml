@@ -46,7 +46,7 @@ console = [
 ]
 
 [project.scripts]
-bdgd-light = "bdgd_light.cli:app"
+bdgd-light = "bdgd_light.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

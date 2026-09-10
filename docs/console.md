@@ -132,6 +132,14 @@ URG29983). Dois cuidados que saíram dessa rodada:
   encaminha toda chamada (e o `import`) para um `ThreadPoolExecutor` de uma thread. Os testes não
   podem importar `opendssdirect` na coleta (`importlib.util.find_spec` no lugar de `importorskip`);
   `tests/conftest.py` falha a coleta se isso voltar a acontecer.
+- **Saída do processo sem a finalização da DSS C-API.** Em Linux (CI, ubuntu 24.04) a suíte passava
+  inteira e o processo morria com `SIGSEGV` (exit 139) na saída, de forma não determinística (2/2 no
+  Actions, 1/3 em contêiner limpo, 0/4 em imagem com venv pré-construído; nunca no macOS). Causa
+  provável: o finalizador da biblioteca Free Pascal roda na thread principal em `exit()` depois que a
+  thread `opendss` (dona do heap/TLS da biblioteca) já terminou. Mitigação: se o motor foi usado,
+  `twin.powerflow.encerrar_processo` faz *flush*, roda `atexit` e sai com `os._exit(código)`; é
+  chamado pelo entry point `bdgd_light.cli:main` e por `pytest_unconfigure` em `tests/conftest.py`.
+  Solução definitiva (issue própria): motor em **subprocesso**.
 - **Aprovar = executar** no console (o operador vê e decide num clique); no MCP http o padrão
   continua "aprovar e devolver o token" para o agente/cliente executar.
 - **Sem WebSocket**: *polling* de 2 s em `/api/estado` é suficiente para a demo e evita mais um
