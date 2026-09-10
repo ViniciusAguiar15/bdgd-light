@@ -93,7 +93,7 @@ Pendente: nada. `data/feeders/` agora contém os três clusters (PDG, TQR, BMT/C
 | | |
 |---|---|
 | Branch | `feat/grafo-alimentador` (de `main` `2196a77`) |
-| PR | ver seção "PRs abertos/mergeados" no fim |
+| PR | #13 → `main` `34eab7a` (squash, CI verde em 3.11/3.12) |
 | Origem | `docs/backlog/06-grafo-alimentador.md` + "Próximo passo" de `docs/review/PR-02.md` |
 
 O que foi feito:
@@ -165,3 +165,117 @@ Resultados:
 
 Pendente: nada para a issue. Fica anotado para o #5: o gêmeo OpenDSS deve ler o estado das chaves
 deste grafo (`aberta`) em vez de `P_N_OPE` direto.
+
+## 3. Issue #5 — spike bdgd2opendss + OpenDSSDirect (21:50–22:45)
+
+| | |
+|---|---|
+| Branch | `feat/twin-opendss` (de `main` `34eab7a`) |
+| PR | ver seção "PRs abertos/mergeados" no fim |
+| Origem | `docs/backlog/05-spike-opendss.md` + item 3 do "Próximo passo" de `docs/review/PR-02.md` + observação sobre o #5 em `docs/review/PR-03.md` |
+
+**`docs/review/PR-03.md` apareceu às 22:01** (revisão do #13, aprovado): os três ajustes pedidos
+(`to_dict()` serializável em `Isolamento`/`OpcaoRestauracao`/`Rede.resumo()`; sequência explícita
+`manobras` em cada `OpcaoRestauracao`; nota em `grid-modelo.md` de que o grafo não checa capacidade)
+foram aplicados **num commit próprio nesta branch** (`9872e86 fix(grid): ajustes da revisão PR-03`),
+com teste `test_to_dict_serializavel_e_sequencia_de_manobras`; o CLI `grafo` passou a ler
+`Clientes.from_dict`. A observação sobre o #5 (registrar o fluxo **depois** da manobra FLISR) foi
+atendida abaixo; a sugestão de gerar o Master a partir do GPKG do recorte ficou documentada como
+decisão 9 de `docs/spike-opendss.md` (o bdgd2opendss só lê o `.gdb` inteiro).
+
+O que foi feito:
+
+1. **Instalação**: `uv sync --extra dev --extra twin` (extras já declarados no `pyproject.toml`; lock
+   inalterado) → bdgd2opendss 1.2.5, opendssdirect-py 0.9.4, dss-python 0.15.7. CI passa a instalar
+   `--extra twin` para rodar os testes do IEEE 13.
+2. **bdgd2opendss em TQR0007**: `bdgd2opendss.run(gdb, out, all_feeders=False, lst_feeders=["TQR0007"])`
+   converteu em **179,9 s** sem nenhum ajuste na BDGD → `data/dss/sub__10385871/TQR0007/` (122
+   arquivos, 116 MB, 36 Masters DU/SA/DO × mês). Como funcionou, **não** escrevi o conversor mínimo
+   próprio previsto como plano B.
+3. **`bdgd_light.twin`**: `convert.py` (`converter` idempotente, `localizar_pasta`, `listar_masters`,
+   `escolher_master(dia, mes)`) e `powerflow.py` (`run_powerflow(master, vmin, vmax, modo,
+   estabilizar, comandos_extra) -> PowerFlowResult` com `tensoes`, `correntes`, `violacoes`,
+   `sobrecargas`, `piores_barras`, `resumo()`; cascata `ESTABILIZADORES` registrada em `ajustes`).
+4. **CLI** `bdgd-light dss --gdb … --ctmt … [--out data/dss] [--dia DU --mes 1] [--master X.dss]
+   [--sem-fluxo] [--vmin/--vmax] [--sem-estabilizar] [--comando …] [--json] [--top]`; código de saída 2
+   se não convergir.
+5. **Fixture IEEE 13 barras** (`tests/fixtures/dss/ieee13/`, escrita a partir dos dados públicos do
+   IEEE Test Feeder) e `tests/test_twin.py` — 19 testes (convergência, tensões/perdas de referência,
+   violações, sobrecargas, cwd restaurado, `comandos_extra`, cascata de estabilizadores, erro claro de
+   comando inválido, `escolher_master`/`localizar_pasta`/`converter`, CLI com `--master`, `--json`,
+   não convergência → exit 2, `--sem-fluxo` reaproveitando conversão, fumaça em `data/dss` com
+   `skipif`). O módulo inteiro é pulado (`importorskip`) sem o extra `twin`. Suite: 100 verdes.
+6. **Docs**: `docs/spike-opendss.md`, README (estrutura + seção do comando), `docs/grid-modelo.md`
+   (referências ao #5 atualizadas).
+7. **Cluster TQR no gêmeo** (`twin/cluster.py`): converti TQR33859 e TQR33862 de uma vez
+   (`lst_feeders`, 310,4 s) para `data/dss/sub__10385871/`; `montar_master_cluster(pastas, out,
+   comandos)` escreve um Master único (Circuit no 1º CTMT + `Vsource.<CTMT>` nos demais + Redirects
+   de todos) e `comandos_manobras(rede, manobras)` traduz a sequência do grafo em DSS (`open
+   line.cmt_X`; NA → `New Line.CMT_X` + jumper `Line.TIE_X_n` até o `PAC_VIZ`). CLI `dss` ganhou
+   `--ctmt A,B,C` (cluster), `--gpkg`, `--falha`, `--restaurar`, `--abrir`, `--fechar`, linha "Por
+   fonte" e tabela "Tensão MT por alimentador"; `PowerFlowResult` ganhou `fontes` e `tensoes_mt()`.
+8. **Fixture `tests/fixtures/dss/cluster_mini/`** gerada por `gerar_cluster_mini.py`: RJO001+RJO002
+   no layout do bdgd2opendss com os mesmos PAC do grafo sintético, o que permite testar a manobra
+   FLISR ponta a ponta (grafo → DSS → fluxo) sem dados reais. +4 testes (23 no módulo; suite 104).
+
+Decisões:
+
+- **Snapshot de pico** (`set mode=snapshot` antes do `Solve`) em vez do `mode=daily` do Master; o
+  `kw` das cargas já é o pico da CRVCRG. Outros patamares via `--comando "set loadmult=…"`.
+- **O modelo bruto não converge** (nem em 100 iterações): barras BT < 0,5 pu fazem as cargas
+  `model=3` oscilar com `vminpu=0.5`. Em vez de mascarar, `run_powerflow` aplica em cascata e
+  **registra** `maxiterations=100` → `batchedit load..* vminpu=0.9` → `model=2`. TQR0007 converge no
+  2º degrau em 5 iterações / 0,5 s.
+- **Causa raiz das tensões baixas é dado da BDGD**: `RAMLIG.COMP` de 943 / 783 / 727 / 714 m para
+  ramais de 220 V com 34–65 UCBT (mediana dos ramais: 17 m; 142 > 100 m em TQR0007). `RAMLIG` não tem
+  geometria na Light, então não há como conferir pelo traçado. Documentado; não "corrigi" o dado.
+- Nós de neutro (`.4`, aterrados por reator) ficam a 0 pu e não contam como violação; só condutores
+  1–3 entram em `fases`/`violacoes`.
+- Chaves NA saem **comentadas** do bdgd2opendss e cada CTMT é um circuito próprio → resolvido com o
+  Master do cluster (`Vsource` por CTMT) e `comandos_manobras` (decisão 7 do spike).
+- **`GD_BT` fora do Master do cluster por padrão** (`gd=False`): o próprio bdgd2opendss não o inclui
+  no Master, e com ele TQR33859/TQR33862 divergem (NaN). E a Light tem GD com `COD_ID` em branco
+  (`New "generator. "`) em mais de um CTMT → "duplicate definition" (#266) vira exceção no
+  dss-python; `Set AllowDuplicates=yes` logo após a `Circuit` resolve (também cobre
+  linecodes/loadshapes idênticos repetidos entre CTMT).
+- `CargasMT_*` é opcional no cluster (TQR33862/BOCARI não tem UCMT e o bdgd2opendss não gera o
+  arquivo); `CargasBT_*` do dia/mês pedido é obrigatório.
+- Reorganizei a saída para `data/dss/sub__10385871/TQR0007/` (padrão `--out data/dss`) — tudo em
+  `data/`, fora do git.
+
+Validação com dados reais:
+
+```bash
+uv sync --extra dev --extra twin
+uv run bdgd-light dss --gdb data/Light_382_2025-12-31_V11_20260824-0926.gdb --ctmt TQR0007 \
+    --out data/dss --json data/dss/TQR0007_fluxo_DU01.json          # ≈3 min na 1ª vez
+uv run bdgd-light dss --master "data/dss/sub__10385871/TQR0007/Master_DU01_202608382_TQR0007_------1-----.dss" \
+    --sem-estabilizar                                                 # mostra a não convergência bruta (exit 2)
+uv run pytest tests/test_twin.py -q
+```
+
+```bash
+# FLISR no gêmeo (cluster TQR já convertido; ≈1,2 s cada): base, falta isolada, via PARNAIBA, via CURUMAU
+G=data/feeders/cluster_TQR0007-TQR33859-TQR33862.gpkg
+uv run bdgd-light dss --ctmt TQR0007,TQR33859,TQR33862 --out data/dss --gpkg $G
+uv run bdgd-light dss --ctmt TQR0007,TQR33859,TQR33862 --out data/dss --gpkg $G --falha 11798327
+uv run bdgd-light dss --ctmt TQR0007,TQR33859,TQR33862 --out data/dss --gpkg $G --falha 11798327 --restaurar 1007642983
+uv run bdgd-light dss --ctmt TQR0007,TQR33859,TQR33862 --out data/dss --gpkg $G --falha 11798327 --restaurar 789941518
+```
+
+Resultados (TQR0007, DU01): converge em 5 iterações (0,53 s) com `vminpu=0.9`; 6.334 barras, 20.313
+nós, 6.251 linhas, 82 trafos, 12.312 cargas; 3.077 kW / 1.395 kvar na fonte; perdas 264 kW (8,6 %);
+**MT 1,016–1,045 pu** (2.148 nós); BT: 988 nós < 0,93 pu (pior 0,369 pu em `567952367_2`, ponta do
+ramal de 943 m), 0 sobretensão; 17 sobrecargas (ramais/segmentos BT até 250 %, trafos `11071479a`
+148 % e `34450955a` 125 %). IEEE 13: 4 iterações, 0,961–1,056 pu, 112,4 kW de perdas.
+
+Resultados do FLISR no cluster (tabela completa em `docs/spike-opendss.md`): base 9.470 kW (PARNAIBA
+3.077 / CURUMAU 3.369 / BOCARI 3.024; disjuntores 149 / 190 / 144 A), 9 iterações; falta isolada →
+BOCARI cai a 1.258 kW e 60 A, 9.092 nós de fase a 0 pu; **via PARNAIBA** (tie TLCD `1007642983`) →
+PARNAIBA 4.603 kW / 221 A, MT transferida ≥ 1,004 pu, tronco a 76 %, 0 sobrecargas MT; **via
+CURUMAU** (tie TLCD `789941518`) → CURUMAU 4.900 kW / 262 A, MT transferida ≥ 1,010 pu, 0
+sobrecargas MT. As duas opções são viáveis no gêmeo; o critério de escolha (I no disjuntor × TLCD ×
+UC) fica para o score elétrico (próximo passo sugerido).
+
+Pendente: nada para a issue. Não implementado (documentado): Master a partir do GPKG do recorte
+(decisão 9 do spike) e score elétrico das opções de restauração.

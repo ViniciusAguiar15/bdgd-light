@@ -12,7 +12,7 @@ Plano completo, módulos e fases em [`docs/PLANO.md`](docs/PLANO.md).
 ```
 src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim)
   catalogo.py          IDs da BDGD por distribuidora/ano, camadas-chave, domínios TEN_NOM e TIP_UNID
-  cli.py               CLI `bdgd-light` (typer): export, inventario, vizinhos, recortar, grafo
+  cli.py               CLI `bdgd-light` (typer): export, inventario, vizinhos, recortar, grafo, dss
   ingest/export.py     exportação de camadas para GeoParquet/Parquet/GeoPackage, em lotes
   ingest/parquet.py    leitura das camadas exportadas com filtros empurrados ao pyarrow
   ingest/interligacoes.py  detecção geométrica de chaves NA de interligação entre CTMT
@@ -20,6 +20,9 @@ src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim
   ingest/recorte.py    recorte de todas as camadas por CTMT → GeoPackage + meta.json
   grid/rede.py         grafo MT (networkx) do alimentador/cluster: fonte, chaves, ties, isolamento,
                        restauração; grid/geojson.py exporta o estado em GeoJSON 4326
+  twin/convert.py      BDGD → OpenDSS via bdgd2opendss (36 Masters por CTMT); twin/powerflow.py
+                       resolve o fluxo com OpenDSSDirect (tensões, violações, perdas, sobrecargas);
+                       twin/cluster.py monta o Master do cluster e traduz manobras do grafo em DSS
 scripts/
   baixar_bdgd.py       baixa e extrai a BDGD (Light 2025 por padrão)
   listar_camadas.py    lista as camadas do .gdb
@@ -27,10 +30,11 @@ scripts/
 index.html             visor Leaflet legado (será substituído pelo console MapLibre)
 docs/                  plano, ADRs, notas da BDGD Light 2025 (bdgd-light-2025.md), regras de junção
                        entre camadas (bdgd-relacoes.md), escolha dos alimentadores (escopo-alimentadores.md),
-                       mapeamento BDGD → grafo (grid-modelo.md)
+                       mapeamento BDGD → grafo (grid-modelo.md), spike OpenDSS (spike-opendss.md)
 tests/                 pytest (fixtures sintéticas; dados reais nunca vão para o git)
   fixtures/            bdgd_mini.gpkg (BDGD sintética, 21 camadas, 3 CTMT com interligações
-                       geométricas), bairro_sintetico.geojson e gerar_fixture.py, que os (re)cria
+                       geométricas), bairro_sintetico.geojson e gerar_fixture.py, que os (re)cria;
+                       dss/ieee13/ (alimentador IEEE 13 barras para o fluxo de potência)
 data/                  dados baixados/derivados (ignorado pelo git)
 ```
 
@@ -246,6 +250,84 @@ estado_geojson(c, "estado.geojson")
 Cluster TQR na Light 2025: 2.069 nós, 46,65 km, 162 chaves, 35 ties, 16.504 UCBT, 0,1 s para montar.
 Falta no tronco de BOCARI (`11798327`): abrir 4 chaves, 2.023 UCBT desligados, 10 opções que
 restauram 1.984 via PARNAIBA (3 telecomandadas) ou CURUMAU (1 telecomandada).
+
+### `bdgd-light dss` — alimentador em OpenDSS, fluxo de potência e manobras
+
+Converte CTMT com o [bdgd2opendss](https://github.com/PauloRadatz/bdgd2opendss) (precisa do `.gdb`
+inteiro; ≈3 min) e resolve o fluxo de potência snapshot com OpenDSSDirect, reportando tensões por
+nó, violações fora de 0,93–1,05 pu, perdas e sobrecargas. Com vários `--ctmt` monta um Master único
+do cluster (uma `Vsource` por alimentador) e, com `--gpkg` (recorte do `bdgd-light recortar`),
+traduz as manobras do grafo — falta, isolamento e restauração pela tie — em comandos OpenDSS antes
+do `Solve`. Requer `uv sync --extra twin`. Relatório do spike (o que o conversor precisou,
+resultados, FLISR no gêmeo e decisões) em [`docs/spike-opendss.md`](docs/spike-opendss.md).
+
+```bash
+# converte (ou reaproveita data/dss/sub_<SUB>/TQR0007/) e resolve o Master de dia útil de janeiro
+uv run bdgd-light dss --gdb data/Light_382_2025-12-31_V11_20260824-0926.gdb --ctmt TQR0007 \
+    --out data/dss --json data/dss/TQR0007_fluxo_DU01.json
+# só o fluxo, em qualquer Master .dss, com um comando OpenDSS antes do Solve
+uv run bdgd-light dss --master "data/dss/sub__10385871/TQR0007/Master_SA07_202608382_TQR0007_------1-----.dss" \
+    --comando "set loadmult=0.6"
+# cluster TQR (modelos já convertidos em data/dss): falta no trecho 11798327 de BOCARI, isolamento
+# pelo grafo e restauração fechando a tie telecomandada 1007642983 (via PARNAIBA)
+uv run bdgd-light dss --ctmt TQR0007,TQR33859,TQR33862 --out data/dss \
+    --gpkg data/feeders/cluster_TQR0007-TQR33859-TQR33862.gpkg --falha 11798327 --restaurar 1007642983
+```
+
+| opção | padrão | descrição |
+|---|---|---|
+| `--ctmt` | — | alimentador(es) por vírgula; com mais de um, escreve `<out>/cluster_<A>-<B>…/Master_<dia><mês>_<cenário>.dss` |
+| `--gdb` | — | diretório `.gdb` da BDGD; dispensável se o modelo já estiver em `--out` |
+| `--out` | `data/dss` | raiz da saída; o modelo fica em `<out>/sub_<SUB>/<CTMT>/` com 36 Masters (DU/SA/DO × mês). Se já existir, não reconverte |
+| `--dia` / `--mes` | `DU` / `1` | Master a resolver |
+| `--master` | — | resolve direto este `.dss`, sem converter |
+| `--gpkg` | — | grafo do recorte para traduzir manobras (exigido por `--falha`, `--restaurar`, `--abrir`, `--fechar`) |
+| `--falha` | — | trecho SSDMT em falta: abre no gêmeo as chaves que o isolam (as de `grafo --falha`) |
+| `--restaurar` | — | chave NA a fechar depois do isolamento (cria a `Line` da chave + jumper até o `PAC_VIZ` da tie) |
+| `--abrir` / `--fechar` | — | chaves avulsas a manobrar antes do `Solve` (vírgula) |
+| `--sem-fluxo` | — | só converte/monta e mostra o Master escolhido |
+| `--vmin` / `--vmax` | `0.93` / `1.05` | faixa de tensão (pu) para contar violações |
+| `--sem-estabilizar` | — | não aplica a cascata `maxiterations=100` → `vminpu=0.9` → `model=2` quando não converge |
+| `--comando` | — | comando OpenDSS extra antes do `Solve` (repetível) |
+| `--json` / `--top` | — / `10` | grava resumo (com potência por fonte), piores barras e sobrecargas; tamanho das tabelas |
+
+Sai com código 2 se o fluxo não convergir. Em Python:
+
+```python
+from bdgd_light.grid import Cluster
+from bdgd_light.twin import (
+    comandos_manobras,
+    converter,
+    escolher_master,
+    montar_master_cluster,
+    run_powerflow,
+)
+
+pasta, segundos = converter(
+    "data/Light_382_2025-12-31_V11_20260824-0926.gdb", "TQR0007", "data/dss"
+)
+r = run_powerflow(escolher_master(pasta, "DU", 1))  # snapshot de pico
+r.convergiu, r.ajustes, r.v_min_pu, r.v_max_pu, r.perdas_kw
+r.violacoes  # nós de fase fora da faixa   r.sobrecargas  # elementos > 100 % da ampacidade
+r.tensoes  # barra, no, fase, kv_base, v_pu   r.correntes  # elemento, i_max_a, i_nominal_a, carregamento_pct
+
+# cluster + manobras do grafo no gêmeo
+rede = Cluster.from_gpkg("data/feeders/cluster_TQR0007-TQR33859-TQR33862.gpkg")
+opcao = rede.restore_options("11798327")[0]  # melhor opção (TLCD primeiro)
+master = montar_master_cluster(
+    [f"data/dss/sub__10385871/{c}" for c in rede.ctmts],
+    "data/dss/cluster_TQR/Master_flisr.dss",
+    comandos=comandos_manobras(rede, opcao.manobras),
+)
+r = run_powerflow(master)
+r.fontes  # kW/kvar por Vsource   r.tensoes_mt()  # nós MT com a coluna ctmt
+```
+
+TQR0007 (Light 2025, Master DU01): 6.334 barras, 12.312 cargas, converge em 5 iterações (0,5 s) com
+`vminpu=0.9`; MT entre 1,016 e 1,045 pu; 988 nós BT abaixo de 0,93 pu, concentrados em ramais de
+ligação com centenas de metros cadastrados na própria BDGD. Cluster TQR (3 alimentadores, 18.554
+barras, 33.340 cargas): 9 iterações, 1,2 s; a restauração de BOCARI via PARNAIBA leva o disjuntor de
+149 A a 221 A e a MT transferida fica em ≥ 1,004 pu, sem sobrecarga na MT.
 
 ## Fluxo de trabalho
 
