@@ -99,7 +99,7 @@ def compactar_zona(r: Mapping[str, Any]) -> dict[str, Any]:
     zona = saida.get("zona")
     if isinstance(zona, Mapping):
         z = dict(zona)
-        _contar_nos(z, "nos")
+        _contar_nos(z, "nos", "trechos")
         saida["zona"] = z
     for campo in ("manobras", "sequencia"):
         if campo in saida:
