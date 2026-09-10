@@ -184,12 +184,14 @@ Studio locais…) configurado por `BDGD_LLM_ENDPOINT`/`BDGD_LLM_TOKEN`/`BDGD_LLM
 `GitHubModelsClient`, mantido como *preset* nomeado que falha com `ServicoIndisponivelError`
 explicando a aposentadoria; e `FakeLLMClient`, determinístico, para testes — nenhuma chamada de
 rede na suite. O laço de *tool calling* (`conversar`) devolve o histórico serializável que vira o
-log de auditoria da decisão 6. Provedor recomendado para a F3: Azure AI Foundry com `gpt-4.1-mini`
-(destino indicado pelo GitHub, mesmo formato de API) ou Ollama local para desenvolvimento offline.
+log de auditoria da decisão 6. ~~Provedor recomendado para a F3: Azure AI Foundry com
+`gpt-4.1-mini` ou Ollama local~~ → **ADR-003** (issue #31): perfis nomeados `openai` (padrão,
+`OPENAI_API_KEY`), `gemini` (endpoint compatível, `GEMINI_API_KEY`), `ollama` e `fake`.
 
-**Consequências.** Troca de provedor sem tocar no orquestrador (só URL, token e id do modelo);
-testes rápidos e offline; sem SDK de provedor. Perde-se o "de graça com o token do Actions": rodar o
-agente no CI exigirá um *secret* `BDGD_LLM_TOKEN`; até lá o CI usa só o fake. Issue #7.
+**Consequências.** Troca de provedor sem tocar no orquestrador (só URL, token e id do modelo — ou o
+nome do perfil); testes rápidos e offline; sem SDK de provedor. Perde-se o "de graça com o token do
+Actions": o job `llm-smoke` do CI só chama o provedor real quando os *secrets*
+`OPENAI_API_KEY`/`GEMINI_API_KEY` existem; `pytest` usa só o fake. Issues #7 e #31.
 
 ## 11. Benchmark e simulador como parte do produto (F4)
 

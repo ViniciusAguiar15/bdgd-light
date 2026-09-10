@@ -68,30 +68,39 @@ Copilot. Não há limite de taxa nem de tokens a observar — o serviço não ex
    envio para provedores/modelos que rejeitam o parâmetro (ex.: família `o1`/`o3`).
 7. **Modelo padrão**: sem GitHub Models não há catálogo "grátis" a recomendar. Padrão do cliente
    genérico: `gpt-4.1-mini` (id da OpenAI e do Azure AI Foundry, *tool calling* nativo, barato);
-   `BDGD_LLM_MODEL` sobrescreve. Recomendação para a F3, em ordem: (a) **Azure AI Foundry** com
-   `gpt-4.1-mini` (é para onde o GitHub aponta; mesmo formato de API); (b) **Ollama local** com um
-   modelo que suporte ferramentas (`llama3.1:8b`, `qwen2.5:7b`) para desenvolvimento offline e CI
-   sem segredo; (c) OpenAI direto. Medir custo/tokens no benchmark (F4) com o `Uso` que o cliente
-   já devolve.
+   `BDGD_LLM_MODEL` sobrescreve. ~~Recomendação para a F3: Azure AI Foundry, Ollama ou OpenAI
+   direto~~ → **decidido na ADR-003** (issue #31): **OpenAI é o padrão**, **Gemini** pelo endpoint
+   compatível é o segundo provedor (benchmark), **Ollama** para desenvolvimento offline. Custo/tokens
+   medidos no §6 e, no benchmark (F4), com o `Uso` e o `segundos` que a `Conversa` devolve.
+8. **Perfis nomeados** (ADR-003): `PERFIS = {openai, gemini, ollama, fake}` preenchem endpoint,
+   modelo padrão e o nome da variável do token (`OPENAI_API_KEY`, `GEMINI_API_KEY`); escolhe-se
+   por `BDGD_LLM_PROVIDER` ou `bdgd-light llm --provider`. `cliente_do_ambiente()` resolve
+   perfil → `BDGD_LLM_ENDPOINT` → `OPENAI_API_KEY` → `GEMINI_API_KEY` → `GITHUB_TOKEN`.
 
 ## 3. Como usar
 
 ```bash
 uv sync --extra agent                                   # httpx (+ mcp, pydantic para a F3)
 uv run bdgd-light llm --fake "Quanto é 2 + 3?"          # sem rede: ⚙ soma({"a": 2.0, "b": 3.0}) → 5.0
-uv run pytest tests/test_llm.py -q                      # 28 testes, nenhum acesso à rede
+uv run pytest tests/test_llm.py -q                      # 33 testes, nenhum acesso à rede
 
-# com um provedor compatível com a OpenAI
+# perfis da ADR-003: só a chave no ambiente (nunca no código nem no git)
+export OPENAI_API_KEY=...                               # perfil openai (padrão), gpt-4.1-mini
+export GEMINI_API_KEY=...                               # perfil gemini, gemini-2.5-flash
+uv run bdgd-light llm "Quanto é 2 + 3?"                 # usa openai; sem OPENAI_API_KEY, gemini
+uv run bdgd-light llm --provider gemini "Quanto é 2 + 3?" --json data/conversa.json
+uv run bdgd-light llm --provider openai --modelo gpt-4.1 "Quanto é 2 + 3?"
+uv run scripts/listar_modelos.py --provider gemini --tools   # catálogo: quem suporta tool calling
+BDGD_LLM_PROVIDER=gemini uv run bdgd-light llm "Quanto é 2 + 3?"  # mesmo efeito de --provider
+
+# outro provedor compatível com a OpenAI (Azure AI Foundry, OpenRouter…): endpoint + token soltos
 export BDGD_LLM_ENDPOINT=https://SEU-RECURSO.openai.azure.com/openai/v1/chat/completions
-export BDGD_LLM_TOKEN=...                               # nunca no código nem no git
-export BDGD_LLM_MODEL=gpt-4.1-mini
-uv run scripts/listar_modelos.py --tools                # quem suporta tool calling
-uv run bdgd-light llm "Quanto é 2 + 3?" --json data/conversa.json
+export BDGD_LLM_TOKEN=...   BDGD_LLM_MODEL=gpt-4.1-mini
+uv run bdgd-light llm "Quanto é 2 + 3?"
 
-# Ollama local (sem token real; o cliente exige a variável, qualquer valor serve)
+# Ollama local (perfil sem chave; o cliente manda "Bearer ollama")
 ollama pull llama3.1:8b
-BDGD_LLM_ENDPOINT=http://localhost:11434/v1/chat/completions BDGD_LLM_TOKEN=ollama \
-  BDGD_LLM_MODEL=llama3.1:8b uv run bdgd-light llm "Quanto é 2 + 3?"
+uv run bdgd-light llm --provider ollama "Quanto é 2 + 3?"
 
 # preset GitHub Models (aposentado): mostra o 410 com a explicação
 GITHUB_TOKEN=$(gh auth token) uv run bdgd-light llm "Quanto é 2 + 3?"
@@ -127,13 +136,15 @@ conversa.to_dict()
   agente continua programando contra `LLMClient`. A `ADR-001` (decisão 10) ganhou a nota de
   alteração apontando para este documento.
 - O que o GitHub Models daria de graça (catálogo multi-fornecedor com um token que o repositório
-  já tem no Actions) precisa ser substituído por um segredo de provedor no repositório
-  (`BDGD_LLM_TOKEN`) quando a F3 rodar o agente no CI; até lá, o CI usa só o `FakeLLMClient`.
+  já tem no Actions) foi substituído pelos segredos `OPENAI_API_KEY`/`GEMINI_API_KEY` (ADR-003):
+  `pytest` continua só com o `FakeLLMClient`/`MockTransport`, e o job `llm-smoke` do CI faz uma
+  chamada real por provedor apenas quando o segredo estiver cadastrado (`gh secret set …`).
 
 ## 5. Próximos passos (F3)
 
-1. Escolher o provedor (recomendação: Azure AI Foundry + `gpt-4.1-mini`, ou Ollama para
-   desenvolvimento) e guardar `BDGD_LLM_TOKEN` como *secret* do repositório.
+1. ~~Escolher o provedor~~ (feito: ADR-003 — OpenAI padrão, Gemini para comparação, Ollama
+   offline); falta o mantenedor cadastrar `OPENAI_API_KEY`/`GEMINI_API_KEY` como *secrets* do
+   repositório para ligar o `llm-smoke`.
 2. Expor as ferramentas do grafo/gêmeo (`load_feeder`, `downstream_customers`, `propose_flisr`,
    `run_powerflow`…) como `Ferramenta` — ou, conforme a decisão 9 da ADR, via servidor MCP com o
    mesmo `ToolSpec`.
@@ -141,3 +152,29 @@ conversa.to_dict()
    registrar a aprovação/rejeição humana e acrescentar o verificador determinístico
    (`twin.score_eletrico`, issue #18) antes de qualquer ferramenta de escrita.
 4. Suporte a *streaming* e a mensagens multimodais só se o console precisar.
+
+## 6. Chamada real por perfil (ADR-003, 2026-09-10)
+
+Medidas de `uv run bdgd-light llm --provider … "Quanto é 2 + 3?"` (sistema padrão + ferramenta
+`soma`; 2 rodadas: *tool call* e resposta), na noite 2 do modo autônomo. Preços das tabelas públicas
+dos provedores em 2026-09-10 (por milhão de tokens; conferir antes de orçar), custo calculado sobre
+o `uso_total` da conversa.
+
+| perfil | modelo | rodadas | tokens (entrada/saída) | latência | custo estimado | observações |
+|---|---|---|---|---|---|---|
+| `gemini` | `gemini-2.5-flash` | 2 | 198 / 31 (277) | 1,4 s · 1,8 s · 1,8 s (3 chamadas) | ≈ US$ 0,00014 (0,30 + 2,50) | chamou `soma({"b": 3, "a": 2})` (inteiros) e respondeu "A soma de 2 e 3 é 5."; sem 429 |
+| `gemini` | `gemini-2.5-flash-lite` | 1 | 117 / 0 | — | — | `message` **vazia** (sem `content` nem `tool_calls`, `finish_reason: stop`) → `RespostaInvalidaError`; descartado |
+| `openai` | `gpt-4.1-mini` | — | — | — | ≈ US$ 0,0002 esperado (0,40 + 1,60) | **pendente**: `OPENAI_API_KEY` não estava no ambiente da noite; mantenedor roda `uv run bdgd-light llm --provider openai "Quanto é 2 + 3?" --json data/relatorios/llm_openai.json` |
+| `fake` | `fake` | 2 | 99 | 0,0 s | 0 | referência dos testes e do `llm-smoke` |
+
+Catálogo: `uv run scripts/listar_modelos.py --provider gemini --tools` → `Origem:
+https://generativelanguage.googleapis.com/v1beta/openai/models`, **40 modelos** com ids
+`models/gemini-…` (`owned_by: google`), todos marcados com *tool calling* pela heurística por família
+(a lista inclui variantes de imagem/TTS/áudio que não servem ao agente; filtre por `gemini-2.5-flash`,
+`gemini-2.5-pro`, `gemini-3…`).
+
+Limites de taxa: nenhuma resposta 429 nas 4 chamadas; os limites do Gemini dependem do *tier* da chave
+(tabela em ai.google.dev/gemini-api/docs/rate-limits) e os da OpenAI do *usage tier* da conta. Com
+`max_tentativas > 1` o cliente respeita `Retry-After`. Para o benchmark (#36) vale registrar, por
+tarefa, `uso_total` e `segundos` de cada `Conversa` — ambos já saem em `to_dict()` e no
+`conversa.fim` do log de auditoria.

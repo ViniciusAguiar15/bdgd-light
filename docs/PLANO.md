@@ -10,7 +10,7 @@ COD agêntico para a Light (Rio de Janeiro), com dupla finalidade: demo funciona
 
 ## Stack
 Python 3.11+ (geopandas, networkx, OpenDSSDirect.py, bdgd2opendss, typer, pytest, ruff) ·
-MapLibre GL JS + PMTiles no GitHub Pages · servidor MCP em Python · LLM via GitHub Models (abstraído) ·
+MapLibre GL JS + PMTiles no GitHub Pages · servidor MCP em Python · LLM atrás de `LLMClient` (OpenAI padrão, Gemini e Ollama por perfil — ADR-003; era GitHub Models, aposentado) ·
 GitHub Issues/Projects + Copilot coding agent + Actions + Codespaces.
 
 ## Módulos

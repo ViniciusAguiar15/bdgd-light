@@ -28,7 +28,8 @@ src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim
                        resolve o fluxo com OpenDSSDirect (tensões, violações, perdas, sobrecargas);
                        twin/cluster.py monta o Master do cluster e traduz manobras do grafo em DSS
   agent/llm.py         interface LLMClient (chat com tool calling), FakeLLMClient para testes,
-                       OpenAICompatClient (qualquer API chat/completions) e preset GitHubModelsClient;
+                       OpenAICompatClient (qualquer API chat/completions) com perfis openai/gemini/
+                       ollama/fake (ADR-003) e preset GitHubModelsClient (aposentado);
                        agent/audit.py é o log de auditoria encadeado por hash (JSON Lines)
 console/               console do operador: Vite + TypeScript + MapLibre GL JS lendo PMTiles
                        (public/tiles/exemplo_{tijuca,ipanema}.pmtiles = clusters da demo; exemplo.pmtiles
@@ -41,8 +42,8 @@ scripts/
   listar_modelos.py    lista os modelos do provedor LLM configurado (destaca tool calling)
 index.html             visor Leaflet legado (arrastar o GeoJSON de scripts/converter.py); o console
                        novo é console/
-docs/                  plano, ADRs (adr/ADR-001-stack.md, ADR-002-console-maplibre-pmtiles.md), notas da
-                       BDGD Light 2025 (bdgd-light-2025.md),
+docs/                  plano, ADRs (adr/ADR-001-stack.md, ADR-002-console-maplibre-pmtiles.md,
+                       ADR-003-provedor-llm.md), notas da BDGD Light 2025 (bdgd-light-2025.md),
                        regras de junção entre camadas (bdgd-relacoes.md), escolha dos alimentadores
                        (escopo-cidade.md = v3, clusters Tijuca e Ipanema; escopo-alimentadores.md = v2,
                        cluster TQR), mapeamento BDGD → grafo (grid-modelo.md),
@@ -412,29 +413,34 @@ Os tiles dos clusters da demo ficam versionados em `console/public/tiles/exemplo
 cluster_tijuca …`). Ressalva: `PONNOT`/`UCBT` trazem postes referenciados por `UCBT_tab.PN_CON` fora
 do bairro, então o bbox do PMTiles é maior que o cluster — o console usa centro/zoom fixos por cenário.
 
-### `bdgd-light llm` — cliente LLM com *tool calling* (spike da issue #7)
+### `bdgd-light llm` — cliente LLM com *tool calling* (spike da issue #7, perfis da ADR-003)
 
 Exemplo mínimo do agente: manda a pergunta ao modelo com a ferramenta `soma(a, b)` disponível,
-executa as chamadas que ele pedir e imprime a resposta. Precisa do extra `agent`
-(`uv sync --extra agent`).
+executa as chamadas que ele pedir e imprime a resposta, os tokens e a latência. Precisa do extra
+`agent` (`uv sync --extra agent`). Provedores por **perfil**
+([ADR-003](docs/adr/ADR-003-provedor-llm.md)): `openai` (padrão, `gpt-4.1-mini`), `gemini`
+(`gemini-2.5-flash` pelo endpoint compatível com a OpenAI), `ollama` (local) e `fake`.
 
 ```bash
 uv run bdgd-light llm --fake "Quanto é 2 + 3?"                       # cliente fake, sem rede
 #   ⚙ soma({"a": 2.0, "b": 3.0}) → 5.0
 #   O resultado é 5.
-export BDGD_LLM_ENDPOINT=https://SEU-PROVEDOR/v1/chat/completions   # API compatível com a OpenAI
-export BDGD_LLM_TOKEN=...   BDGD_LLM_MODEL=gpt-4.1-mini              # segredos só por ambiente
-uv run bdgd-light llm "Quanto é 2 + 3?" --json data/conversa.json    # grava a conversa completa
-uv run scripts/listar_modelos.py --tools                             # modelos com tool calling
+export OPENAI_API_KEY=...  GEMINI_API_KEY=...                        # segredos só por ambiente
+uv run bdgd-light llm "Quanto é 2 + 3?" --json data/conversa.json    # openai (padrão); grava a conversa
+uv run bdgd-light llm --provider gemini "Quanto é 2 + 3?"            # gemini-2.5-flash · 277 tokens, 1.8 s
+uv run scripts/listar_modelos.py --provider gemini --tools           # catálogo: modelos com tool calling
+export BDGD_LLM_ENDPOINT=https://SEU-PROVEDOR/v1/chat/completions   # outro endpoint compatível…
+export BDGD_LLM_TOKEN=...   BDGD_LLM_MODEL=gpt-4.1-mini              # …com token e modelo soltos
 uv run bdgd-light audit data/audit/llm.jsonl --mostrar 5             # confere o log de auditoria
 ```
 
 | opção | padrão | descrição |
 |---|---|---|
 | `PERGUNTA` | — | mensagem do usuário |
-| `--fake` | off | `FakeLLMClient` determinístico que imita um modelo chamando `soma` |
-| `--endpoint` | `$BDGD_LLM_ENDPOINT` | URL `…/chat/completions`; sem ela e com `GITHUB_TOKEN`, usa o preset GitHub Models |
-| `--modelo` | `$BDGD_LLM_MODEL` | id do modelo |
+| `--provider` | `$BDGD_LLM_PROVIDER`, senão a primeira chave presente (`OPENAI_API_KEY` → `GEMINI_API_KEY`) | perfil `openai`, `gemini`, `ollama` ou `fake` |
+| `--fake` | off | atalho de `--provider fake` (`FakeLLMClient` determinístico que imita um modelo chamando `soma`) |
+| `--endpoint` | `$BDGD_LLM_ENDPOINT` | URL `…/chat/completions` de outro provedor compatível (token em `BDGD_LLM_TOKEN`); ignora `--provider` |
+| `--modelo` | `$BDGD_LLM_MODEL`, senão o do perfil | id do modelo (`gpt-4.1`, `gpt-5`, `gemini-2.5-pro`…) |
 | `--sistema` | assistente do COD | mensagem de sistema |
 | `--json` | — | grava mensagens, chamadas de ferramenta, resultados e uso de tokens |
 | `--audit` | `data/audit/llm.jsonl` | log de auditoria só de acréscimo (ADR-001, decisão 6); `--sem-audit` desliga |
@@ -447,13 +453,15 @@ removida ou reordenada. É a base do RACI-A e do benchmark (tokens/pass@1).
 
 O **GitHub Models foi aposentado em 30/07/2026** (a API responde `410
 github_models_retirement_brownout`); `GitHubModelsClient` continua como *preset* que falha com uma
-mensagem clara, e o cliente real é `OpenAICompatClient` (Azure AI Foundry, OpenAI, Ollama local…).
-Detalhes, limites e recomendação em [`docs/spike-llm.md`](docs/spike-llm.md). Em Python:
+mensagem clara, e o cliente real é `OpenAICompatClient` (OpenAI, Gemini, Ollama, Azure AI Foundry…).
+Medidas da chamada real (modelo, latência, tokens, custo) em [`docs/spike-llm.md`](docs/spike-llm.md)
+§6. No CI, o job `llm-smoke` faz uma chamada real por provedor só se o mantenedor cadastrar os
+segredos (`gh secret set OPENAI_API_KEY`, `gh secret set GEMINI_API_KEY`). Em Python:
 
 ```python
 from bdgd_light.agent import Message, SOMA, cliente_do_ambiente, conversar, fake_soma
 
-cliente = fake_soma()  # ou cliente_do_ambiente() com BDGD_LLM_ENDPOINT/BDGD_LLM_TOKEN
+cliente = fake_soma()  # ou cliente_do_ambiente(provider="gemini"), ou cliente_por_perfil("openai")
 conversa = conversar(cliente, [Message.user("Quanto é 2 + 3?")], [SOMA])
 conversa.resposta.content  # 'O resultado é 5.'
 conversa.to_dict()  # histórico serializável
@@ -462,7 +470,7 @@ from bdgd_light.agent import AuditLog
 
 log = AuditLog("data/audit/llm.jsonl")  # continua a cadeia se o arquivo existir
 conversa = conversar(cliente, [Message.user("Quanto é 2 + 3?")], [SOMA], audit=log)
-conversa.hash_auditoria, conversa.uso_total  # hash do último registro, tokens somados
+conversa.hash_auditoria, conversa.uso_total, conversa.segundos  # hash, tokens somados, latência
 AuditLog.verificar_arquivo("data/audit/llm.jsonl")  # nº de registros ou AuditError
 ```
 
