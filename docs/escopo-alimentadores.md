@@ -30,6 +30,11 @@ Bbox 4326 aproximado: lon −43,450 a −43,373; lat −22,932 a −22,905 (Taqu
 Cenário FLISR de referência: falta em BOCARI (`TQR33862`), que tem duas rotas de restauração telecomandadas
 (por PARNAIBA e por CURUMAU) — o agente compara as duas no OpenDSS.
 
+**Métricas de decisão (MVP): MT, não BT.** O gêmeo OpenDSS reproduz fielmente ramais de ligação (`RAMLIG.COMP`)
+de 700–900 m em 220 V cadastrados na BDGD, que derrubam a BT abaixo de 0,5 pu em algumas pontas e geram as
+sobrecargas reportadas; são dado suspeito, não erro de conversão (`docs/spike-opendss.md`). O veredito de uma
+manobra usa tensão MT (0,93–1,05 pu) e corrente no disjuntor/tronco (`twin.score_eletrico`, issue #18).
+
 ## Alternativa: cluster BMT/CBI — SETD Boca do Mato + SETD Cachambi (Méier)
 `BMT0001` LDA DEPAIVA (6,5 km, 17 chaves telecomandadas), `BMT29737` LDA AVEMAR (5,3 km), `CBI33798` LDA RABELO
 (5,8 km). 10 ties de campo (3 telecomandadas), **duas subestações** — menor e mais rápido no OpenDSS, e mostra
