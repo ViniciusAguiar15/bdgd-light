@@ -19,7 +19,14 @@ pytest.importorskip("yaml")
 
 from rich.console import Console  # noqa: E402
 
-from bdgd_light.agent import FakeLLMClient, Text, ToolCall, ToolCalls  # noqa: E402
+from bdgd_light.agent import (  # noqa: E402
+    FakeLLMClient,
+    RespostaVaziaError,
+    Text,
+    ToolCall,
+    ToolCalls,
+    Uso,
+)
 from bdgd_light.agent.orquestrador import (  # noqa: E402
     EXEMPLOS_PADRAO,
     FERRAMENTAS_MODELO,
@@ -341,6 +348,26 @@ def test_roteiro_esgota_rodadas_registra_erro(sessao, simulador):
     ex = orq.executar_evento(ev)
     assert ex.erro and ex.proposta is None and ex.rodadas >= 3
     assert [r["tipo"] for r in registros(sessao)][-1] == "agente.fim"
+
+
+def test_provedor_cai_no_meio_contabiliza_tokens_e_rodadas(sessao, simulador):
+    # Gemini: MALFORMED_FUNCTION_CALL repetido após isolate_fault — a execução falha, mas o custo
+    # (tokens cobrados, rodadas, tempo) do que já foi conversado tem de aparecer na Execucao
+    class Cai(FakeLLMClient):
+        def chat(self, mensagens, tools=()):
+            if not self._fila:
+                raise RespostaVaziaError("MALFORMED_FUNCTION_CALL", uso=Uso(300, 0, 300))
+            return super().chat(mensagens, tools)
+
+    cliente = Cai([tc("locate_fault"), tc("isolate_fault")])
+    ex = Orquestrador(sessao, cliente, provider="fake", replanejamentos=0).executar_evento(
+        simulador.falta_permanente("SEG001")
+    )
+    assert ex.erro and "MALFORMED" in ex.erro and ex.proposta is None
+    assert ex.rodadas == 3 and ex.sequencia == ["locate_fault", "isolate_fault"]
+    assert ex.uso["informado"] and ex.uso["prompt_tokens"] >= 300
+    tipos = [r["tipo"] for r in registros(sessao)]
+    assert "conversa.erro" in tipos and tipos[-1] == "agente.fim"
 
 
 # -- operador fake por tipo de evento --------------------------------------------------------------

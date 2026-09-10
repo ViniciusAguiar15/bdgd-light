@@ -926,13 +926,23 @@ class Orquestrador:
 
     def _conversar(self, historico, ferramentas, execucao: Execucao, usos: list[Uso]) -> Conversa:
         chamadas_antes = len(self._chamadas)
-        conversa = conversar(
-            self.cliente,
-            historico,
-            ferramentas,
-            max_rodadas=self.max_rodadas,
-            audit=self.audit,
-        )
+        try:
+            conversa = conversar(
+                self.cliente,
+                historico,
+                ferramentas,
+                max_rodadas=self.max_rodadas,
+                audit=self.audit,
+            )
+        except LLMError as exc:
+            parcial = getattr(exc, "parcial", None)
+            if parcial is not None:  # provedor caiu no meio: contabiliza o que já foi gasto
+                execucao.rodadas += parcial.rodadas
+                ferramentas_s = sum(c.get("segundos", 0.0) for c in self._chamadas[chamadas_antes:])
+                execucao.segundos_llm += max(0.0, parcial.segundos - ferramentas_s)
+                execucao.segundos_ferramentas += ferramentas_s
+                usos.extend(parcial.usos)
+            raise
         execucao.rodadas += conversa.rodadas
         # conversa.segundos inclui a execução das ferramentas; o tempo do LLM é o restante
         ferramentas_s = sum(c.get("segundos", 0.0) for c in self._chamadas[chamadas_antes:])

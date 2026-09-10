@@ -33,6 +33,7 @@ from bdgd_light.agent import (  # noqa: E402
     ToolCall,
     ToolCalls,
     ToolSpec,
+    Uso,
     cliente_do_ambiente,
     cliente_por_perfil,
     conversar,
@@ -325,14 +326,40 @@ def test_openai_compat_client_repete_resposta_vazia_malformed_function_call():
     )
     assert cliente.chat([Message.user("x")]).content == "ok"
     assert len(pedidos) == 2 and pausas == [1.0]
+    # a repetição leva um lembrete extra (só no pedido repetido), não o mesmo payload
+    primeiro, segundo = (json.loads(p.content)["messages"] for p in pedidos)
+    assert len(primeiro) == 1 and len(segundo) == 2
+    assert segundo[-1]["role"] == "user" and "malformada" in segundo[-1]["content"]
 
     mock2, pedidos2 = transporte([(200, vazia), (200, vazia)])
     dois = OpenAICompatClient(
         ENDPOINT, token="t", max_tentativas=2, dormir=lambda _s: None, transporte=mock2
     )
-    with pytest.raises(RespostaVaziaError, match="MALFORMED_FUNCTION_CALL"):
+    with pytest.raises(RespostaVaziaError, match="MALFORMED_FUNCTION_CALL") as info:
         dois.chat([Message.user("x")])
     assert len(pedidos2) == 2
+    # as duas tentativas falhas custaram tokens: a exceção carrega a soma
+    assert info.value.uso == Uso(20, 0, 20)
+
+
+def test_conversar_anexa_parcial_quando_o_provedor_falha_no_meio():
+    class Cai:
+        modelo = "m"
+
+        def __init__(self):
+            self.n = 0
+
+        def chat(self, mensagens, tools=()):
+            self.n += 1
+            if self.n == 1:
+                return ToolCalls((ToolCall("c1", "soma", {"a": 1, "b": 2}),), uso=Uso(5, 1, 6))
+            raise RespostaVaziaError("vazia", uso=Uso(7, 0, 7))
+
+    with pytest.raises(RespostaVaziaError) as info:
+        conversar(Cai(), [Message.user("x")], [SOMA], max_rodadas=4)
+    parcial = info.value.parcial
+    assert parcial.rodadas == 2 and parcial.ferramentas_executadas == 1
+    assert parcial.usos == [Uso(5, 1, 6), Uso(7, 0, 7)] and parcial.segundos >= 0
 
 
 def test_cliente_por_perfil_repete_por_padrao(monkeypatch):
