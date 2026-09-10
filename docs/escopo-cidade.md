@@ -1,5 +1,10 @@
 # Escopo v3 — panorama da cidade do Rio e opções por bairro
 
+> **Tabela por região desatualizada para ties de SE.** Os números de "ties TLCD" abaixo foram calculados
+> antes da folga `EM_SUB` de 50 m (PR #37): chaves NA no pátio da SE (barras não modeladas) ainda contam
+> como ties de campo — Ipanema/Leblon, por exemplo, tinha 35/36 assim no LDS 9210. Regeneração do
+> inventário e da tabela: #39.
+
 Análise (2026-09-10) sobre `data/inventario_ctmt.csv` + interligações **de campo** (fora de SE), agrupando os
 1.405 alimentadores do município por proximidade a bairros de referência. Números: n = alimentadores,
 LDA = aéreos, LDS = subterrâneos, ties = interligações de campo telecomandadas.

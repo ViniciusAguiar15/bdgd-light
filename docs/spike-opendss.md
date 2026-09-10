@@ -89,6 +89,11 @@ bdgd2opendss arrasta customtkinter, plotly, xlsxwriter e holidays, ~40 MB).
    mesmo circuito isso vira "duplicate element definition" (#266), que o dss-python trata como
    exceção — por isso o Master do cluster tem `Set AllowDuplicates=yes` logo após a `Circuit` (também
    cobre linecodes/loadshapes repetidos entre CTMT, que são definições idênticas).
+   - **Bancos de unidades monofásicas (`UNTRMT.TIP_TRAFO = DF`/`DA`)** saem do bdgd2opendss 1.2.5
+     como `phases=3` com barras de 2 nós (aterra um vértice do delta: 64 % de perdas e 0,2 pu na BT
+     de Tijuca). `twin.corrigir_bancos_monofasicos` reescreve como `phases=1 kvs=[13.2 0.127]`; caso
+     mínimo em `tests/fixtures/dss/bancos_monofasicos.dss`; reportado em
+     [PauloRadatz/bdgd2opendss#35](https://github.com/PauloRadatz/bdgd2opendss/issues/35).
 9. **Master a partir do GPKG do recorte** (observação da PR-03): o bdgd2opendss só lê o `.gdb`
    inteiro (`os.listdir` + 18 tabelas, sem filtro espacial), então o gêmeo ainda parte do GDB e não
    do `data/feeders/<CTMT>.gpkg`. Para o spike está ok (a conversão é idempotente e o CLI reaproveita
