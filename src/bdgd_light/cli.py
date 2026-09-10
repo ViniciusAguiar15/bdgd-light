@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Annotated
@@ -895,6 +896,14 @@ def mcp(
     ] = Path("data/agent"),
     dia: Annotated[str, typer.Option("--dia", help="Tipo de dia das cargas: DU, SA ou DO.")] = "DU",
     mes: Annotated[int, typer.Option("--mes", min=1, max=12, help="Mês das cargas.")] = 1,
+    sem_segredo: Annotated[
+        bool,
+        typer.Option(
+            "--sem-segredo",
+            help="Aceita aprovações HTTP só com X-Operador, sem o segredo BDGD_CONSOLE_TOKEN "
+            "(demo local). Sem a flag e sem a variável, as rotas de decisão respondem 503.",
+        ),
+    ] = False,
 ) -> None:
     """Sobe o servidor MCP com as ferramentas de rede (grafo + gêmeo OpenDSS) para um agente:
     load_cluster, get_topology, inject_fault, locate/isolate_fault, restore_options (com score
@@ -902,6 +911,7 @@ def mcp(
     aprovação humana (`bdgd-light aprovar`). Toda chamada vai para o log de auditoria."""
     try:
         from bdgd_light.mcp_server import SessaoCOD
+        from bdgd_light.mcp_server.humano import Autorizador
         from bdgd_light.mcp_server.servidor import descritores, servir
     except ImportError as erro:
         _erro(f"{erro} — instale o extra: uv sync --extra agent")
@@ -931,16 +941,30 @@ def mcp(
             f"{r['resumo']['chaves']} chaves, {r['resumo']['ties']} ties; religadores "
             f"{', '.join(f'{k}={v}' for k, v in r['religadores'].items())}"
         )
+    autorizador = Autorizador.do_ambiente(exigir_segredo=not sem_segredo)
     endereco = f" em http://{host}:{porta}/mcp · aprovação: POST /propostas/<id>/aprovar"
     saida.print(
         f"[dim]MCP ({transporte}{endereco if transporte == 'http' else ''}) · propostas: "
         f"{estado / 'propostas.json'} · auditoria: {estado / 'audit.jsonl'}[/]"
     )
+    if transporte != "stdio":
+        saida.print(_aviso_segredo(autorizador))
     try:
-        servir(sessao, transporte, host=host, port=porta)
+        servir(sessao, transporte, host=host, port=porta, autorizador=autorizador)
     except ValueError as erro:
         saida.print(f"[red]Erro:[/] {erro}")
         raise typer.Exit(code=1) from None
+
+
+def _aviso_segredo(autorizador) -> str:
+    if autorizador.modo == "segredo":
+        return "[dim]decisões HTTP: X-Operador + segredo BDGD_CONSOLE_TOKEN[/]"
+    if autorizador.modo == "sem-segredo":
+        return "[yellow]decisões HTTP só com X-Operador (--sem-segredo): só para demo local[/]"
+    return (
+        "[yellow]decisões HTTP bloqueadas (503): defina BDGD_CONSOLE_TOKEN no ambiente ou use "
+        "--sem-segredo[/]"
+    )
 
 
 @app.command()
@@ -1327,6 +1351,151 @@ def agente(
             console.print(f"[dim]execução gravada em {saida}[/]")
     if d["erro"]:
         raise typer.Exit(code=1)
+
+
+@app.command()
+def serve(
+    cluster: Annotated[
+        str | None,
+        typer.Option(
+            "--cluster",
+            help="Cluster a carregar ao subir: nome da demo (tijuca, ipanema, taquara) ou "
+            "GeoPackage do recorte. Sem ele, o primeiro evento injetado carrega o do cenário.",
+        ),
+    ] = None,
+    provider: Annotated[
+        str,
+        typer.Option(
+            "--provider",
+            help="LLM do agente: fake (operador roteirizado, padrão — demo sem rede), openai, "
+            "gemini ou ollama.",
+        ),
+    ] = "fake",
+    modelo: Annotated[
+        str | None, typer.Option("--modelo", help="Modelo (sobrepõe o padrão do perfil).")
+    ] = None,
+    host: Annotated[str, typer.Option("--host", help="Endereço de escuta.")] = "127.0.0.1",
+    porta: Annotated[int, typer.Option("--porta", help="Porta HTTP.")] = 8000,
+    dist: Annotated[
+        Path,
+        typer.Option(
+            "--dist",
+            help="Console compilado (cd console && npm run build) servido em /; se a pasta não "
+            "existe, sobe só a API (/api, /docs) e o console em `npm run dev` usa ?api=.",
+        ),
+    ] = Path("console/dist"),
+    sem_segredo: Annotated[
+        bool,
+        typer.Option(
+            "--sem-segredo",
+            help="Aceita decisões só com X-Operador, sem o segredo BDGD_CONSOLE_TOKEN (demo "
+            "local). Sem a flag e sem a variável, injeção/aprovação respondem 503.",
+        ),
+    ] = False,
+    sem_agente: Annotated[
+        bool,
+        typer.Option(
+            "--sem-agente",
+            help="Não roda o agente: só fila, estado, propostas e aprovação (as propostas vêm de "
+            "outro processo — `bdgd-light agente`/MCP — pela mesma pasta --estado).",
+        ),
+    ] = False,
+    max_rodadas: Annotated[int, typer.Option("--max-rodadas", min=1)] = 8,
+    replanejar: Annotated[int, typer.Option("--replanejar", min=0)] = 2,
+    top_k: Annotated[int, typer.Option("--top-k", min=0)] = 3,
+    sem_score: Annotated[
+        bool, typer.Option("--sem-score", help="Sem gêmeo OpenDSS em restore_options.")
+    ] = False,
+    vmin: Annotated[float, typer.Option("--vmin")] = 0.93,
+    vmax: Annotated[float, typer.Option("--vmax")] = 1.05,
+    fila: Annotated[
+        Path, typer.Option("--fila", help="Fila JSONL de eventos do simulador.")
+    ] = Path("data/eventos/eventos.jsonl"),
+    feeders: Annotated[
+        Path, typer.Option("--feeders", help="Pasta dos recortes (GeoPackages).")
+    ] = Path("data/feeders"),
+    dss_out: Annotated[Path, typer.Option("--dss-out", help="Modelos OpenDSS do gêmeo.")] = Path(
+        "data/dss/gpkg"
+    ),
+    estado: Annotated[
+        Path,
+        typer.Option(
+            "--estado",
+            help="Pasta de estado da sessão (audit.jsonl, propostas.json, hitl.jsonl — a mesma "
+            "de `bdgd-light mcp`, `agente` e `aprovar`).",
+        ),
+    ] = Path("data/agent"),
+    dia: Annotated[str, typer.Option("--dia", help="Tipo de dia das cargas: DU, SA ou DO.")] = "DU",
+    mes: Annotated[int, typer.Option("--mes", min=1, max=12, help="Mês das cargas.")] = 1,
+) -> None:
+    """Backend do console do operador (FastAPI): fila de eventos, estado do grafo em GeoJSON,
+    propostas do agente com alternativas e veredito elétrico, aprovação/rejeição com identidade
+    do operador (X-Operador + BDGD_CONSOLE_TOKEN), trilha de auditoria e o botão "injetar falta"
+    do modo demo — que dispara o agente em segundo plano. Serve o console compilado em /."""
+    try:
+        import uvicorn
+
+        from bdgd_light.agent import LLMError, TokenAusenteError, cliente_do_ambiente
+        from bdgd_light.agent.orquestrador import Orquestrador, fake_operador
+        from bdgd_light.console import AgenteEmSegundoPlano, criar_app
+        from bdgd_light.mcp_server import SessaoCOD
+        from bdgd_light.mcp_server.humano import Autorizador
+        from bdgd_light.sim import FilaEventos
+    except ImportError as erro:
+        _erro(f"{erro} — instale os extras: uv sync --extra agent --extra console")
+        return
+    sessao = SessaoCOD(
+        feeders=feeders, dss_out=dss_out, estado_dir=estado, dia=dia.upper(), mes=mes
+    )
+    if cluster is not None:
+        try:
+            r = sessao.load_cluster(cluster)
+        except (FileNotFoundError, DataSourceError, ValueError) as erro:
+            _erro(str(erro))
+            return
+        console.print(
+            f"[green]✔[/] {r['cluster']}: {_fmt_int(r['resumo']['nos'])} nós, "
+            f"{r['resumo']['chaves']} chaves, {r['resumo']['ties']} ties"
+        )
+    agente = None
+    if not sem_agente:
+        try:
+            if provider == "fake":
+                cliente = fake_operador(modelo or "fake-operador")
+            else:
+                cliente = cliente_do_ambiente(modelo, provider=provider, audit=sessao.audit)
+        except (TokenAusenteError, LLMError, ValueError, KeyError) as erro:
+            _erro(str(erro))
+            return
+        orq = Orquestrador(
+            sessao,
+            cliente,
+            top_k=top_k,
+            max_rodadas=max_rodadas,
+            replanejamentos=replanejar,
+            vmin=vmin,
+            vmax=vmax,
+            exigir_score=not sem_score,
+            provider=provider,
+        )
+        agente = AgenteEmSegundoPlano(orq)
+        console.print(
+            f"[dim]agente: {provider} · {getattr(cliente, 'modelo', None) or '—'} · "
+            f"exemplos: {len(orq.exemplos)} (top {top_k})[/]"
+        )
+    autorizador = Autorizador.do_ambiente(exigir_segredo=not sem_segredo)
+    app_web = criar_app(
+        sessao, fila=FilaEventos(fila), autorizador=autorizador, agente=agente, dist=dist
+    )
+    tem_console = dist.is_dir()
+    console.print(
+        f"[bold]console[/]: http://{host}:{porta}/"
+        + ("" if tem_console else f" [yellow](sem {dist}: só a API; use npm run dev + ?api=)[/]")
+        + f" · API: http://{host}:{porta}/api/estado · docs: /docs"
+    )
+    console.print(f"[dim]estado: {estado} · fila: {fila} · feeders: {feeders}[/]")
+    console.print(_aviso_segredo(autorizador))
+    uvicorn.run(app_web, host=host, port=porta, log_level="warning")
 
 
 def _carregar_evento(texto: str, fila: Path, evento_cls, fila_cls):
@@ -1802,5 +1971,21 @@ def _fmt_int(n: int) -> str:
     return f"{n:,}".replace(",", ".")
 
 
+def main() -> None:
+    """Entry point ``bdgd-light``: roda o Typer e, se o gêmeo OpenDSS foi usado, encerra o processo
+    sem a finalização da biblioteca (``twin.powerflow.encerrar_processo``; SIGSEGV na saída em
+    Linux)."""
+    codigo = 0
+    try:
+        app()
+    except SystemExit as exc:
+        codigo = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+    try:
+        from bdgd_light.twin.powerflow import encerrar_processo
+    except ImportError:  # sem o extra twin nada foi carregado
+        sys.exit(codigo)
+    encerrar_processo(codigo)
+
+
 if __name__ == "__main__":
-    app()
+    main()

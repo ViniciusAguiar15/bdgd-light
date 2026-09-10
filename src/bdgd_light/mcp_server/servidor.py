@@ -18,6 +18,8 @@ from collections.abc import Sequence
 from typing import Any
 
 from bdgd_light.grid.rede import ChaveInexistenteError, TrechoInexistenteError
+from bdgd_light.mcp_server import humano
+from bdgd_light.mcp_server.humano import Autorizador, NaoAutorizadoError
 from bdgd_light.mcp_server.sessao import (
     RecusadoError,
     SessaoCOD,
@@ -66,7 +68,7 @@ def _executar(funcao, **argumentos):
         raise ToolError(str(exc)) from exc
 
 
-def criar_servidor(sessao: SessaoCOD) -> MCPServer:
+def criar_servidor(sessao: SessaoCOD, autorizador: Autorizador | None = None) -> MCPServer:
     """Monta o ``MCPServer`` com as ferramentas da sessão (descritores em português, unidades)."""
     srv = MCPServer(NOME, instructions=INSTRUCOES)
 
@@ -129,13 +131,15 @@ def criar_servidor(sessao: SessaoCOD) -> MCPServer:
             sessao.set_switch, chave=chave, estado=estado, approval_token=approval_token
         )
 
-    _rotas_humanas(srv, sessao)
+    _rotas_humanas(srv, sessao, autorizador or Autorizador.do_ambiente())
     return srv
 
 
-def _rotas_humanas(srv: MCPServer, sessao: SessaoCOD) -> None:
+def _rotas_humanas(srv: MCPServer, sessao: SessaoCOD, autorizador: Autorizador) -> None:
     """Rotas HTTP fora do protocolo MCP (transporte streamable-http) para o console/operador:
-    ``GET /estado``, ``GET /propostas``, ``POST /propostas/{id}/aprovar|rejeitar``."""
+    ``GET /estado``, ``GET /propostas``, ``POST /propostas/{id}/aprovar|rejeitar``. As decisões
+    exigem ``X-Operador`` (+ segredo ``BDGD_CONSOLE_TOKEN``, ver ``mcp_server.humano``) e ficam em
+    ``aprovada_por``, ``audit.jsonl`` e ``hitl.jsonl``."""
     from starlette.requests import Request
     from starlette.responses import JSONResponse, Response
 
@@ -145,6 +149,9 @@ def _rotas_humanas(srv: MCPServer, sessao: SessaoCOD) -> None:
         except Exception:  # corpo vazio ou não-JSON
             return {}
         return corpo if isinstance(corpo, dict) else {}
+
+    def _quem(request: Request) -> str:
+        return autorizador.operador(request.headers)
 
     @srv.custom_route("/estado", methods=["GET"])
     async def estado(_: Request) -> Response:
@@ -158,27 +165,38 @@ def _rotas_humanas(srv: MCPServer, sessao: SessaoCOD) -> None:
     async def aprovar(request: Request) -> Response:
         corpo = await _json(request)
         try:
-            p = sessao.approve(
+            quem = _quem(request)
+            r = humano.aprovar(
+                sessao,
                 request.path_params["proposta_id"],
-                operador=str(corpo.get("operador", "console")),
+                operador=quem,
                 validade_s=int(corpo.get("validade_s", 1800)),
+                executar=bool(corpo.get("executar", False)),
+                cliente=request.client.host if request.client else None,
             )
+        except NaoAutorizadoError as exc:
+            return JSONResponse({"erro": str(exc)}, status_code=exc.status)
         except SessaoError as exc:
             return JSONResponse({"erro": str(exc)}, status_code=409)
-        return JSONResponse(p)
+        return JSONResponse(r)
 
     @srv.custom_route("/propostas/{proposta_id}/rejeitar", methods=["POST"])
     async def rejeitar(request: Request) -> Response:
         corpo = await _json(request)
         try:
-            p = sessao.reject(
+            quem = _quem(request)
+            r = humano.rejeitar(
+                sessao,
                 request.path_params["proposta_id"],
-                operador=str(corpo.get("operador", "console")),
+                operador=quem,
                 motivo=str(corpo.get("motivo", "")),
+                cliente=request.client.host if request.client else None,
             )
+        except NaoAutorizadoError as exc:
+            return JSONResponse({"erro": str(exc)}, status_code=exc.status)
         except SessaoError as exc:
             return JSONResponse({"erro": str(exc)}, status_code=409)
-        return JSONResponse(p)
+        return JSONResponse(r)
 
 
 def descritores(srv: MCPServer | None = None) -> list[dict[str, Any]]:
@@ -215,12 +233,17 @@ def cliente_em_memoria(srv: MCPServer):
 
 
 def servir(
-    sessao: SessaoCOD, transporte: str = "stdio", *, host: str = "127.0.0.1", port: int = 8765
+    sessao: SessaoCOD,
+    transporte: str = "stdio",
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    autorizador: Autorizador | None = None,
 ) -> None:
     """Sobe o servidor (bloqueante): ``stdio`` para clientes locais ou ``http`` (streamable)."""
     if transporte not in ("stdio", "http", "streamable-http"):
         raise ValueError(f"transporte {transporte!r} inválido; use stdio ou http")
-    srv = criar_servidor(sessao)
+    srv = criar_servidor(sessao, autorizador)
     if transporte == "stdio":
         srv.run("stdio")
     elif MCP_V2:

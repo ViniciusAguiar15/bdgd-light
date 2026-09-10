@@ -9,7 +9,10 @@ registrando no resultado quais foram necessários.
 from __future__ import annotations
 
 import os
+import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -139,6 +142,49 @@ class PowerFlowResult:
         return mt
 
 
+# O DSS C-API (Free Pascal) só tolera chamadas da thread que o inicializou: de outra thread o
+# processo morre com SIGILL. Toda chamada ao motor passa por esta thread dedicada — o que permite
+# usar o gêmeo de handlers HTTP (threadpool) e do agente em segundo plano no mesmo processo.
+_PREFIXO_MOTOR = "opendss"
+_MOTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix=_PREFIXO_MOTOR)
+_motor_usado = False
+
+
+def no_motor(fn, /, *args, **kwargs):
+    """Executa ``fn`` na thread única do motor OpenDSS (direto, se já estivermos nela)."""
+    global _motor_usado
+    if threading.current_thread().name.startswith(_PREFIXO_MOTOR):
+        return fn(*args, **kwargs)
+    _motor_usado = True
+    return _MOTOR.submit(fn, *args, **kwargs).result()
+
+
+def motor_usado() -> bool:
+    """``True`` se alguma chamada já passou pela thread do motor (a biblioteca está carregada)."""
+    return _motor_usado
+
+
+def encerrar_processo(codigo: int = 0) -> None:
+    """Termina o processo sem a finalização da biblioteca DSS C-API quando o motor foi usado.
+
+    No Linux (glibc 2.39, CI) a finalização da biblioteca Free Pascal roda na thread principal
+    depois que a thread do motor — dona do heap e dos threadvars dela — já saiu, e o processo morre
+    com SIGSEGV *depois* de todo o trabalho feito (``pytest`` verde, código 139). Aqui esvaziamos
+    stdout/stderr, rodamos os ``atexit`` e saímos com ``os._exit``; sem motor, ``sys.exit`` normal.
+    """
+    if not _motor_usado:
+        sys.exit(codigo)
+    import atexit
+
+    for fluxo in (sys.stdout, sys.stderr):
+        try:
+            fluxo.flush()
+        except Exception:  # noqa: BLE001 - saída já pode estar fechada
+            pass
+    atexit._run_exitfuncs()
+    os._exit(codigo)
+
+
 def _dss():
     try:
         import opendssdirect as dss
@@ -229,8 +275,28 @@ def run_powerflow(
     ``comandos_extra`` são enviados após a compilação e antes do ``Solve`` (ex.: ``set
     loadmult=0.6``, ``open line.cmt_123 term=1``). Com ``estabilizar=True`` a cascata
     ``ESTABILIZADORES`` é aplicada até a convergência; os rótulos aplicados ficam em
-    ``PowerFlowResult.ajustes``.
+    ``PowerFlowResult.ajustes``. Roda sempre na thread do motor (``no_motor``).
     """
+    return no_motor(
+        _run_powerflow,
+        master,
+        vmin=vmin,
+        vmax=vmax,
+        modo=modo,
+        estabilizar=estabilizar,
+        comandos_extra=comandos_extra,
+    )
+
+
+def _run_powerflow(
+    master: str | Path,
+    *,
+    vmin: float,
+    vmax: float,
+    modo: str | None,
+    estabilizar: bool,
+    comandos_extra: list[str] | tuple[str, ...],
+) -> PowerFlowResult:
     master = Path(master).resolve()
     if not master.is_file():
         raise FileNotFoundError(master)

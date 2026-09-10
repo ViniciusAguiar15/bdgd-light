@@ -14,7 +14,7 @@ arquitetura (e alternativas descartadas) em [`docs/adr/ADR-001-stack.md`](docs/a
 src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim)
   catalogo.py          IDs da BDGD por distribuidora/ano, camadas-chave, domínios TEN_NOM e TIP_UNID
   cli.py               CLI `bdgd-light` (typer): export, inventario, vizinhos, recortar, grafo, dss,
-                       tiles, llm, audit
+                       tiles, llm, audit, mcp, aprovar, sim, agente, serve
   ingest/export.py     exportação de camadas para GeoParquet/Parquet/GeoPackage, em lotes
   ingest/parquet.py    leitura das camadas exportadas com filtros empurrados ao pyarrow
   ingest/interligacoes.py  detecção geométrica de chaves NA de interligação entre CTMT
@@ -36,7 +36,11 @@ src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim
                        agent/audit.py é o log de auditoria encadeado por hash (JSON Lines)
   mcp_server/          servidor MCP das ferramentas de rede (sessao.py = domínio: cluster carregado,
                        falta simulada, propostas com aprovação humana e auditoria; servidor.py = camada
-                       MCP stdio/http + rotas de aprovação); docs/mcp-ferramentas.md
+                       MCP stdio/http + rotas de aprovação; humano.py = identidade do operador,
+                       aprovar/rejeitar/executar e hitl.jsonl); docs/mcp-ferramentas.md
+  console/api.py       backend do console (`bdgd-light serve`, FastAPI): fila de eventos, estado do
+                       gêmeo em GeoJSON, propostas, aprovação/rejeição e agente em segundo plano;
+                       docs/console.md
   sim/                 simulador de eventos (faltas permanentes/transitórias por km, pico de carga,
                        chave telecomandada indisponível; cenários nomeados da demo) + fila JSONL
                        em data/eventos/; docs/sim.md
@@ -46,8 +50,10 @@ src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim
                        para testes e métricas por execução; docs/agent.md
 console/               console do operador: Vite + TypeScript + MapLibre GL JS lendo PMTiles
                        (public/tiles/exemplo_{tijuca,ipanema}.pmtiles = clusters da demo; exemplo.pmtiles
-                       = TQR, regressão), seletor de cenário, sobreposição do estado do grafo,
-                       smoke test headless (scripts/smoke.mjs); publicado no Pages por Actions
+                       = TQR, regressão), seletor de cenário, sobreposição do estado do grafo, painel
+                       do COD (src/cod.ts: injetar falta, proposta do agente, aprovar/rejeitar,
+                       auditoria) sobre `bdgd-light serve`, smoke test headless (scripts/smoke.mjs,
+                       SMOKE_FLUXO=1 = demo ponta a ponta); publicado no Pages por Actions
 scripts/
   baixar_bdgd.py       baixa e extrai a BDGD (Light 2025 por padrão)
   listar_camadas.py    lista as camadas do .gdb
@@ -612,6 +618,27 @@ uv run bdgd-light agente --cenario taquara_bocari --provider fake   # sem LLM (t
 uv run bdgd-light aprovar                                       # a proposta espera o operador aqui
 ```
 
+### `bdgd-light serve` — console do COD ponta a ponta (fila → agente → aprovação → gêmeo)
+
+Sobe num só processo a sessão do COD (`SessaoCOD`), o agente em segundo plano, a fila de eventos e
+uma API HTTP (FastAPI, extra `console`) que serve o console compilado (`console/dist`). O painel
+**COD · fila e aprovação** do console injeta a falta do cenário, mostra a proposta do agente
+(manobras, clientes recuperados, veredito do gêmeo e do verificador, alternativas descartadas),
+**Aprovar e executar** / **Rejeitar** com a identidade do operador, recolore o mapa com o estado do
+gêmeo e lista a trilha de auditoria ("trilha íntegra ✓ hash"). Decisões que alteram a rede exigem
+`X-Operador` e o segredo `BDGD_CONSOLE_TOKEN` (ou `--sem-segredo` em demo local); tudo vai para
+`audit.jsonl` e `hitl.jsonl`. Detalhes da API e do fluxo em [`docs/console.md`](docs/console.md).
+
+```bash
+uv sync --extra dev --extra twin --extra agent --extra console && (cd console && npm ci && npm run build)
+BDGD_CONSOLE_TOKEN=demo uv run bdgd-light serve --cluster tijuca --provider fake   # sem LLM: operador roteirizado
+#   → http://127.0.0.1:8000/?cenario=tijuca  (token "demo" no painel; "injetar falta" → proposta → Aprovar)
+uv run bdgd-light serve --cluster tijuca --provider gemini --sem-segredo            # com LLM real, sem token
+uv run bdgd-light serve --cluster ipanema --sem-agente                              # só fila + aprovação manual
+cd console && SMOKE_FLUXO=1 SMOKE_TOKEN=demo npm run smoke -- "http://127.0.0.1:8000/?cenario=tijuca"
+#   demo headless: injeta, espera a proposta, aprova e confere o mapa recolorido (falha se > 60 s)
+```
+
 ## Console (mapa do operador)
 
 `console/` é o front-end estático (Vite + TypeScript + [MapLibre GL JS](https://maplibre.org/) +
@@ -626,6 +653,8 @@ npm run dev        # http://localhost:5173 → cenário Tijuca (public/tiles/exe
 #   ?tiles=tiles/OUTRO.pmtiles          outro recorte gerado por `bdgd-light tiles`
 #   ?estado=exemplos/estado_TQR0007_falta.geojson   falta simulada por cima dos tiles (`none` desliga)
 npm run build && npm run smoke          # build (tsc + vite) e smoke test no Chrome headless
+#   com `bdgd-light serve` na porta 8000, o painel "COD · fila e aprovação" aparece (o vite dev faz
+#   proxy de /api; em outra origem use ?api=http://host:porta)
 ```
 
 O workflow [`pages.yml`](.github/workflows/pages.yml) compila o console a cada push em `main` que toque

@@ -5,6 +5,7 @@ operador fake por tipo de evento, métricas/auditoria e o comando ``bdgd-light a
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import shutil
 from pathlib import Path
@@ -12,7 +13,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-pytest.importorskip("opendssdirect")
+if importlib.util.find_spec("opendssdirect") is None:  # não importar: ver twin.powerflow.no_motor
+    pytest.skip("opendssdirect não instalado (uv sync --extra twin)", allow_module_level=True)
 pytest.importorskip("yaml")
 
 from rich.console import Console  # noqa: E402

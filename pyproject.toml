@@ -40,9 +40,13 @@ agent = [
     "pyyaml>=6",
 ]
 dev = ["pytest>=8", "pytest-cov", "ruff>=0.5"]
+console = [
+    "fastapi>=0.110",
+    "uvicorn>=0.30",
+]
 
 [project.scripts]
-bdgd-light = "bdgd_light.cli:app"
+bdgd-light = "bdgd_light.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
