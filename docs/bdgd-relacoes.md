@@ -63,8 +63,10 @@ são gravadas no GPKG, mas aparecem com `0` no `meta.json`.
 - **Nenhum `PAC` de `SSDMT` aparece em dois CTMT** (verificado nas 1,0 M de linhas). Por isso o `PAC`
   serve para montar o grafo **dentro** de um alimentador (issue #6), mas **não** para achar a
   interligação entre alimentadores — daí a regra geométrica abaixo.
-- `CTMT.PAC_INI` (ponto inicial do alimentador) nunca coincide com um PAC de SSDMT na Light 2025; o
-  início do alimentador é o trecho ligado ao disjuntor de saída na SE.
+- `CTMT.PAC_INI` (ponto inicial do alimentador) nunca coincide com um PAC de SSDMT na Light 2025: é
+  **sempre o `PAC_1` de uma `UNSEMT`** (1.802 de 1.802) — o barramento da SE, de onde sai o disjuntor
+  (`TIP_UNID = 29`) cujo `PAC_2` já é um PAC de SSDMT. O grafo (`docs/grid-modelo.md`) usa `PAC_INI`
+  como nó-fonte.
 - Nas chaves NA, 177 de 12.754 têm `PAC_1`/`PAC_2` com prefixo de outro CTMT (a chave está cadastrada
   num alimentador e seus PAC no vizinho). O recorte mantém a chave em quem a cadastrou (coluna `CTMT`).
 
