@@ -202,7 +202,8 @@ def criar_app(
     @app.post("/api/eventos", status_code=202)
     def injetar(request: Request, corpo: Corpo = None) -> dict[str, Any]:
         """Modo demo: gera um evento (cenário nomeado ou tipo/alvo), publica na fila e, se houver
-        agente, dispara o tratamento em segundo plano."""
+        agente, dispara o tratamento em segundo plano. ``recarregar: true`` recarrega o cluster
+        antes (rede volta ao estado normal, falta zerada) — reinício da demo."""
         corpo = corpo or {}
         operador = quem(request)
         exigir_agente_livre()
@@ -210,8 +211,10 @@ def criar_app(
         if cenario is not None and cenario not in CENARIOS:
             raise HTTPException(422, f"cenário {cenario!r} desconhecido; use {', '.join(CENARIOS)}")
         cluster = corpo.get("cluster") or (CENARIOS[cenario].cluster if cenario else None)
+        if corpo.get("recarregar") and cluster is None and sessao.gpkg is not None:
+            cluster = str(sessao.gpkg)
         try:
-            _garantir_cluster(sessao, cluster)
+            _garantir_cluster(sessao, cluster, forcar=bool(corpo.get("recarregar")))
         except FileNotFoundError as exc:
             raise HTTPException(404, str(exc)) from None
         except (DataSourceError, ValueError) as exc:
@@ -245,8 +248,10 @@ def criar_app(
 
     @app.get("/api/propostas/{proposta_id}")
     def proposta(proposta_id: str) -> dict[str, Any]:
+        """Proposta + alternativas topológicas/elétricas + veredito do verificador do agente."""
         p = sessao.propostas.obter(proposta_id).to_dict(com_token=False)
         p["alternativas"] = sessao.alternativas(proposta_id)
+        p["verificador"] = _veredito(agente, proposta_id)
         return p
 
     @app.post("/api/propostas/{proposta_id}/aprovar")
@@ -313,13 +318,26 @@ def criar_app(
     return app
 
 
-def _garantir_cluster(sessao: SessaoCOD, cluster: str | None) -> None:
-    """Carrega ``cluster`` se a sessão está vazia ou com outro cluster; ``None`` mantém o atual."""
+def _garantir_cluster(sessao: SessaoCOD, cluster: str | None, *, forcar: bool = False) -> None:
+    """Carrega ``cluster`` se a sessão está vazia ou com outro cluster (sempre, com ``forcar``);
+    ``None`` mantém o atual."""
     if cluster is None:
         return
     alvo = resolver_cluster(cluster, sessao.feeders)
-    if sessao.gpkg is None or Path(sessao.gpkg).resolve() != alvo.resolve():
+    if forcar or sessao.gpkg is None or Path(sessao.gpkg).resolve() != alvo.resolve():
         sessao.load_cluster(str(alvo))
+
+
+def _veredito(agente: AgenteEmSegundoPlano | None, proposta_id: str) -> dict[str, Any] | None:
+    """Veredito do verificador na execução do agente que gerou ``proposta_id`` (o veredito vive
+    na execução, não na proposta da sessão)."""
+    if agente is None:
+        return None
+    for ex in reversed(agente.execucoes):
+        prop = ex.get("proposta")
+        if isinstance(prop, Mapping) and prop.get("id") == proposta_id:
+            return ex.get("veredito")
+    return None
 
 
 def _registro_compacto(r: Mapping[str, Any]) -> dict[str, Any]:

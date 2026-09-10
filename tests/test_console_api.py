@@ -101,6 +101,7 @@ def test_fluxo_injetar_propor_aprovar(cliente: TestClient, sessao: SessaoCOD, re
     alternativas = detalhe["alternativas"]
     assert [a["chave"] for a in alternativas] == ["CH003", "CH005"]
     assert alternativas[0]["escolhida"] is True and alternativas[0]["score"]["viavel"] is True
+    assert detalhe["verificador"]["ok"] is True and detalhe["verificador"]["eletrico"] is True
     assert cliente.get("/api/propostas", params={"status": "pendente"}).json()[0]["id"] == "P-0001"
     assert cliente.get("/api/eventos", params={"desde": 0}).json()[0]["trecho"] == "SEG001"
 
@@ -145,6 +146,13 @@ def test_fluxo_injetar_propor_aprovar(cliente: TestClient, sessao: SessaoCOD, re
     assert hitl[0]["dados"]["operador"] == "ana" and hitl[0]["dados"]["origem"] == "console"
     assert cliente.get("/api/propostas/P-0001").json()["alternativas"] == []
     assert cliente.get("/api/agente").json()["execucoes"][0]["proposta"] == "P-0001"
+
+    # reinício da demo: recarregar volta a rede ao normal e a nova falta gera P-0002
+    r = cliente.post("/api/eventos", json={"trecho": "SEG001", "recarregar": True}, headers=OP)
+    assert r.status_code == 202
+    e = cliente.get("/api/estado").json()
+    assert e["falta"] == "SEG001" and e["eventos_n"] == 2
+    assert [p["id"] for p in e["propostas"] if p["status"] == "pendente"] == ["P-0002"]
 
 
 def test_rejeitar_e_erros(cliente: TestClient, recorte: Path):
