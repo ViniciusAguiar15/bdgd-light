@@ -1,4 +1,9 @@
-"""Agente: cliente LLM abstraído (``LLMClient``), fake para testes e laço de *tool calling*."""
+"""Agente: cliente LLM abstraído (``LLMClient``), fake para testes e laço de *tool calling*.
+
+O orquestrador + verificador HITL fica em ``bdgd_light.agent.orquestrador`` e não é reexportado
+aqui de propósito: ele depende de ``bdgd_light.mcp_server.sessao``, que por sua vez usa
+``bdgd_light.agent.audit`` — importar aqui fecharia um ciclo.
+"""
 
 from bdgd_light.agent.audit import GENESIS, AuditError, AuditLog, Registro
 from bdgd_light.agent.llm import (
