@@ -1396,8 +1396,9 @@ def _imprimir_execucao(d: dict) -> None:
         f"\n[dim]{d.get('modelo') or '?'} · {d['rodadas']} rodada(s), "
         f"{d['replanejamentos']} replanejamento(s), {d['n_ferramentas']} chamada(s) · tokens "
         f"{uso.get('prompt_tokens', 0)}+{uso.get('completion_tokens', 0)}="
-        f"{uso.get('total_tokens', 0)} · LLM {d['segundos_llm']:.1f}s / total "
-        f"{d['segundos_total']:.1f}s · auditoria {d.get('hash_auditoria') or '—'}[/]"
+        f"{uso.get('total_tokens', 0)} · LLM {d['segundos_llm']:.1f}s + ferramentas "
+        f"{d['segundos_ferramentas']:.1f}s = {d['segundos_total']:.1f}s · auditoria "
+        f"{d.get('hash_auditoria') or '—'}[/]"
     )
     if d["erro"]:
         console.print(f"[red]Erro:[/] {d['erro']}")

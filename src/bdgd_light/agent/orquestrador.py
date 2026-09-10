@@ -515,6 +515,7 @@ class Execucao:
     resposta: str = ""
     uso: dict[str, Any] | None = None
     segundos_llm: float = 0.0
+    segundos_ferramentas: float = 0.0
     segundos_total: float = 0.0
     hash_auditoria: str | None = None
     exemplos: list[str] = field(default_factory=list)
@@ -549,6 +550,7 @@ class Execucao:
             "resposta": self.resposta,
             "uso": self.uso,
             "segundos_llm": round(self.segundos_llm, 3),
+            "segundos_ferramentas": round(self.segundos_ferramentas, 3),
             "segundos_total": round(self.segundos_total, 3),
             "hash_auditoria": self.hash_auditoria,
             "exemplos": list(self.exemplos),
@@ -895,6 +897,7 @@ class Orquestrador:
         return execucao
 
     def _conversar(self, historico, ferramentas, execucao: Execucao, usos: list[Uso]) -> Conversa:
+        chamadas_antes = len(self._chamadas)
         conversa = conversar(
             self.cliente,
             historico,
@@ -903,7 +906,10 @@ class Orquestrador:
             audit=self.audit,
         )
         execucao.rodadas += conversa.rodadas
-        execucao.segundos_llm += conversa.segundos
+        # conversa.segundos inclui a execução das ferramentas; o tempo do LLM é o restante
+        ferramentas_s = sum(c.get("segundos", 0.0) for c in self._chamadas[chamadas_antes:])
+        execucao.segundos_llm += max(0.0, conversa.segundos - ferramentas_s)
+        execucao.segundos_ferramentas += ferramentas_s
         execucao.modelo = conversa.resposta.modelo or execucao.modelo
         if conversa.uso_total is not None:
             usos.append(conversa.uso_total)
@@ -1027,11 +1033,13 @@ def fake_operador(modelo: str = "fake-operador") -> FakeLLMClient:
                 return chamar("run_powerflow", loadmult=lm)
             r = resultado_de("run_powerflow") or {}
             convergiu = "convergiu" if r.get("convergiu") else "NÃO convergiu"
+            vmin, vmax = _numero(r.get("v_min_pu")), _numero(r.get("v_max_pu"))
             return Text(
                 f"Pico de carga em {evento.get('ctmt')}: fluxo com loadmult "
-                f"{r.get('loadmult', '?')} {convergiu}; Vmin {r.get('vmin_pu', '?')} pu, "
-                f"{len(r.get('sobrecargas') or [])} sobrecarga(s), perdas "
-                f"{_fmt(r.get('perdas_kw'))} kW. Sem manobra; acompanhar.",
+                f"{r.get('loadmult', '?')} {convergiu}; tensão {_fmt_pu(vmin)}–{_fmt_pu(vmax)} pu, "
+                f"{r.get('n_subtensao', 0)} nó(s) em subtensão, "
+                f"{r.get('n_sobrecargas', len(r.get('sobrecargas') or []))} sobrecarga(s), "
+                f"perdas {_fmt(r.get('perdas_kw'))} kW. Sem manobra; acompanhar.",
                 modelo=modelo,
                 uso=Uso(),
             )
@@ -1068,6 +1076,11 @@ def fake_operador(modelo: str = "fake-operador") -> FakeLLMClient:
 def _fmt(valor: Any) -> str:
     n = _numero(valor)
     return "?" if n is None else f"{n:.1f}"
+
+
+def _fmt_pu(valor: Any) -> str:
+    n = _numero(valor)
+    return "?" if n is None else f"{n:.3f}"
 
 
 def _fmt_pct(valor: Any) -> str:

@@ -1,0 +1,1655 @@
+[
+ {
+  "ferramenta": "load_cluster",
+  "argumentos": {
+   "cluster": "tijuca"
+  },
+  "resultado": {
+   "cluster": "cluster_tijuca",
+   "gpkg": "data/feeders/cluster_tijuca.gpkg",
+   "resumo": {
+    "ctmt": [
+     "ALC9925",
+     "RCP9882",
+     "ALC9946",
+     "URG29983"
+    ],
+    "fontes": {
+     "ALC9925": "ALC9925_MT_50905",
+     "RCP9882": "RCP9882_MT_50508",
+     "ALC9946": "ALC9946_MT_50518",
+     "URG29983": "URG29983_MT_50724"
+    },
+    "nos": 1662,
+    "trechos": 1528,
+    "km": 20.432,
+    "chaves": 148,
+    "chaves_NA": 35,
+    "chaves_NF": 113,
+    "ties": 23,
+    "ties_externas": 10,
+    "externos": [
+     "ALC683",
+     "ALC740",
+     "RCP0001",
+     "RCP33216",
+     "RCP33308",
+     "RCP9821",
+     "URG29706",
+     "URG29970",
+     "URG30000"
+    ],
+    "trafos": 235,
+    "clientes": {
+     "ucbt": 16248,
+     "ucmt": 9,
+     "trafos": 235,
+     "kva": 31565.0,
+     "total": 16257
+    },
+    "energizados": 1656,
+    "avisos": 2
+   },
+   "religadores": {
+    "ALC9925": "10927447",
+    "RCP9882": "10924906",
+    "ALC9946": "10924969",
+    "URG29983": "10926271"
+   },
+   "avisos": 2
+  }
+ },
+ {
+  "ferramenta": "inject_fault",
+  "argumentos": {
+   "trecho": "11304252"
+  },
+  "resultado": {
+   "trecho": "11304252",
+   "ctmt": "ALC9925",
+   "fonte": "ALC9925",
+   "religador": "10927447",
+   "chaves_com_indicacao": [
+    "10927447"
+   ],
+   "sem_tensao": {
+    "n_nos": 356,
+    "clientes": {
+     "ucbt": 4036,
+     "ucmt": 6,
+     "trafos": 63,
+     "kva": 8960.0,
+     "total": 4042
+    }
+   }
+  }
+ },
+ {
+  "ferramenta": "locate_fault",
+  "argumentos": {},
+  "resultado": {
+   "trecho": "11304252",
+   "ctmt": "ALC9925",
+   "religador": "10927447",
+   "chaves_com_indicacao": [
+    "10927447"
+   ],
+   "ultima_indicacao": "10927447",
+   "zona": {
+    "nos": [
+     "ALC9925_MT_1040991",
+     "ALC9925_MT_1040992",
+     "ALC9925_MT_1227313",
+     "ALC9925_MT_46118",
+     "ALC9925_MT_481058",
+     "ALC9925_MT_50906",
+     "ALC9925_MT_704605",
+     "ALC9925_MT_704609",
+     "ALC9925_MT_716885",
+     "ALC9925_MT_716886",
+     "ALC9925_MT_716890",
+     "ALC9925_MT_716891",
+     "ALC9925_MT_716892",
+     "ALC9925_MT_716903",
+     "ALC9925_MT_716904",
+     "ALC9925_MT_716908",
+     "ALC9925_MT_716909",
+     "ALC9925_MT_716918",
+     "ALC9925_MT_716919",
+     "ALC9925_MT_716920",
+     "ALC9925_MT_716921",
+     "ALC9925_MT_716922",
+     "ALC9925_MT_716927",
+     "ALC9925_MT_716928",
+     "ALC9925_MT_716929",
+     "ALC9925_MT_716930",
+     "ALC9925_MT_716933",
+     "ALC9925_MT_716934",
+     "ALC9925_MT_716957",
+     "ALC9925_MT_853627",
+     "ALC9925_MT_853764",
+     "ALC9925_MT_853792",
+     "ALC9925_MT_853793",
+     "ALC9925_MT_853843",
+     "ALC9925_MT_863364"
+    ],
+    "trechos": [
+     "10961554",
+     "10961608",
+     "11304036",
+     "11304066",
+     "11304072",
+     "11304078",
+     "11304126",
+     "11304144",
+     "11304192",
+     "11304198",
+     "11304204",
+     "11304234",
+     "11304240",
+     "11304252",
+     "11304264",
+     "11304270",
+     "11304402",
+     "12099219",
+     "12179829",
+     "12180585",
+     "12180669",
+     "12435793",
+     "12437173",
+     "12437401",
+     "12437407",
+     "12437731",
+     "12749317",
+     "12749323",
+     "24218433",
+     "24218446",
+     "24218455",
+     "24218468",
+     "335515733",
+     "346045568"
+    ],
+    "clientes": {
+     "ucbt": 0,
+     "ucmt": 0,
+     "trafos": 0,
+     "kva": 0.0,
+     "total": 0
+    }
+   },
+   "chaves_fronteira": [
+    "10927447",
+    "11035901"
+   ],
+   "sem_tensao": {
+    "n_nos": 356,
+    "clientes": {
+     "ucbt": 4036,
+     "ucmt": 6,
+     "trafos": 63,
+     "kva": 8960.0,
+     "total": 4042
+    }
+   }
+  }
+ },
+ {
+  "ferramenta": "isolate_fault",
+  "argumentos": {},
+  "resultado": {
+   "trecho": "11304252",
+   "chaves": [
+    "10927447",
+    "11035901"
+   ],
+   "zona": [
+    "ALC9925_MT_1040991",
+    "ALC9925_MT_1040992",
+    "ALC9925_MT_1227313",
+    "ALC9925_MT_46118",
+    "ALC9925_MT_481058",
+    "ALC9925_MT_50906",
+    "ALC9925_MT_704605",
+    "ALC9925_MT_704609",
+    "ALC9925_MT_716885",
+    "ALC9925_MT_716886",
+    "ALC9925_MT_716890",
+    "ALC9925_MT_716891",
+    "ALC9925_MT_716892",
+    "ALC9925_MT_716903",
+    "ALC9925_MT_716904",
+    "ALC9925_MT_716908",
+    "ALC9925_MT_716909",
+    "ALC9925_MT_716918",
+    "ALC9925_MT_716919",
+    "ALC9925_MT_716920",
+    "ALC9925_MT_716921",
+    "ALC9925_MT_716922",
+    "ALC9925_MT_716927",
+    "ALC9925_MT_716928",
+    "ALC9925_MT_716929",
+    "ALC9925_MT_716930",
+    "ALC9925_MT_716933",
+    "ALC9925_MT_716934",
+    "ALC9925_MT_716957",
+    "ALC9925_MT_853627",
+    "ALC9925_MT_853764",
+    "ALC9925_MT_853792",
+    "ALC9925_MT_853793",
+    "ALC9925_MT_853843",
+    "ALC9925_MT_863364"
+   ],
+   "desligados": [
+    "ALC9925_MT_1079727",
+    "ALC9925_MT_1103958",
+    "ALC9925_MT_1103959",
+    "ALC9925_MT_1103960",
+    "ALC9925_MT_1122357",
+    "ALC9925_MT_1124298",
+    "ALC9925_MT_1124387",
+    "ALC9925_MT_1124388",
+    "ALC9925_MT_1124389",
+    "ALC9925_MT_1124390",
+    "ALC9925_MT_1124391",
+    "ALC9925_MT_1124392",
+    "ALC9925_MT_1124396",
+    "ALC9925_MT_1124397",
+    "ALC9925_MT_1132482",
+    "ALC9925_MT_1227311",
+    "ALC9925_MT_1227312",
+    "ALC9925_MT_1227314",
+    "ALC9925_MT_1227315",
+    "ALC9925_MT_1227316",
+    "ALC9925_MT_1227317",
+    "ALC9925_MT_1227318",
+    "ALC9925_MT_1227319",
+    "ALC9925_MT_1231291",
+    "ALC9925_MT_1248092",
+    "ALC9925_MT_1248682",
+    "ALC9925_MT_1289298",
+    "ALC9925_MT_1291232",
+    "ALC9925_MT_1329071",
+    "ALC9925_MT_1329072",
+    "ALC9925_MT_1329073",
+    "ALC9925_MT_1329105",
+    "ALC9925_MT_1331821",
+    "ALC9925_MT_1331822",
+    "ALC9925_MT_1340217",
+    "ALC9925_MT_1340218",
+    "ALC9925_MT_1350881",
+    "ALC9925_MT_1356255",
+    "ALC9925_MT_1356256",
+    "ALC9925_MT_1356257",
+    "ALC9925_MT_1356433",
+    "ALC9925_MT_1356434",
+    "ALC9925_MT_1356848",
+    "ALC9925_MT_298871",
+    "ALC9925_MT_299998",
+    "ALC9925_MT_300009",
+    "ALC9925_MT_300011",
+    "ALC9925_MT_300013",
+    "ALC9925_MT_300015",
+    "ALC9925_MT_300017",
+    "ALC9925_MT_300019",
+    "ALC9925_MT_300022",
+    "ALC9925_MT_300024",
+    "ALC9925_MT_300027",
+    "ALC9925_MT_300029",
+    "ALC9925_MT_300031",
+    "ALC9925_MT_300033",
+    "ALC9925_MT_300035",
+    "ALC9925_MT_300037",
+    "ALC9925_MT_300039",
+    "ALC9925_MT_300041",
+    "ALC9925_MT_300043",
+    "ALC9925_MT_300049",
+    "ALC9925_MT_300051",
+    "ALC9925_MT_300063",
+    "ALC9925_MT_300065",
+    "ALC9925_MT_300067",
+    "ALC9925_MT_300083",
+    "ALC9925_MT_300089",
+    "ALC9925_MT_300109",
+    "ALC9925_MT_313853",
+    "ALC9925_MT_314862",
+    "ALC9925_MT_314864",
+    "ALC9925_MT_325763",
+    "ALC9925_MT_325767",
+    "ALC9925_MT_358311",
+    "ALC9925_MT_358312",
+    "ALC9925_MT_358313",
+    "ALC9925_MT_358321",
+    "ALC9925_MT_38036",
+    "ALC9925_MT_38037",
+    "ALC9925_MT_38038",
+    "ALC9925_MT_38039",
+    "ALC9925_MT_38040",
+    "ALC9925_MT_38041",
+    "ALC9925_MT_38054",
+    "ALC9925_MT_38055",
+    "ALC9925_MT_39400",
+    "ALC9925_MT_39401",
+    "ALC9925_MT_394848",
+    "ALC9925_MT_403346",
+    "ALC9925_MT_403347",
+    "ALC9925_MT_403348",
+    "ALC9925_MT_403349",
+    "ALC9925_MT_403350",
+    "ALC9925_MT_405993",
+    "ALC9925_MT_406073",
+    "ALC9925_MT_410997",
+    "ALC9925_MT_416726",
+    "ALC9925_MT_419214",
+    "ALC9925_MT_42724",
+    "ALC9925_MT_42958",
+    "ALC9925_MT_43233",
+    "ALC9925_MT_43743",
+    "ALC9925_MT_43744",
+    "ALC9925_MT_442248",
+    "ALC9925_MT_442249",
+    "ALC9925_MT_442250",
+    "ALC9925_MT_442251",
+    "ALC9925_MT_442252",
+    "ALC9925_MT_442254",
+    "ALC9925_MT_442255",
+    "ALC9925_MT_442256",
+    "ALC9925_MT_442257",
+    "ALC9925_MT_442258",
+    "ALC9925_MT_442259",
+    "ALC9925_MT_442260",
+    "ALC9925_MT_442261",
+    "ALC9925_MT_442262",
+    "ALC9925_MT_442263",
+    "ALC9925_MT_442264",
+    "ALC9925_MT_442265",
+    "ALC9925_MT_442266",
+    "ALC9925_MT_442267",
+    "ALC9925_MT_442268",
+    "ALC9925_MT_442269",
+    "ALC9925_MT_442425",
+    "ALC9925_MT_442426",
+    "ALC9925_MT_442427",
+    "ALC9925_MT_442428",
+    "ALC9925_MT_442429",
+    "ALC9925_MT_442507",
+    "ALC9925_MT_442732",
+    "ALC9925_MT_442833",
+    "ALC9925_MT_447006",
+    "ALC9925_MT_447007",
+    "ALC9925_MT_447847",
+    "ALC9925_MT_447892",
+    "ALC9925_MT_453329",
+    "ALC9925_MT_463004",
+    "ALC9925_MT_464541",
+    "ALC9925_MT_464698",
+    "ALC9925_MT_465011",
+    "ALC9925_MT_465570",
+    "ALC9925_MT_479658",
+    "ALC9925_MT_479660",
+    "ALC9925_MT_480942",
+    "ALC9925_MT_480943",
+    "ALC9925_MT_480944",
+    "ALC9925_MT_480945",
+    "ALC9925_MT_480946",
+    "ALC9925_MT_480947",
+    "ALC9925_MT_480949",
+    "ALC9925_MT_480950",
+    "ALC9925_MT_480951",
+    "ALC9925_MT_480952",
+    "ALC9925_MT_480963",
+    "ALC9925_MT_480965",
+    "ALC9925_MT_480966",
+    "ALC9925_MT_480968",
+    "ALC9925_MT_480969",
+    "ALC9925_MT_481048",
+    "ALC9925_MT_481049",
+    "ALC9925_MT_481050",
+    "ALC9925_MT_481052",
+    "ALC9925_MT_481055",
+    "ALC9925_MT_481056",
+    "ALC9925_MT_481057",
+    "ALC9925_MT_481059",
+    "ALC9925_MT_481060",
+    "ALC9925_MT_481061",
+    "ALC9925_MT_481062",
+    "ALC9925_MT_481063",
+    "ALC9925_MT_481064",
+    "ALC9925_MT_487550",
+    "ALC9925_MT_528084",
+    "ALC9925_MT_543178",
+    "ALC9925_MT_543179",
+    "ALC9925_MT_545256",
+    "ALC9925_MT_545257",
+    "ALC9925_MT_554044",
+    "ALC9925_MT_573031",
+    "ALC9925_MT_573033",
+    "ALC9925_MT_573035",
+    "ALC9925_MT_573037",
+    "ALC9925_MT_573041",
+    "ALC9925_MT_573042",
+    "ALC9925_MT_573043",
+    "ALC9925_MT_573045",
+    "ALC9925_MT_577160",
+    "ALC9925_MT_577161",
+    "ALC9925_MT_594646",
+    "ALC9925_MT_599727",
+    "ALC9925_MT_599728",
+    "ALC9925_MT_600744",
+    "ALC9925_MT_603554",
+    "ALC9925_MT_603555",
+    "ALC9925_MT_607905",
+    "ALC9925_MT_607906",
+    "ALC9925_MT_618050",
+    "ALC9925_MT_618051",
+    "ALC9925_MT_618081",
+    "ALC9925_MT_619097",
+    "ALC9925_MT_619098",
+    "ALC9925_MT_619287",
+    "ALC9925_MT_622363",
+    "ALC9925_MT_622364",
+    "ALC9925_MT_622945",
+    "ALC9925_MT_627116",
+    "ALC9925_MT_627117",
+    "ALC9925_MT_627811",
+    "ALC9925_MT_627812",
+    "ALC9925_MT_641323",
+    "ALC9925_MT_645844",
+    "ALC9925_MT_645845",
+    "ALC9925_MT_647130",
+    "ALC9925_MT_648482",
+    "ALC9925_MT_648532",
+    "ALC9925_MT_649579",
+    "ALC9925_MT_649580",
+    "ALC9925_MT_649649",
+    "ALC9925_MT_649650",
+    "ALC9925_MT_649802",
+    "ALC9925_MT_704127",
+    "ALC9925_MT_704610",
+    "ALC9925_MT_704611",
+    "ALC9925_MT_704612",
+    "ALC9925_MT_704617",
+    "ALC9925_MT_704618",
+    "ALC9925_MT_704620",
+    "ALC9925_MT_704621",
+    "ALC9925_MT_704622",
+    "ALC9925_MT_704623",
+    "ALC9925_MT_704629",
+    "ALC9925_MT_704630",
+    "ALC9925_MT_704631",
+    "ALC9925_MT_704638",
+    "ALC9925_MT_704639",
+    "ALC9925_MT_704641",
+    "ALC9925_MT_704642",
+    "ALC9925_MT_704643",
+    "ALC9925_MT_704656",
+    "ALC9925_MT_704657",
+    "ALC9925_MT_704658",
+    "ALC9925_MT_704669",
+    "ALC9925_MT_704670",
+    "ALC9925_MT_704671",
+    "ALC9925_MT_704672",
+    "ALC9925_MT_704675",
+    "ALC9925_MT_704676",
+    "ALC9925_MT_704677",
+    "ALC9925_MT_704679",
+    "ALC9925_MT_704680",
+    "ALC9925_MT_704681",
+    "ALC9925_MT_704686",
+    "ALC9925_MT_704687",
+    "ALC9925_MT_704688",
+    "ALC9925_MT_704689",
+    "ALC9925_MT_704690",
+    "ALC9925_MT_704693",
+    "ALC9925_MT_704695",
+    "ALC9925_MT_704696",
+    "ALC9925_MT_704697",
+    "ALC9925_MT_704702",
+    "ALC9925_MT_704705",
+    "ALC9925_MT_704706",
+    "ALC9925_MT_704709",
+    "ALC9925_MT_710606",
+    "ALC9925_MT_710607",
+    "ALC9925_MT_710608",
+    "ALC9925_MT_710609",
+    "ALC9925_MT_710610",
+    "ALC9925_MT_710611",
+    "ALC9925_MT_710612",
+    "ALC9925_MT_710613",
+    "ALC9925_MT_710614",
+    "ALC9925_MT_710615",
+    "ALC9925_MT_710616",
+    "ALC9925_MT_710626",
+    "ALC9925_MT_710627",
+    "ALC9925_MT_711618",
+    "ALC9925_MT_731749",
+    "ALC9925_MT_838226",
+    "ALC9925_MT_838227",
+    "ALC9925_MT_838228",
+    "ALC9925_MT_856692",
+    "ALC9925_MT_856697",
+    "ALC9925_MT_856698",
+    "ALC9925_MT_856699",
+    "ALC9925_MT_856700",
+    "ALC9925_MT_856701",
+    "ALC9925_MT_856702",
+    "ALC9925_MT_856703",
+    "ALC9925_MT_856704",
+    "ALC9925_MT_869069",
+    "ALC9925_MT_871172",
+    "ALC9925_MT_871173",
+    "ALC9925_MT_876329",
+    "ALC9925_MT_876330",
+    "ALC9925_MT_879081",
+    "ALC9925_MT_883877",
+    "ALC9925_MT_883878",
+    "ALC9925_MT_883879",
+    "ALC9925_MT_883880",
+    "ALC9925_MT_883884",
+    "ALC9925_MT_883885",
+    "ALC9925_MT_883889",
+    "ALC9925_MT_883890",
+    "ALC9946_MT_600744",
+    "ALC9946_MT_648482",
+    "RCP9882_MT_528084",
+    "RCP9882_MT_647130",
+    "URG29983_MT_479658",
+    "URG29983_MT_479660",
+    "URG29983_MT_648532"
+   ],
+   "clientes_zona": {
+    "ucbt": 0,
+    "ucmt": 0,
+    "trafos": 0,
+    "kva": 0.0,
+    "total": 0
+   },
+   "clientes_desligados": {
+    "ucbt": 4036,
+    "ucmt": 6,
+    "trafos": 63,
+    "kva": 8960.0,
+    "total": 4042
+   },
+   "manobras": [
+    {
+     "acao": "abrir",
+     "chave": "10927447"
+    },
+    {
+     "acao": "abrir",
+     "chave": "11035901"
+    }
+   ],
+   "religador": "10927447",
+   "religar_apos_isolar": false,
+   "reenergizados_ao_religar": null,
+   "sequencia": [
+    {
+     "acao": "abrir",
+     "chave": "11035901"
+    }
+   ]
+  }
+ },
+ {
+  "ferramenta": "restore_options",
+  "argumentos": {
+   "score": true
+  },
+  "resultado": {
+   "trecho": "11304252",
+   "desligados": {
+    "n_nos": 315,
+    "clientes": {
+     "ucbt": 4036,
+     "ucmt": 6,
+     "trafos": 63,
+     "kva": 8960.0,
+     "total": 4042
+    }
+   },
+   "n_opcoes": 10,
+   "score": {
+    "master": "data/dss/gpkg/cluster_ALC9925-RCP9882-ALC9946-URG29983/Master_DU01_base.dss",
+    "vmin": 0.93,
+    "vmax": 1.05,
+    "tempo_s": 9.99,
+    "viaveis": 4
+   },
+   "opcoes": [
+    {
+     "chave": "974020904",
+     "ctmt_chave": "ALC9946",
+     "fonte": "ALC9946",
+     "tlcd": true,
+     "tip_unid": "32",
+     "externa": false,
+     "clientes": {
+      "ucbt": 4036,
+      "ucmt": 6,
+      "trafos": 63,
+      "kva": 8960.0,
+      "total": 4042
+     },
+     "clientes_fonte": {
+      "ucbt": 2993,
+      "ucmt": 0,
+      "trafos": 42,
+      "kva": 5685.0,
+      "total": 2993
+     },
+     "manobras": [
+      {
+       "acao": "abrir",
+       "chave": "11035901"
+      },
+      {
+       "acao": "fechar",
+       "chave": "974020904"
+      }
+     ],
+     "n_nos": 315,
+     "score": {
+      "fonte": "ALC9946",
+      "convergiu": true,
+      "i_disjuntor_a": 319.53987489808503,
+      "i_nominal_a": 591.5,
+      "margem_disjuntor": 0.45978043127965335,
+      "vmin_mt_pu": 1.0271172171023266,
+      "vmax_mt_pu": 1.0449983140525487,
+      "sobrecargas_mt": [],
+      "carregamento_max_mt_pct": 84.06150167052775,
+      "perdas_kw": 803.6444825281976,
+      "viavel": true,
+      "motivos": [],
+      "ajustes": [
+       "maxiterations=100",
+       "vminpu=0.9"
+      ],
+      "tempo_s": 1.3493232920300215,
+      "clientes": {
+       "ucbt": 4036,
+       "ucmt": 6,
+       "trafos": 63,
+       "kva": 8960.0,
+       "total": 4042
+      },
+      "tlcd": true
+     }
+    },
+    {
+     "chave": "529355823",
+     "ctmt_chave": "ALC9946",
+     "fonte": "ALC9946",
+     "tlcd": false,
+     "tip_unid": "19",
+     "externa": false,
+     "clientes": {
+      "ucbt": 4036,
+      "ucmt": 6,
+      "trafos": 63,
+      "kva": 8960.0,
+      "total": 4042
+     },
+     "clientes_fonte": {
+      "ucbt": 2993,
+      "ucmt": 0,
+      "trafos": 42,
+      "kva": 5685.0,
+      "total": 2993
+     },
+     "manobras": [
+      {
+       "acao": "abrir",
+       "chave": "11035901"
+      },
+      {
+       "acao": "fechar",
+       "chave": "529355823"
+      }
+     ],
+     "n_nos": 315,
+     "score": {
+      "fonte": "ALC9946",
+      "convergiu": true,
+      "i_disjuntor_a": 319.54037622864445,
+      "i_nominal_a": 591.5,
+      "margem_disjuntor": 0.4597795837216493,
+      "vmin_mt_pu": 1.0271307789540698,
+      "vmax_mt_pu": 1.0449983140555248,
+      "sobrecargas_mt": [],
+      "carregamento_max_mt_pct": 84.06168563120379,
+      "perdas_kw": 803.6097878579411,
+      "viavel": true,
+      "motivos": [],
+      "ajustes": [
+       "maxiterations=100",
+       "vminpu=0.9"
+      ],
+      "tempo_s": 1.5088561249431223,
+      "clientes": {
+       "ucbt": 4036,
+       "ucmt": 6,
+       "trafos": 63,
+       "kva": 8960.0,
+       "total": 4042
+      },
+      "tlcd": false
+     }
+    },
+    {
+     "chave": "746851189",
+     "ctmt_chave": "RCP9882",
+     "fonte": "RCP9882",
+     "tlcd": true,
+     "tip_unid": "32",
+     "externa": false,
+     "clientes": {
+      "ucbt": 4036,
+      "ucmt": 6,
+      "trafos": 63,
+      "kva": 8960.0,
+      "total": 4042
+     },
+     "clientes_fonte": {
+      "ucbt": 5824,
+      "ucmt": 2,
+      "trafos": 76,
+      "kva": 9300.0,
+      "total": 5826
+     },
+     "manobras": [
+      {
+       "acao": "abrir",
+       "chave": "11035901"
+      },
+      {
+       "acao": "fechar",
+       "chave": "746851189"
+      }
+     ],
+     "n_nos": 315,
+     "score": {
+      "fonte": "RCP9882",
+      "convergiu": true,
+      "i_disjuntor_a": 351.43184448950535,
+      "i_nominal_a": 438.1,
+      "margem_disjuntor": 0.19782733510726927,
+      "vmin_mt_pu": 1.0184490725892736,
+      "vmax_mt_pu": 1.0449982143692396,
+      "sobrecargas_mt": [],
+      "carregamento_max_mt_pct": 80.6968443039209,
+      "perdas_kw": 821.4556457448825,
+      "viavel": true,
+      "motivos": [],
+      "ajustes": [
+       "maxiterations=100",
+       "vminpu=0.9"
+      ],
+      "tempo_s": 1.4098137919791043,
+      "clientes": {
+       "ucbt": 4036,
+       "ucmt": 6,
+       "trafos": 63,
+       "kva": 8960.0,
+       "total": 4042
+      },
+      "tlcd": true
+     }
+    },
+    {
+     "chave": "23313112",
+     "ctmt_chave": "RCP9882",
+     "fonte": "RCP9882",
+     "tlcd": false,
+     "tip_unid": "19",
+     "externa": false,
+     "clientes": {
+      "ucbt": 4036,
+      "ucmt": 6,
+      "trafos": 63,
+      "kva": 8960.0,
+      "total": 4042
+     },
+     "clientes_fonte": {
+      "ucbt": 5824,
+      "ucmt": 2,
+      "trafos": 76,
+      "kva": 9300.0,
+      "total": 5826
+     },
+     "manobras": [
+      {
+       "acao": "abrir",
+       "chave": "11035901"
+      },
+      {
+       "acao": "fechar",
+       "chave": "23313112"
+      }
+     ],
+     "n_nos": 315,
+     "score": {
+      "fonte": "RCP9882",
+      "convergiu": true,
+      "i_disjuntor_a": 351.3858555344123,
+      "i_nominal_a": 438.1,
+      "margem_disjuntor": 0.1979323087550507,
+      "vmin_mt_pu": 1.0192196764696486,
+      "vmax_mt_pu": 1.0449982157272515,
+      "sobrecargas_mt": [],
+      "carregamento_max_mt_pct": 80.686283698879,
+      "perdas_kw": 822.8375605275319,
+      "viavel": true,
+      "motivos": [],
+      "ajustes": [
+       "maxiterations=100",
+       "vminpu=0.9"
+      ],
+      "tempo_s": 1.4882787499809638,
+      "clientes": {
+       "ucbt": 4036,
+       "ucmt": 6,
+       "trafos": 63,
+       "kva": 8960.0,
+       "total": 4042
+      },
+      "tlcd": false
+     }
+    },
+    {
+     "chave": "977361689",
+     "ctmt_chave": "URG29983",
+     "fonte": "URG29983",
+     "tlcd": true,
+     "tip_unid": "32",
+     "externa": false,
+     "clientes": {
+      "ucbt": 4036,
+      "ucmt": 6,
+      "trafos": 63,
+      "kva": 8960.0,
+      "total": 4042
+     },
+     "clientes_fonte": {
+      "ucbt": 3395,
+      "ucmt": 1,
+      "trafos": 54,
+      "kva": 7620.0,
+      "total": 3396
+     },
+     "manobras": [
+      {
+       "acao": "abrir",
+       "chave": "11035901"
+      },
+      {
+       "acao": "fechar",
+       "chave": "977361689"
+      }
+     ],
+     "n_nos": 315,
+     "score": {
+      "fonte": "URG29983",
+      "convergiu": true,
+      "i_disjuntor_a": 345.73306040383096,
+      "i_nominal_a": 591.5,
+      "margem_disjuntor": 0.4154977846089079,
+      "vmin_mt_pu": 1.0138956981920395,
+      "vmax_mt_pu": 1.0449982957327049,
+      "sobrecargas_mt": [
+       "Line.smt_11051956"
+      ],
+      "carregamento_max_mt_pct": 179.5239431813566,
+      "perdas_kw": 829.8761535485567,
+      "viavel": false,
+      "motivos": [
+       "1 trecho(s) MT acima de 100 % (Line.smt_11051956 180 %)"
+      ],
+      "ajustes": [
+       "maxiterations=100",
+       "vminpu=0.9"
+      ],
+      "tempo_s": 1.0588072090176865,
+      "clientes": {
+       "ucbt": 4036,
+       "ucmt": 6,
+       "trafos": 63,
+       "kva": 8960.0,
+       "total": 4042
+      },
+      "tlcd": true
+     }
+    },
+    {
+     "chave": "11006808",
+     "ctmt_chave": "URG29983",
+     "fonte": "URG29983",
+     "tlcd": false,
+     "tip_unid": "19",
+     "externa": false,
+     "clientes": {
+      "ucbt": 4036,
+      "ucmt": 6,
+      "trafos": 63,
+      "kva": 8960.0,
+      "total": 4042
+     },
+     "clientes_fonte": {
+      "ucbt": 3395,
+      "ucmt": 1,
+      "trafos": 54,
+      "kva": 7620.0,
+      "total": 3396
+     },
+     "manobras": [
+      {
+       "acao": "abrir",
+       "chave": "11035901"
+      },
+      {
+       "acao": "fechar",
+       "chave": "11006808"
+      }
+     ],
+     "n_nos": 315,
+     "score": {
+      "fonte": "URG29983",
+      "convergiu": true,
+      "i_disjuntor_a": 345.8188890259488,
+      "i_nominal_a": 591.5,
+      "margem_disjuntor": 0.41535268127481184,
+      "vmin_mt_pu": 1.015488079390238,
+      "vmax_mt_pu": 1.0449982977173309,
+      "sobrecargas_mt": [
+       "Line.smt_11051956"
+      ],
+      "carregamento_max_mt_pct": 179.5738356813471,
+      "perdas_kw": 825.9282955754579,
+      "viavel": false,
+      "motivos": [
+       "1 trecho(s) MT acima de 100 % (Line.smt_11051956 180 %)"
+      ],
+      "ajustes": [
+       "maxiterations=100",
+       "vminpu=0.9"
+      ],
+      "tempo_s": 1.007188874995336,
+      "clientes": {
+       "ucbt": 4036,
+       "ucmt": 6,
+       "trafos": 63,
+       "kva": 8960.0,
+       "total": 4042
+      },
+      "tlcd": false
+     }
+    },
+    {
+     "chave": "11006815",
+     "ctmt_chave": "URG29983",
+     "fonte": "URG29983",
+     "tlcd": false,
+     "tip_unid": "19",
+     "externa": false,
+     "clientes": {
+      "ucbt": 4036,
+      "ucmt": 6,
+      "trafos": 63,
+      "kva": 8960.0,
+      "total": 4042
+     },
+     "clientes_fonte": {
+      "ucbt": 3395,
+      "ucmt": 1,
+      "trafos": 54,
+      "kva": 7620.0,
+      "total": 3396
+     },
+     "manobras": [
+      {
+       "acao": "abrir",
+       "chave": "11035901"
+      },
+      {
+       "acao": "fechar",
+       "chave": "11006815"
+      }
+     ],
+     "n_nos": 315,
+     "score": {
+      "fonte": "URG29983",
+      "convergiu": true,
+      "i_disjuntor_a": 345.7324549335485,
+      "i_nominal_a": 591.5,
+      "margem_disjuntor": 0.41549880822730595,
+      "vmin_mt_pu": 1.013878185964273,
+      "vmax_mt_pu": 1.0449982957160724,
+      "sobrecargas_mt": [
+       "Line.smt_11051956"
+      ],
+      "carregamento_max_mt_pct": 179.5235915722056,
+      "perdas_kw": 829.912191898446,
+      "viavel": false,
+      "motivos": [
+       "1 trecho(s) MT acima de 100 % (Line.smt_11051956 180 %)"
+      ],
+      "ajustes": [
+       "maxiterations=100",
+       "vminpu=0.9"
+      ],
+      "tempo_s": 1.906429958064109,
+      "clientes": {
+       "ucbt": 4036,
+       "ucmt": 6,
+       "trafos": 63,
+       "kva": 8960.0,
+       "total": 4042
+      },
+      "tlcd": false
+     }
+    },
+    {
+     "chave": "1009901594",
+     "ctmt_chave": "URG29706",
+     "fonte": "URG29706",
+     "tlcd": true,
+     "tip_unid": "32",
+     "externa": true,
+     "clientes": {
+      "ucbt": 4036,
+      "ucmt": 6,
+      "trafos": 63,
+      "kva": 8960.0,
+      "total": 4042
+     },
+     "clientes_fonte": {
+      "ucbt": 0,
+      "ucmt": 0,
+      "trafos": 0,
+      "kva": 0.0,
+      "total": 0
+     },
+     "manobras": [
+      {
+       "acao": "abrir",
+       "chave": "11035901"
+      },
+      {
+       "acao": "fechar",
+       "chave": "1009901594"
+      }
+     ],
+     "n_nos": 315,
+     "score": {
+      "fonte": "URG29706",
+      "convergiu": false,
+      "i_disjuntor_a": null,
+      "i_nominal_a": null,
+      "margem_disjuntor": null,
+      "vmin_mt_pu": null,
+      "vmax_mt_pu": null,
+      "sobrecargas_mt": [],
+      "carregamento_max_mt_pct": null,
+      "perdas_kw": null,
+      "viavel": false,
+      "motivos": [
+       "fonte URG29706 fora do cluster (sem modelo)"
+      ],
+      "ajustes": [],
+      "tempo_s": 0.0,
+      "clientes": {
+       "ucbt": 4036,
+       "ucmt": 6,
+       "trafos": 63,
+       "kva": 8960.0,
+       "total": 4042
+      },
+      "tlcd": true
+     }
+    },
+    {
+     "chave": "11035887",
+     "ctmt_chave": "URG29706",
+     "fonte": "URG29706",
+     "tlcd": false,
+     "tip_unid": "19",
+     "externa": true,
+     "clientes": {
+      "ucbt": 4036,
+      "ucmt": 6,
+      "trafos": 63,
+      "kva": 8960.0,
+      "total": 4042
+     },
+     "clientes_fonte": {
+      "ucbt": 0,
+      "ucmt": 0,
+      "trafos": 0,
+      "kva": 0.0,
+      "total": 0
+     },
+     "manobras": [
+      {
+       "acao": "abrir",
+       "chave": "11035901"
+      },
+      {
+       "acao": "fechar",
+       "chave": "11035887"
+      }
+     ],
+     "n_nos": 315,
+     "score": {
+      "fonte": "URG29706",
+      "convergiu": false,
+      "i_disjuntor_a": null,
+      "i_nominal_a": null,
+      "margem_disjuntor": null,
+      "vmin_mt_pu": null,
+      "vmax_mt_pu": null,
+      "sobrecargas_mt": [],
+      "carregamento_max_mt_pct": null,
+      "perdas_kw": null,
+      "viavel": false,
+      "motivos": [
+       "fonte URG29706 fora do cluster (sem modelo)"
+      ],
+      "ajustes": [],
+      "tempo_s": 0.0,
+      "clientes": {
+       "ucbt": 4036,
+       "ucmt": 6,
+       "trafos": 63,
+       "kva": 8960.0,
+       "total": 4042
+      },
+      "tlcd": false
+     }
+    },
+    {
+     "chave": "494303815",
+     "ctmt_chave": "ALC9925",
+     "fonte": "ALC740",
+     "tlcd": false,
+     "tip_unid": "19",
+     "externa": false,
+     "clientes": {
+      "ucbt": 4036,
+      "ucmt": 6,
+      "trafos": 63,
+      "kva": 8960.0,
+      "total": 4042
+     },
+     "clientes_fonte": {
+      "ucbt": 0,
+      "ucmt": 0,
+      "trafos": 0,
+      "kva": 0.0,
+      "total": 0
+     },
+     "manobras": [
+      {
+       "acao": "abrir",
+       "chave": "11035901"
+      },
+      {
+       "acao": "fechar",
+       "chave": "494303815"
+      }
+     ],
+     "n_nos": 315,
+     "score": {
+      "fonte": "ALC740",
+      "convergiu": false,
+      "i_disjuntor_a": null,
+      "i_nominal_a": null,
+      "margem_disjuntor": null,
+      "vmin_mt_pu": null,
+      "vmax_mt_pu": null,
+      "sobrecargas_mt": [],
+      "carregamento_max_mt_pct": null,
+      "perdas_kw": null,
+      "viavel": false,
+      "motivos": [
+       "fonte ALC740 fora do cluster (sem modelo)"
+      ],
+      "ajustes": [],
+      "tempo_s": 0.0,
+      "clientes": {
+       "ucbt": 4036,
+       "ucmt": 6,
+       "trafos": 63,
+       "kva": 8960.0,
+       "total": 4042
+      },
+      "tlcd": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "ferramenta": "propose_plan",
+  "argumentos": {
+   "chave": "974020904",
+   "justificativa": "maior margem no disjuntor (46 %) entre as opções viáveis; recupera os 4042 clientes"
+  },
+  "resultado": {
+   "id": "P-0001",
+   "criada_em": "2026-09-10T17:01:03+00:00",
+   "cluster": "cluster_tijuca",
+   "falta": "11304252",
+   "chave": "974020904",
+   "fonte": "ALC9946",
+   "manobras": [
+    {
+     "acao": "abrir",
+     "chave": "11035901"
+    },
+    {
+     "acao": "fechar",
+     "chave": "974020904"
+    }
+   ],
+   "clientes": {
+    "ucbt": 4036,
+    "ucmt": 6,
+    "trafos": 63,
+    "kva": 8960.0,
+    "total": 4042
+   },
+   "score": {
+    "fonte": "ALC9946",
+    "convergiu": true,
+    "i_disjuntor_a": 319.53987489808503,
+    "i_nominal_a": 591.5,
+    "margem_disjuntor": 0.45978043127965335,
+    "vmin_mt_pu": 1.0271172171023266,
+    "vmax_mt_pu": 1.0449983140525487,
+    "sobrecargas_mt": [],
+    "carregamento_max_mt_pct": 84.06150167052775,
+    "perdas_kw": 803.6444825281976,
+    "viavel": true,
+    "motivos": [],
+    "ajustes": [
+     "maxiterations=100",
+     "vminpu=0.9"
+    ],
+    "tempo_s": 1.3493232920300215,
+    "clientes": {
+     "ucbt": 4036,
+     "ucmt": 6,
+     "trafos": 63,
+     "kva": 8960.0,
+     "total": 4042
+    },
+    "tlcd": true
+   },
+   "ja_satisfeitas": [
+    "10927447"
+   ],
+   "status": "pendente",
+   "token": null,
+   "aprovada_em": null,
+   "aprovada_por": null,
+   "expira_em": null,
+   "motivo": "maior margem no disjuntor (46 %) entre as opções viáveis; recupera os 4042 clientes",
+   "executadas": 0,
+   "proximo_passo": {
+    "acao": "abrir",
+    "chave": "11035901"
+   },
+   "n_passos": 2
+  }
+ },
+ {
+  "ferramenta": "set_switch",
+  "argumentos": {
+   "chave": "11035901",
+   "estado": "aberta"
+  },
+  "resultado": {
+   "erro": "manobra abrir 11035901 recusada: sem token de aprovação válido (peça aprovação humana da proposta)"
+  }
+ },
+ {
+  "humano": "bdgd-light aprovar P-0001 --operador operadora",
+  "resultado": {
+   "id": "P-0001",
+   "criada_em": "2026-09-10T17:01:03+00:00",
+   "cluster": "cluster_tijuca",
+   "falta": "11304252",
+   "chave": "974020904",
+   "fonte": "ALC9946",
+   "manobras": [
+    {
+     "acao": "abrir",
+     "chave": "11035901"
+    },
+    {
+     "acao": "fechar",
+     "chave": "974020904"
+    }
+   ],
+   "clientes": {
+    "ucbt": 4036,
+    "ucmt": 6,
+    "trafos": 63,
+    "kva": 8960.0,
+    "total": 4042
+   },
+   "score": {
+    "fonte": "ALC9946",
+    "convergiu": true,
+    "i_disjuntor_a": 319.53987489808503,
+    "i_nominal_a": 591.5,
+    "margem_disjuntor": 0.45978043127965335,
+    "vmin_mt_pu": 1.0271172171023266,
+    "vmax_mt_pu": 1.0449983140525487,
+    "sobrecargas_mt": [],
+    "carregamento_max_mt_pct": 84.06150167052775,
+    "perdas_kw": 803.6444825281976,
+    "viavel": true,
+    "motivos": [],
+    "ajustes": [
+     "maxiterations=100",
+     "vminpu=0.9"
+    ],
+    "tempo_s": 1.3493232920300215,
+    "clientes": {
+     "ucbt": 4036,
+     "ucmt": 6,
+     "trafos": 63,
+     "kva": 8960.0,
+     "total": 4042
+    },
+    "tlcd": true
+   },
+   "ja_satisfeitas": [
+    "10927447"
+   ],
+   "status": "aprovada",
+   "aprovada_em": "2026-09-10T17:01:03+00:00",
+   "aprovada_por": "operadora",
+   "expira_em": "2026-09-10T17:31:03+00:00",
+   "motivo": "maior margem no disjuntor (46 %) entre as opções viáveis; recupera os 4042 clientes",
+   "executadas": 0,
+   "proximo_passo": {
+    "acao": "abrir",
+    "chave": "11035901"
+   },
+   "n_passos": 2,
+   "token": "***"
+  }
+ },
+ {
+  "ferramenta": "get_proposal",
+  "argumentos": {
+   "proposta_id": "P-0001"
+  },
+  "resultado": {
+   "id": "P-0001",
+   "criada_em": "2026-09-10T17:01:03+00:00",
+   "cluster": "cluster_tijuca",
+   "falta": "11304252",
+   "chave": "974020904",
+   "fonte": "ALC9946",
+   "manobras": [
+    {
+     "acao": "abrir",
+     "chave": "11035901"
+    },
+    {
+     "acao": "fechar",
+     "chave": "974020904"
+    }
+   ],
+   "clientes": {
+    "ucbt": 4036,
+    "ucmt": 6,
+    "trafos": 63,
+    "kva": 8960.0,
+    "total": 4042
+   },
+   "score": {
+    "fonte": "ALC9946",
+    "convergiu": true,
+    "i_disjuntor_a": 319.53987489808503,
+    "i_nominal_a": 591.5,
+    "margem_disjuntor": 0.45978043127965335,
+    "vmin_mt_pu": 1.0271172171023266,
+    "vmax_mt_pu": 1.0449983140525487,
+    "sobrecargas_mt": [],
+    "carregamento_max_mt_pct": 84.06150167052775,
+    "perdas_kw": 803.6444825281976,
+    "viavel": true,
+    "motivos": [],
+    "ajustes": [
+     "maxiterations=100",
+     "vminpu=0.9"
+    ],
+    "tempo_s": 1.3493232920300215,
+    "clientes": {
+     "ucbt": 4036,
+     "ucmt": 6,
+     "trafos": 63,
+     "kva": 8960.0,
+     "total": 4042
+    },
+    "tlcd": true
+   },
+   "ja_satisfeitas": [
+    "10927447"
+   ],
+   "status": "aprovada",
+   "token": "***",
+   "aprovada_em": "2026-09-10T17:01:03+00:00",
+   "aprovada_por": "operadora",
+   "expira_em": "2026-09-10T17:31:03+00:00",
+   "motivo": "maior margem no disjuntor (46 %) entre as opções viáveis; recupera os 4042 clientes",
+   "executadas": 0,
+   "proximo_passo": {
+    "acao": "abrir",
+    "chave": "11035901"
+   },
+   "n_passos": 2
+  }
+ },
+ {
+  "ferramenta": "set_switch",
+  "argumentos": {
+   "chave": "11035901",
+   "estado": "aberta",
+   "approval_token": "***"
+  },
+  "resultado": {
+   "executado": true,
+   "chave": "11035901",
+   "estado": "aberta",
+   "proposta": "P-0001",
+   "aprovada_por": "operadora",
+   "aprovada_em": "2026-09-10T17:01:03+00:00",
+   "passo": 1,
+   "n_passos": 2,
+   "proposta_status": "aprovada",
+   "sem_tensao": {
+    "n_nos": 356,
+    "clientes": {
+     "ucbt": 4036,
+     "ucmt": 6,
+     "trafos": 63,
+     "kva": 8960.0,
+     "total": 4042
+    }
+   }
+  }
+ },
+ {
+  "ferramenta": "set_switch",
+  "argumentos": {
+   "chave": "974020904",
+   "estado": "fechada",
+   "approval_token": "***"
+  },
+  "resultado": {
+   "executado": true,
+   "chave": "974020904",
+   "estado": "fechada",
+   "proposta": "P-0001",
+   "aprovada_por": "operadora",
+   "aprovada_em": "2026-09-10T17:01:03+00:00",
+   "passo": 2,
+   "n_passos": 2,
+   "proposta_status": "executada",
+   "sem_tensao": {
+    "n_nos": 41,
+    "clientes": {
+     "ucbt": 0,
+     "ucmt": 0,
+     "trafos": 0,
+     "kva": 0.0,
+     "total": 0
+    }
+   }
+  }
+ },
+ {
+  "ferramenta": "run_powerflow",
+  "argumentos": {},
+  "resultado": {
+   "manobras_aplicadas": [
+    {
+     "acao": "abrir",
+     "chave": "11035901"
+    },
+    {
+     "acao": "abrir",
+     "chave": "10927447"
+    },
+    {
+     "acao": "fechar",
+     "chave": "974020904"
+    }
+   ],
+   "loadmult": 1.0,
+   "comandos_dss": [
+    "open line.cmt_11035901 term=1",
+    "open line.cmt_10927447 term=1",
+    "New \"Line.CMT_974020904\" phases=3 bus1=\"ALC9946_MT_648481.1.2.3\" bus2=\"ALC9946_MT_648482.1.2.3\" r1=0.001 r0=0.001 x1=0.0 x0=0.0 c1=0.0 c0=0.0 switch=T length=0.001 units=km",
+    "New \"Line.TIE_974020904_1\" phases=3 bus1=\"ALC9946_MT_648482.1.2.3\" bus2=\"ALC9925_MT_648482.1.2.3\" r1=0.001 r0=0.001 x1=0.0 x0=0.0 c1=0.0 c0=0.0 switch=T length=0.001 units=km"
+   ],
+   "master": "Master_DU01_base.dss",
+   "circuito": "cluster_alc9925-rcp9882-alc9946-urg29983",
+   "convergiu": true,
+   "iteracoes": 6,
+   "ajustes": [
+    "maxiterations=100",
+    "vminpu=0.9"
+   ],
+   "n_barras": 10030,
+   "n_nos": 34098,
+   "n_linhas": 9795,
+   "n_trafos": 283,
+   "n_cargas": 32132,
+   "n_nos_fase": 25609,
+   "n_desenergizados": 105,
+   "v_min_pu": 0.30285534629318783,
+   "v_max_pu": 7855.101215737521,
+   "n_subtensao": 1566,
+   "n_sobretensao": 9,
+   "n_sobrecargas": 149,
+   "perdas_kw": 803.6444825281976,
+   "perdas_kvar": 1018.6114492440315,
+   "potencia_kw": 13233.358910715982,
+   "potencia_kvar": 6283.401984308444,
+   "fontes": {
+    "source": 0.0,
+    "rcp9882": 3338.1,
+    "alc9946": 6774.4,
+    "urg29983": 3120.9
+   },
+   "tempo_s": 1.1932275419821963,
+   "piores_barras": [
+    {
+     "barra": "10951721ap69285_bt_4488775",
+     "no": "10951721ap69285_bt_4488775.1",
+     "fase": 1,
+     "kv_base": 0.1270170592217177,
+     "v_pu": 0.30285534629318783
+    },
+    {
+     "barra": "10951721ap69285_bt_4488775",
+     "no": "10951721ap69285_bt_4488775.2",
+     "fase": 2,
+     "kv_base": 0.1270170592217177,
+     "v_pu": 0.30286159203953256
+    },
+    {
+     "barra": "10951721ap69285_bt_4488775",
+     "no": "10951721ap69285_bt_4488775.3",
+     "fase": 3,
+     "kv_base": 0.1270170592217177,
+     "v_pu": 0.3030761227221428
+    },
+    {
+     "barra": "392213962_2",
+     "no": "392213962_2.1",
+     "fase": 1,
+     "kv_base": 0.1270170592217177,
+     "v_pu": 0.4652887487819862
+    },
+    {
+     "barra": "346918566_2",
+     "no": "346918566_2.1",
+     "fase": 1,
+     "kv_base": 0.1270170592217177,
+     "v_pu": 0.4709534323926099
+    }
+   ],
+   "sobrecargas": [
+    {
+     "elemento": "Line.sbt_335022357",
+     "tipo": "Line",
+     "i_max_a": 723.065268063446,
+     "i_nominal_a": 92.3,
+     "carregamento_pct": 783.3859892345027
+    },
+    {
+     "elemento": "Transformer.trf_10951427a",
+     "tipo": "Transformer",
+     "i_max_a": 4.630060473694677,
+     "i_nominal_a": 1.4433756729740643,
+     "carregamento_pct": 320.77999930222416
+    },
+    {
+     "elemento": "Line.sbt_335523394",
+     "tipo": "Line",
+     "i_max_a": 295.0171160626175,
+     "i_nominal_a": 92.3,
+     "carregamento_pct": 319.6285114437893
+    },
+    {
+     "elemento": "Line.sbt_293306977",
+     "tipo": "Line",
+     "i_max_a": 315.28621303881295,
+     "i_nominal_a": 108.19000000000001,
+     "carregamento_pct": 291.41899717054525
+    },
+    {
+     "elemento": "Line.rbt_335022195",
+     "tipo": "Line",
+     "i_max_a": 299.36069704893197,
+     "i_nominal_a": 108.18999999999998,
+     "carregamento_pct": 276.69904524349016
+    }
+   ],
+   "fontes_a": {
+    "source": 0.0,
+    "rcp9882": 161.4,
+    "alc9946": 319.5,
+    "urg29983": 156.3
+   }
+  }
+ }
+]
