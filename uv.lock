@@ -152,6 +152,7 @@ agent = [
     { name = "mcp", version = "2.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
     { name = "pydantic", version = "2.11.10", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.12.*'" },
     { name = "pydantic", version = "2.13.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version != '3.12.*'" },
+    { name = "pyyaml" },
 ]
 dev = [
     { name = "pytest" },
@@ -179,6 +180,7 @@ requires-dist = [
     { name = "pyproj", specifier = ">=3.6" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pytest-cov", marker = "extra == 'dev'" },
+    { name = "pyyaml", marker = "extra == 'agent'", specifier = ">=6" },
     { name = "rich", specifier = ">=13" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "shapely", specifier = ">=2.0" },
