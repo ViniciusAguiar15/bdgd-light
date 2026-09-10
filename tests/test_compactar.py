@@ -52,7 +52,7 @@ def test_arredondar_preserva_tipos_e_arredonda_floats():
     assert saida["b"][2] is True and saida["b"][3] is None
 
 
-def test_compactar_zona_troca_listas_por_contagens_e_manobras_por_texto():
+def test_compactar_zona_troca_listas_por_contagens_e_enxuga_manobras():
     original = {
         "trecho": "T1",
         "zona": {"nos": ["n1", "n2", "n3"], "chave_montante": "CH001"},
@@ -74,7 +74,7 @@ def test_compactar_zona_troca_listas_por_contagens_e_manobras_por_texto():
     assert saida["zona"] == {"n_nos": 3, "chave_montante": "CH001"}
     assert saida["n_desligados"] == 4 and saida["n_reenergizados"] == 0
     assert "desligados" not in saida and "zona" in saida
-    assert saida["manobras"] == ["abrir CH001"]
+    assert saida["manobras"] == [{"acao": "abrir", "chave": "CH001"}]
     assert "x" not in saida["clientes_desligados"]
 
 
@@ -97,7 +97,10 @@ def test_compactar_restore_options_top_n_e_resumo_das_demais():
     assert "master" not in saida["score"] and saida["score"]["n_viaveis"] == 3
     assert [o["chave"] for o in saida["opcoes"]] == ["CH010", "CH011"]
     detalhada = saida["opcoes"][0]
-    assert detalhada["manobras"] == ["abrir CH001", "fechar CH010"]
+    assert detalhada["manobras"] == [
+        {"acao": "abrir", "chave": "CH001"},
+        {"acao": "fechar", "chave": "CH010"},
+    ]
     assert detalhada["score"]["margem_disjuntor_pct"] == 46.0
     assert "master" not in detalhada["score"] and "detalhe_interno" not in detalhada["score"]
     assert "extra" not in detalhada["clientes"] and detalhada["clientes"]["ucbt"] == 100
@@ -163,7 +166,7 @@ def test_compactar_fluxo_remove_comandos_e_limita_listas():
     saida = compactar("run_powerflow", r)
     for campo in ("comandos_dss", "master", "ajustes", "n_nos_fase"):
         assert campo not in saida
-    assert saida["manobras_aplicadas"] == ["abrir CH001"]
+    assert saida["manobras_aplicadas"] == [{"acao": "abrir", "chave": "CH001"}]
     assert len(saida["piores_barras"]) == 5 and "no" not in saida["piores_barras"][0]
     assert len(saida["sobrecargas"]) == 5
     assert saida["vmin_pu"] == 0.9512

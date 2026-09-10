@@ -62,9 +62,14 @@ def _clientes(c: Any) -> Any:
 
 
 def _manobras(m: Any) -> Any:
+    """Mantém as manobras como objetos ``{"acao", "chave"}`` (só descarta outros campos). A forma
+    em texto ``"abrir 479996584"`` fazia o Gemini responder ``MALFORMED_FUNCTION_CALL`` logo após
+    ``isolate_fault`` em ~25 % das execuções (benchmark de 2026-09-10, docs/bench.md)."""
     if not isinstance(m, list):
         return m
-    return [f"{x.get('acao')} {x.get('chave')}" if isinstance(x, Mapping) else x for x in m]
+    return [
+        {"acao": x.get("acao"), "chave": x.get("chave")} if isinstance(x, Mapping) else x for x in m
+    ]
 
 
 def compactar_topologia(r: Mapping[str, Any]) -> dict[str, Any]:
@@ -93,7 +98,7 @@ def compactar_topologia(r: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def compactar_zona(r: Mapping[str, Any]) -> dict[str, Any]:
-    """``locate_fault``/``isolate_fault``: listas de nós → contagens; manobras em uma linha."""
+    """``locate_fault``/``isolate_fault``: listas de nós → contagens; manobras só (ação, chave)."""
     saida = dict(r)
     _contar_nos(saida, "zona", "desligados", "reenergizados")
     zona = saida.get("zona")
