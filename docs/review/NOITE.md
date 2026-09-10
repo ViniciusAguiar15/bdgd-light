@@ -492,3 +492,87 @@ npm run smoke                                                # pronto: true, fei
 VITE_BASE=/bdgd-light/ npm run build && VITE_BASE=/bdgd-light/ npx vite preview --port 4173
 gh workflow run pages.yml && gh run watch                     # build verde; deploy pulado (Pages off)
 ```
+
+## Resumo final (00:05)
+
+Fila esgotada: os 7 itens combinados foram entregues, todos os PRs passaram no CI (Python 3.11 e
+3.12) e foram *squash-merged* em `main` (`9ccf27d`) sem force-push e sem commit direto em `main`.
+Nada de `data/` entrou no git. `uv run pytest` em `main`: **162 testes verdes** (de 39 no início da
+noite); ruff limpo.
+
+| Item | Issue | Branch | PR | Estado |
+|---|---|---|---|---|
+| 0 | #1, #2, #3 | `feat/export-camadas`, `feat/inventario-recorte` | #9, #11 (#10 fechado pelo GitHub, ver item 0) | mergeados |
+| 1 | revisão PR-02 | `fix/ajustes-pr-02` | #12 | mergeado |
+| 2 | #6 grafo | `feat/grafo-alimentador` | #13 | mergeado |
+| 3 | #5 gêmeo OpenDSS | `feat/twin-opendss` | #14 | mergeado |
+| 4 | #8 ADR-001 | `docs/adr-001` | #15 | mergeado |
+| 5 | #7 LLMClient | `feat/llm-client` | #16 | mergeado |
+| 6a | revisões PR-04/05/06 | `fix/review-pr04-pr06` | #19 | mergeado |
+| 6 | #4 console | `feat/console` | #20 | mergeado; Pages **parcial** (ver abaixo) |
+| 7 | este resumo | `docs/noite-resumo` | #21 | — |
+
+Issues fechadas: #1–#8. Abertas por mim: **#17** (Master do gêmeo a partir do GPKG) e **#18**
+(`twin.score_eletrico`), ambas fase 3 por indicação da revisão PR-04.
+
+### O que existe agora (`bdgd-light --help`)
+
+`export` (GDB → GeoParquet/Parquet em lotes) · `inventario` (uma linha por CTMT, 36 colunas, score
+por ties de campo, `--top`, `--bairro`) · `vizinhos` (ties por CTMT, `--sem-se`) · `recortar` (um GPKG
+por CTMT + GPKG do cluster + `INTERLIGACOES`) · `grafo` (networkx: fonte, isolamento da falta,
+restauração via ties, `--geojson`) · `dss` (bdgd2opendss + OpenDSSDirect: fluxo, violações,
+manobras do grafo no gêmeo do cluster) · `tiles` (recorte → PMTiles) · `llm` (tool calling com
+`--fake` e log de auditoria) · `audit` (verifica a cadeia de hashes). Console em `console/`
+(MapLibre + PMTiles, estado do grafo sobreposto, smoke headless). Docs: ADR-001, ADR-002,
+`bdgd-relacoes.md`, `grid-modelo.md`, `spike-opendss.md`, `spike-llm.md`, `escopo-alimentadores.md`.
+
+### Decisões que merecem o olho do mantenedor
+
+1. **Ties são geométricas, não por PAC** (2 m entre a chave NA e a extremidade de SSDMT de outro
+   CTMT), e o `score` do inventário conta só ties **de campo** (`EM_SUB = False`) — decisão da PR-02;
+   ties de SE ficam em colunas separadas.
+2. **Cluster de referência = TQR** (TQR0007 + TQR33859 + TQR33862): usado em `grafo`, `dss`, `tiles`,
+   no console e nos exemplos; `data/feeders/` também tem BMT0001+BMT29737+CBI33798.
+3. **GitHub Models foi aposentado em 30/07/2026** (API responde 410). `LLMClient` ficou; o cliente
+   real é `OpenAICompatClient` (Azure AI Foundry, OpenAI, Ollama…) por `BDGD_LLM_ENDPOINT/TOKEN/MODEL`.
+   **Falta escolher o provedor e cadastrar o secret** — pede uma ADR-003 curta (regra da PR-05: não
+   editar a ADR-001; lá só marquei a decisão 10 como alterada).
+4. **Log de auditoria** (PR-06): JSON Lines com hash encadeado por rodada, em `data/audit/llm.jsonl`
+   por padrão; `bdgd-light audit` verifica. A aprovação humana (HITL) ainda não gera registro — entra
+   quando existir o fluxo de aprovação de manobra (F3).
+5. **Gêmeo OpenDSS**: bdgd2opendss converte a Light inteira em 36 Masters por CTMT; a BT herda ramais
+   `RAMLIG.COMP` suspeitos, então as **métricas de decisão do MVP são MT** (tensão 0,93–1,05 pu e
+   corrente no tronco). O Master do cluster é montado por concatenação (`twin/cluster.py`); ler direto
+   do GPKG do recorte é a issue #17 e o verificador elétrico das opções de restauração é a #18.
+6. **GitHub Pages não pôde ser habilitado** (`422 Your current plan does not support GitHub Pages
+   for this repository` — repositório privado). O workflow `pages.yml` compila o console em todo push
+   em `main` (rodou verde após o merge do #20, *deploy* pulado com aviso, artefato `console-dist`) e
+   publica sozinho quando o repo ficar público ou o plano mudar + *Settings › Pages › Source: GitHub
+   Actions*. Único critério de aceite da fila que ficou parcial.
+7. **ADR-002** (console) escrita em vez de editar a decisão 8 da ADR-001, conforme PR-05.
+
+### Pendências consolidadas
+
+- Escolher provedor LLM + secret `BDGD_LLM_TOKEN` → ADR-003 (F3).
+- Habilitar o Pages (depende do plano/visibilidade do repo).
+- Issues #17 e #18 (fase 3).
+- Divergência GD_BT (UGBT_tab × inventário) anotada na PR-02/PR-03 — não bloqueia.
+- Console: ícones das chaves BT, legenda flutuante, *fetch* periódico do estado (F2).
+- Chrome headless para o `npm run smoke` é comando do mantenedor; não roda no CI.
+
+### Validação rápida com dados reais (tudo a partir de `main`)
+
+```bash
+uv sync --extra dev --extra twin --extra agent && uv run pytest -q                 # 162 passed
+uv run bdgd-light inventario --parquet data/parquet --top 10                        # score por ties de campo
+uv run bdgd-light vizinhos --parquet data/parquet --ctmt TQR0007 --sem-se
+uv run bdgd-light recortar --parquet data/parquet --ctmt TQR0007,TQR33859,TQR33862 --out data/feeders
+uv run bdgd-light grafo --gpkg data/feeders/TQR0007.gpkg --falha 254862954 --geojson /tmp/estado.geojson
+uv run bdgd-light dss --gpkg data/feeders/cluster_TQR0007-TQR33859-TQR33862.gpkg --falha 254862954
+uv run bdgd-light tiles --gpkg data/feeders/cluster_TQR0007-TQR33859-TQR33862.gpkg \
+    --out console/public/tiles/exemplo.pmtiles --geojson /tmp/exemplo_geojson
+(cd console && npm ci && npm run dev)     # http://localhost:5173/?estado=exemplos/estado_TQR0007_falta.geojson
+uv run bdgd-light llm --fake "Quanto é 2 + 3?" && uv run bdgd-light audit data/audit/llm.jsonl
+```
+
+Fim do modo noturno.
