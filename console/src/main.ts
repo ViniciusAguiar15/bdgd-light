@@ -8,6 +8,7 @@
  *   ?tiles=tiles/X.pmtiles   caminho (relativo à base do site) ou URL absoluta do PMTiles
  *   ?estado=URL.geojson      GeoJSON de `bdgd-light grafo --geojson`
  *   ?estado=none             não carrega o estado do cenário
+ *   ?api=http://host:porta   backend `bdgd-light serve` (padrão: mesma origem, /api); ver cod.ts
  */
 import {
   addProtocol,
@@ -29,6 +30,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
 import { FONTE, GRUPOS, INTERATIVAS } from "./camadas";
 import { CENARIO_PADRAO, CENARIOS, cenarioPorId } from "./cenarios";
+import { baseApi, montarCod } from "./cod";
 import { carregarEstado } from "./estado";
 import { registrarIcones } from "./icones";
 import {
@@ -140,6 +142,8 @@ const mapa = new MapaLibre({
 
 // exposto para depuração no DevTools e para o smoke test (scripts/smoke.mjs)
 (window as unknown as { mapa: MapaLibre }).mapa = mapa;
+// painel do COD (fila, proposta, aprovação); some se não houver backend `bdgd-light serve`
+const cod = montarCod(mapa, baseApi(params, base), cenario);
 mapa.addControl(new NavigationControl({ visualizePitch: false }), "top-right");
 mapa.addControl(new ScaleControl({ unit: "metric" }), "bottom-right");
 montarBases(mapa, BASES, "base-esri");
@@ -244,7 +248,9 @@ async function carregarTiles() {
 mapa.on("load", async () => {
   registrarIcones(mapa);
   await carregarTiles();
-  if (estadoParam) {
+  // com backend e cluster carregado, o estado vivo (api/estado.geojson) substitui o do cenário
+  await cod.pronto;
+  if (estadoParam && !(cod.ativo && cod.estado?.cluster)) {
     try {
       await carregarEstado(mapa, new URL(estadoParam, base).href);
     } catch (e) {

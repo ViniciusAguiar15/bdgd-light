@@ -216,3 +216,149 @@ label.item small {
     border-top: 1px solid var(--borda);
   }
 }
+
+/* painel do COD (fila, proposta, aprovação) */
+.cod-identidade {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.cod-identidade input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--borda);
+  border-radius: 4px;
+  background: var(--bg-2);
+  color: var(--fg);
+  font-size: 12px;
+}
+
+#secao-cod button {
+  padding: 6px 10px;
+  border: 1px solid var(--acento);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--acento);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+#secao-cod button.primario {
+  background: var(--acento);
+  color: #12161c;
+  font-weight: 600;
+}
+
+#secao-cod button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.cod-situacao {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+.cod-situacao .aviso {
+  color: var(--acento);
+}
+
+.cod-evento {
+  margin: 8px 0;
+  padding: 8px;
+  border-left: 3px solid var(--acento);
+  background: var(--bg-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.cod-proposta {
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--borda);
+  border-left: 3px solid var(--acento);
+  border-radius: 4px;
+  background: var(--bg-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cod-proposta.status-executada {
+  border-left-color: #00e676;
+}
+
+.cod-proposta.status-rejeitada,
+.cod-proposta.status-expirada {
+  border-left-color: var(--erro);
+}
+
+.cod-proposta h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.cod-proposta .rotulo,
+.cod-auditoria .rotulo {
+  margin-top: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--fg-2);
+}
+
+.cod-manobras {
+  margin: 2px 0 4px;
+  padding-left: 20px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.cod-proposta .ok {
+  color: #00e676;
+}
+
+.cod-motivo {
+  margin: 6px 0;
+  color: var(--fg-2);
+  font-style: italic;
+}
+
+.cod-proposta details ul,
+.cod-auditoria ul,
+.cod-historico {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.cod-proposta li.escolhida {
+  color: var(--fg);
+}
+
+.cod-acoes {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.cod-acoes button {
+  flex: 1;
+}
+
+.cod-auditoria {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.cod-auditoria li {
+  overflow-wrap: anywhere;
+}
+
+.cod-auditoria code.hash {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+}

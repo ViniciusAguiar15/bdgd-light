@@ -17,6 +17,16 @@
         <h2>Cenário</h2>
         <div id="cenarios"></div>
       </section>
+      <section id="secao-cod" hidden>
+        <h2>COD · fila e aprovação</h2>
+        <div class="cod-identidade">
+          <input id="cod-operador" type="text" placeholder="operador" spellcheck="false" title="X-Operador: quem aprova/rejeita (fica na auditoria)" />
+          <input id="cod-token" type="password" placeholder="token" title="BDGD_CONSOLE_TOKEN do backend (vazio se serve --sem-segredo)" />
+          <button id="cod-injetar" type="button" title="injeta a falta do cenário e aciona o agente">injetar falta</button>
+        </div>
+        <p id="cod-erro" class="erro" hidden></p>
+        <div id="cod"></div>
+      </section>
       <section>
         <h2>Base</h2>
         <div id="bases"></div>
@@ -45,6 +55,8 @@
           console/public/tiles/X.pmtiles</code> e <code>?tiles=tiles/X.pmtiles</code>.
           Estado do grafo: <code>?estado=URL.geojson</code> (saída de
           <code>bdgd-light grafo --geojson</code>; <code>?estado=none</code> desliga o do cenário).
+          Fila e aprovação: rode <code>bdgd-light serve --cluster tijuca</code> e abra a porta 8000
+          (ou <code>?api=http://localhost:8000</code> no <code>vite dev</code>).
         </p>
       </footer>
     </aside>

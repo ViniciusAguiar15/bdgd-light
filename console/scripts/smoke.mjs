@@ -7,7 +7,12 @@
  * Uso: node scripts/smoke.mjs [URL] [saida.png]
  *   URL padrão: http://localhost:5173/?cenario=tijuca (cenário A; ?cenario=ipanema|taquara para os outros)
  *   CHROME=/caminho/para/chrome para outro binário.
- * Sai com código 1 se houver erro de estilo/JS ou nenhuma feição vetorial renderizada.
+ *   SMOKE_EXPR="..." avalia uma expressão JS na página e imprime o resultado.
+ *   SMOKE_FLUXO=1 (com `bdgd-light serve` atrás da URL) roda a demo ponta a ponta no painel do COD:
+ *     injetar falta → esperar a proposta → aprovar e executar → conferir o mapa recolorido.
+ *     SMOKE_TOKEN=<BDGD_CONSOLE_TOKEN> se o backend exige segredo; SMOKE_OPERADOR (padrão "smoke").
+ * Sai com código 1 se houver erro de estilo/JS, nenhuma feição vetorial renderizada ou, com
+ * SMOKE_FLUXO, se a proposta não for executada em até 60 s / o mapa não mudar.
  */
 import { spawn } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
@@ -127,9 +132,56 @@ const dados = JSON.parse(info ?? "{}");
 
 if (process.env.SMOKE_EXPR) console.log("SMOKE_EXPR →", await avaliar(process.env.SMOKE_EXPR));
 
+// demo ponta a ponta no painel do COD (precisa do backend `bdgd-light serve` na mesma origem/?api=)
+const FLUXO = `(async () => {
+  const t0 = performance.now();
+  const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+  const cod = window.cod;
+  const apagados = () => window.mapa.getSource("estado")
+    ? window.mapa.querySourceFeatures("estado").filter((f) => f.properties.camada === "SSDMT" && f.properties.energizado === false).length
+    : null;
+  const out = { ativo: cod?.ativo ?? false, cluster: cod?.estado?.cluster ?? null };
+  if (!out.ativo) return JSON.stringify({ ...out, erro: "painel do COD inativo: backend não respondeu em " + (cod?.api ?? "?") });
+  document.getElementById("cod-operador").value = ${JSON.stringify(process.env.SMOKE_OPERADOR ?? "smoke")};
+  document.getElementById("cod-token").value = ${JSON.stringify(process.env.SMOKE_TOKEN ?? "")};
+  out.desenergizados = { antes: apagados() };
+  document.getElementById("cod-injetar").click();
+  let p = null;
+  for (let i = 0; i < 200 && !p; i++) { await dormir(300); await cod.atualizar(); p = cod.estado?.propostas.find((x) => x.status === "pendente"); }
+  out.tProposta_s = +((performance.now() - t0) / 1000).toFixed(1);
+  if (!p) return JSON.stringify({ ...out, erro: cod.ultimoErro ?? "sem proposta pendente em 60 s" });
+  out.proposta = { id: p.id, falta: p.falta, chave: p.chave, fonte: p.fonte, manobras: p.manobras.map((m) => m.acao + " " + m.chave), viavel: p.score?.viavel ?? null };
+  out.cartao = document.getElementById("cod-proposta")?.textContent.slice(0, 200) ?? null;
+  await dormir(500);
+  out.desenergizados.durante = apagados();
+  document.getElementById("cod-aprovar").click();
+  let exec = null;
+  for (let i = 0; i < 200 && !exec; i++) { await dormir(300); await cod.atualizar(); exec = cod.estado?.propostas.find((x) => x.id === p.id && x.status === "executada"); }
+  await dormir(1500);
+  out.desenergizados.depois = apagados();
+  out.executada = !!exec; out.aprovadaPor = exec?.aprovada_por ?? null;
+  out.auditoria = document.getElementById("cod-auditoria")?.firstChild?.textContent ?? null;
+  out.tTotal_s = +((performance.now() - t0) / 1000).toFixed(1);
+  out.erro = cod.ultimoErro;
+  return JSON.stringify(out);
+})()`;
+let fluxo = null;
+if (process.env.SMOKE_FLUXO) {
+  fluxo = JSON.parse((await avaliar(FLUXO)) ?? "{}");
+  console.log("SMOKE_FLUXO →", JSON.stringify(fluxo));
+}
+
 const shot = await enviar("Page.captureScreenshot", { format: "png" });
 if (shot.result?.data) writeFileSync(saida, Buffer.from(shot.result.data, "base64"));
 
 console.log(JSON.stringify({ url, screenshot: saida, ...dados, errosJS: erros }, null, 2));
-const falhou = !dados.pronto || dados.erro || erros.length || dados.feicoes === 0;
+let falhou = !dados.pronto || dados.erro || erros.length || dados.feicoes === 0;
+if (fluxo) {
+  const d = fluxo.desenergizados ?? {};
+  const recoloriu = d.durante > 0 && d.depois !== null && d.depois < d.durante;
+  if (!fluxo.executada || fluxo.erro || !recoloriu) {
+    console.error("fluxo do COD falhou:", fluxo.erro ?? (fluxo.executada ? "mapa não recoloriu" : "proposta não executada"));
+    falhou = true;
+  }
+}
 encerrar(falhou ? 1 : 0);
