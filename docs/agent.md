@@ -148,6 +148,10 @@ Resultados com `gemini-2.5-flash` (endpoint OpenAI-compatível do Gemini, ADR-00
 | `ipanema_9210` (PTS0001, trecho 11409068) | idem | **P-0002 sem chave** (isolar 505111870 e 561826961; religador já aberto) + despacho de equipe | ok (só topologia: 5 checagens, sem chave) | 5 | 63 179 + 389 = 65 474 | 14,4 s / 0,1 s |
 | `taquara_bocari` (TQR33862, trecho 11798327) | idem | **P-0003: abrir 11026473, 22826994, 528574225, 790615689; fechar 10924213 (religador); fechar 11056672 → TQR33859**, 1984 clientes, margem 62 %, Vmin 0,998 pu | ok | 5 | 54 075 + 468 = 59 395 | 25,8 s / 18,5 s |
 
+| `tijuca_cabofrio_tronco` — **OpenAI** `gpt-4.1-mini` | idem | **P-0001: abrir 11035901, fechar 974020904 → ALC9946**, 4042 clientes, margem 45,98 %, Vmin 1,027 pu (mesma do Gemini) | ok | 4 | 32 154 + 508 = 32 662 | 14,3 s / 9,8 s |
+| `ipanema_9210` — **OpenAI** | idem | **P-0002 sem chave** (isolar 505111870 e 561826961) + despacho (mesma do Gemini) | ok (5 checagens) | 4 | 32 559 + 376 = 32 935 | 10,2 s / 0,04 s |
+| `taquara_bocari` — **OpenAI** | idem | **P-0003: abrir 11026473, 22826994, 528574225, 790615689; fechar 10924213; fechar 11053620 → TQR33859**, 1984 clientes, margem 61,96 %, Vmin 1,009 pu (chave NA equivalente à do Gemini: mesma fonte, mesmos clientes, empate de margem) | ok | 5 | 37 150 + 385 = 37 535 | 15,0 s / 24,8 s |
+
 \* o total do Gemini inclui tokens de raciocínio ("thoughts"), por isso é maior que prompt + saída.
 Os ~50 k tokens de prompt são cumulativos das 5 rodadas: o resultado de `restore_options` com
 10 opções e scores é a maior parte; compactar esse retorno para o modelo é a otimização óbvia (#36).
@@ -160,10 +164,16 @@ citaram os números das ferramentas (A, pu, %, clientes). Exemplos escolhidos: T
 `falta_simples_uma_rota, falta_duas_rotas, rota_inviavel_por_corrente`; Ipanema
 `sem_opcao_negativo, …`; Taquara `falta_simples_uma_rota, rota_inviavel_por_corrente, …`.
 
-**OpenAI**: a chave `OPENAI_API_KEY` não estava disponível na máquina em que a noite rodou; os
-mesmos comandos sem `--provider` (ou com `--provider openai`) usam o perfil padrão (`gpt-4.1-mini`,
-salvo `BDGD_LLM_MODEL`). Pendência registrada em `docs/review/NOITE-2.md` para o mantenedor rodar e
-anexar a linha correspondente à tabela acima.
+**OpenAI** (`gpt-4.1-mini-2025-04-14`, perfil padrão; rodado pelo mantenedor com os mesmos
+comandos e `--provider openai`, saídas em `data/relatorios/*_openai.json`): mesmas propostas do
+Gemini nos três cenários, 0 replanejamentos e 0 recusas, em 4–5 rodadas e ~33–38 k tokens (menos
+que o Gemini porque não há tokens de raciocínio e uma rodada a menos) — 10–15 s de LLM por falta.
+**Observação (Ipanema)**: o resumo do OpenAI citou "1730 clientes sem tensão" — o total do CTMT
+PTS0001 antes de religar o tronco — em vez dos **479** que continuam sem tensão depois de isolar a
+falta e religar o religador (o número que interessa ao operador e que `isolate_fault` devolve). A
+proposta estava certa; o texto, não. Por isso o benchmark (#36) pontua também a **correção
+numérica do resumo** (a resposta tem de conter o número esperado, com tolerância), e não só a
+proposta/sequência de ferramentas.
 
 ## Limites conhecidos
 
