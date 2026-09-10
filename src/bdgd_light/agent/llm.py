@@ -202,7 +202,19 @@ class RespostaInvalidaError(LLMError):
 
 class RespostaVaziaError(RespostaInvalidaError):
     """Mensagem sem ``content`` nem ``tool_calls`` — o Gemini devolve isso com ``finish_reason``
-    ``MALFORMED_FUNCTION_CALL`` (falha transitória do modelo ao montar a chamada); vale repetir."""
+    ``MALFORMED_FUNCTION_CALL`` (falha transitória do modelo ao montar a chamada); vale repetir.
+    ``uso`` guarda os tokens cobrados pela tentativa falha (o payload traz ``usage``)."""
+
+    def __init__(self, mensagem: str, uso: Uso | None = None):
+        super().__init__(mensagem)
+        self.uso = uso
+
+
+LEMBRETE_CHAMADA = (
+    "Sua última resposta veio vazia (chamada de ferramenta malformada). Refaça: chame a próxima "
+    "ferramenta com argumentos JSON válidos (um objeto, só os parâmetros do esquema) ou responda "
+    "em texto."
+)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -229,7 +241,8 @@ def interpretar_resposta(payload: Mapping[str, Any]) -> Resposta:
     conteudo = mensagem.get("content")
     if conteudo is None:
         raise RespostaVaziaError(
-            f"mensagem sem 'content' nem 'tool_calls' (finish_reason={fim!r}): {_resumo(payload)}"
+            f"mensagem sem 'content' nem 'tool_calls' (finish_reason={fim!r}): {_resumo(payload)}",
+            uso=uso,
         )
     return Text(str(conteudo), uso, modelo, fim)
 
@@ -439,15 +452,22 @@ class OpenAICompatClient:
     def chat(self, messages: Sequence[Message], tools: Sequence[ToolSpec] = ()) -> Resposta:
         payload = self.montar_payload(messages, tools)
         tentativa = 0
+        usos_falhos: list[Uso] = []
         while True:
             tentativa += 1
             dados = self._post(payload)
             try:
                 resposta = interpretar_resposta(dados)
-            except RespostaVaziaError:
+            except RespostaVaziaError as exc:
+                if exc.uso is not None:
+                    usos_falhos.append(exc.uso)
                 if tentativa >= self.max_tentativas:
+                    exc.uso = _somar_uso(usos_falhos)  # tudo o que as tentativas custaram
                     raise
                 self._dormir(1.0)
+                # repetir o mesmo pedido costuma falhar igual: acrescenta um lembrete (só neste
+                # pedido; o histórico do chamador não muda) para o modelo refazer a chamada
+                payload = self.montar_payload([*messages, Message.user(LEMBRETE_CHAMADA)], tools)
                 continue
             self.ultimo_uso = resposta.uso
             return resposta
@@ -740,6 +760,18 @@ class Conversa:
         }
 
 
+@dataclass
+class ConversaParcial:
+    """O que uma conversa interrompida por erro do provedor já havia consumido (anexado à
+    exceção como ``exc.parcial``): rodadas, usos de tokens (inclusive das tentativas falhas),
+    ferramentas executadas e segundos."""
+
+    rodadas: int
+    usos: list[Uso]
+    ferramentas_executadas: int
+    segundos: float
+
+
 def _somar_uso(usos: Sequence[Uso]) -> Uso | None:
     if not usos:
         return None
@@ -787,7 +819,20 @@ def conversar(
     enviadas_desde = 0
     t0 = time.perf_counter()
     for rodada in range(1, max_rodadas + 1):
-        resposta = cliente.chat(historico, specs)
+        try:
+            resposta = cliente.chat(historico, specs)
+        except LLMError as exc:
+            # o chamador ainda contabiliza o que já foi gasto (rodadas, tokens, tempo)
+            uso_falho = getattr(exc, "uso", None)
+            exc.parcial = ConversaParcial(
+                rodadas=rodada,
+                usos=[*usos, *([uso_falho] if uso_falho else [])],
+                ferramentas_executadas=len(execucoes),
+                segundos=time.perf_counter() - t0,
+            )
+            if audit is not None:
+                audit.registrar("conversa.erro", rodadas=rodada, modelo=modelo, erro=str(exc))
+            raise
         if resposta.uso is not None:
             usos.append(resposta.uso)
         modelo = resposta.modelo or modelo

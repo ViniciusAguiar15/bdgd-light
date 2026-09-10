@@ -1,0 +1,97 @@
+# Tarefas do benchmark sobre o cluster de teste (RJO001/RJO002 da bdgd_mini): mesmo formato de
+# bench/tarefas.yaml, para o CI rodar o harness com o operador fake (tests/test_bench.py).
+versao: 1
+tarefas:
+  - id: S01
+    nivel: simple
+    cluster: cluster_RJO001-RJO002
+    pergunta: "Quantos quilômetros de rede MT tem o alimentador RJO002?"
+    referencia: [get_topology]
+    gabarito: {ferramenta: get_topology, argumentos: {ctmt: RJO002, com_chaves: false}, campo: resumo.km}
+    unidade: km
+    tolerancia_abs: 0.01
+    esperado: 0.674
+  - id: S02
+    nivel: simple
+    cluster: cluster_RJO001-RJO002
+    pergunta: "Quantas UCBT o alimentador RJO001 atende?"
+    referencia: [get_topology]
+    gabarito: {ferramenta: get_topology, argumentos: {ctmt: RJO001, com_chaves: false}, campo: resumo.clientes.ucbt}
+    unidade: UCBT
+    tolerancia_abs: 0
+    esperado: 4
+  - id: S03
+    nivel: simple
+    cluster: cluster_RJO001-RJO002
+    pergunta: "Quantas chaves normalmente abertas (NA) existem no alimentador RJO001?"
+    referencia: [get_topology]
+    gabarito: {ferramenta: get_topology, argumentos: {ctmt: RJO001, com_chaves: false}, campo: resumo.chaves_NA}
+    unidade: chaves
+    tolerancia_abs: 0
+    esperado: 2
+  - id: S04
+    nivel: simple
+    cluster: cluster_RJO001-RJO002
+    pergunta: "Quantos trechos de rede MT compõem o alimentador RJO002?"
+    referencia: [get_topology]
+    gabarito: {ferramenta: get_topology, argumentos: {ctmt: RJO002, com_chaves: false}, campo: resumo.trechos}
+    unidade: trechos
+    tolerancia_abs: 0
+    esperado: 4
+  - id: M01
+    nivel: medium
+    cluster: cluster_RJO001-RJO002
+    pergunta: "Quantas UCBT ficam sem tensão se a chave CH001 abrir?"
+    referencia: [downstream_customers]
+    gabarito: {ferramenta: downstream_customers, argumentos: {chave: CH001}, campo: clientes.ucbt}
+    unidade: UCBT
+    tolerancia_abs: 0
+    esperado: 3
+  - id: M02
+    nivel: medium
+    cluster: cluster_RJO001-RJO002
+    falta: SEG001
+    pergunta: "Há uma falta permanente registrada no trecho SEG001. Quantos clientes UCBT estão dentro da zona de falta?"
+    referencia: [locate_fault]
+    gabarito: {ferramenta: locate_fault, argumentos: {}, campo: zona.clientes.ucbt}
+    unidade: UCBT
+    tolerancia_abs: 0
+    esperado: 1
+  - id: M03
+    nivel: medium
+    cluster: cluster_RJO001-RJO002
+    falta: SEG001
+    pergunta: "Com a falta registrada no trecho SEG001: depois de isolar a zona em falta, quantas UCBT sãs continuam sem tensão?"
+    referencia: [locate_fault, isolate_fault]
+    gabarito: {ferramenta: isolate_fault, argumentos: {}, campo: clientes_desligados.ucbt}
+    unidade: UCBT
+    tolerancia_abs: 0
+    esperado: 3
+  - id: H01
+    nivel: hard
+    cluster: cluster_RJO001-RJO002
+    falta: SEG001
+    evento: falta_permanente
+    referencia: [locate_fault, isolate_fault, restore_options, propose_plan]
+    gabarito: {ferramenta: restore_options, argumentos: {score: true}, campo: melhor_opcao}
+    verificar: proposta
+    esperado: [CH003, CH005]
+  - id: H02
+    nivel: hard
+    cluster: cluster_RJO001-RJO002
+    falta: SEG001
+    pergunta: "Falta registrada no trecho SEG001: quantas opções de restauração são eletricamente viáveis?"
+    referencia: [locate_fault, isolate_fault, restore_options]
+    gabarito: {ferramenta: restore_options, argumentos: {score: true}, campo: score.viaveis}
+    unidade: opções
+    tolerancia_abs: 0
+    esperado: 2
+  - id: H03
+    nivel: hard
+    cluster: cluster_RJO001-RJO002
+    pergunta: "Rode o fluxo de potência do cluster no caso base: qual é a tensão mínima, em pu?"
+    referencia: [run_powerflow]
+    gabarito: {ferramenta: run_powerflow, argumentos: {}, campo: v_min_pu}
+    unidade: pu
+    tolerancia_abs: 0.005
+    esperado: 1.0136

@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from bdgd_light.agent.audit import AuditLog
+from bdgd_light.agent.compactar import TOP_N_OPCOES, compactar
 from bdgd_light.agent.llm import (
     Conversa,
     FakeLLMClient,
@@ -521,6 +522,13 @@ class Execucao:
     exemplos: list[str] = field(default_factory=list)
     erro: str | None = None
     inicio: str = ""
+    compactado: bool = True
+
+    @property
+    def chars_ferramentas(self) -> int:
+        """Tamanho (caracteres de JSON) dos resultados de ferramenta enviados ao modelo — proxy de
+        tokens quando o provedor não informa uso (fake)."""
+        return sum(int(f.get("chars") or 0) for f in self.ferramentas)
 
     @property
     def n_ferramentas(self) -> int:
@@ -552,6 +560,8 @@ class Execucao:
             "segundos_llm": round(self.segundos_llm, 3),
             "segundos_ferramentas": round(self.segundos_ferramentas, 3),
             "segundos_total": round(self.segundos_total, 3),
+            "chars_ferramentas": self.chars_ferramentas,
+            "compactado": self.compactado,
             "hash_auditoria": self.hash_auditoria,
             "exemplos": list(self.exemplos),
             "erro": self.erro,
@@ -582,9 +592,13 @@ class Orquestrador:
         audit: AuditLog | None = None,
         provider: str | None = None,
         ferramentas: Sequence[str] = FERRAMENTAS_MODELO,
+        compactar: bool = True,
+        top_n_opcoes: int = TOP_N_OPCOES,
     ):
         self.sessao = sessao
         self.cliente = cliente
+        self.compactar = compactar
+        self.top_n_opcoes = top_n_opcoes
         self.exemplos = list(carregar_exemplos() if exemplos is None else exemplos)
         self.top_k = top_k
         self.max_rodadas = max_rodadas
@@ -733,6 +747,13 @@ class Orquestrador:
                     }
                 )
                 raise
+            if nome == "restore_options":
+                self._opcoes = list(resultado.get("opcoes") or [])
+            elif nome == "isolate_fault":
+                self._isolamento = dict(resultado)
+            elif nome == "inject_fault":
+                self._opcoes = self._isolamento = None
+            para_modelo = self._para_modelo(nome, resultado)
             self._chamadas.append(
                 {
                     "ferramenta": nome,
@@ -740,18 +761,20 @@ class Orquestrador:
                     "ok": True,
                     "resumo": _resumir(resultado),
                     "segundos": round(time.perf_counter() - inicio, 3),
+                    "chars": len(json.dumps(para_modelo, ensure_ascii=False, default=str)),
                 }
             )
-            if nome == "restore_options":
-                self._opcoes = list(resultado.get("opcoes") or [])
-            elif nome == "isolate_fault":
-                self._isolamento = dict(resultado)
-            elif nome == "inject_fault":
-                self._opcoes = self._isolamento = None
-            return resultado
+            return para_modelo
 
         executar.__name__ = nome
         return executar
+
+    def _para_modelo(self, nome: str, resultado: Any) -> Any:
+        """O que o modelo recebe: o resultado compactado (padrão) ou íntegro (``--sem-compactar``).
+        O orquestrador e o verificador sempre trabalham com o resultado íntegro."""
+        if not self.compactar:
+            return resultado
+        return compactar(nome, resultado, top_n=self.top_n_opcoes)
 
     def _propor(self, chave: str | None = None, justificativa: str = "") -> dict[str, Any]:
         argumentos = {"chave": chave, "justificativa": justificativa}
@@ -792,7 +815,11 @@ class Orquestrador:
         resultado = self.sessao.propose_plan(chave=chave, justificativa=justificativa)
         resultado["verificador"] = veredito.to_dict()
         self._proposta, self._veredito = resultado, veredito
-        registrar(ok=True, resumo=_resumir(resultado))
+        registrar(
+            ok=True,
+            resumo=_resumir(resultado),
+            chars=len(json.dumps(resultado, ensure_ascii=False, default=str)),
+        )
         if self.audit is not None:
             self.audit.registrar(
                 "agente.verificador.ok", proposta=resultado["id"], chave=chave, **veredito.to_dict()
@@ -825,6 +852,7 @@ class Orquestrador:
             modelo=getattr(self.cliente, "modelo", None),
             exemplos=[e.id for e in escolhidos],
             inicio=datetime.now(UTC).isoformat(timespec="seconds"),
+            compactado=self.compactar,
         )
         historico: list[Message] = [
             Message.system(montar_prompt_sistema(escolhidos)),
@@ -898,13 +926,23 @@ class Orquestrador:
 
     def _conversar(self, historico, ferramentas, execucao: Execucao, usos: list[Uso]) -> Conversa:
         chamadas_antes = len(self._chamadas)
-        conversa = conversar(
-            self.cliente,
-            historico,
-            ferramentas,
-            max_rodadas=self.max_rodadas,
-            audit=self.audit,
-        )
+        try:
+            conversa = conversar(
+                self.cliente,
+                historico,
+                ferramentas,
+                max_rodadas=self.max_rodadas,
+                audit=self.audit,
+            )
+        except LLMError as exc:
+            parcial = getattr(exc, "parcial", None)
+            if parcial is not None:  # provedor caiu no meio: contabiliza o que já foi gasto
+                execucao.rodadas += parcial.rodadas
+                ferramentas_s = sum(c.get("segundos", 0.0) for c in self._chamadas[chamadas_antes:])
+                execucao.segundos_llm += max(0.0, parcial.segundos - ferramentas_s)
+                execucao.segundos_ferramentas += ferramentas_s
+                usos.extend(parcial.usos)
+            raise
         execucao.rodadas += conversa.rodadas
         # conversa.segundos inclui a execução das ferramentas; o tempo do LLM é o restante
         ferramentas_s = sum(c.get("segundos", 0.0) for c in self._chamadas[chamadas_antes:])
@@ -1061,16 +1099,196 @@ def fake_operador(modelo: str = "fake-operador") -> FakeLLMClient:
                 modelo=modelo,
                 uso=Uso(),
             )
-        if "get_topology" not in nomes and "get_topology" in disponiveis:
-            return chamar("get_topology", com_chaves=False)
-        topo = (resultado_de("get_topology") or {}).get("resumo", {})
-        return Text(
-            "Resumo do cluster: " + ", ".join(f"{k} {v}" for k, v in list(topo.items())[:8]) + ".",
-            modelo=modelo,
-            uso=Uso(),
-        )
+        return _responder_pergunta(messages, feitas, disponiveis, chamar, modelo)
 
     return FakeLLMClient(regra=regra)
+
+
+_RE_PERGUNTA = re.compile(r"^PERGUNTA: (.*)$", re.MULTILINE)
+_RE_CTMT = re.compile(r"\b[A-Z]{3}\d{3,5}\b")
+_RE_ID = re.compile(r"\b(?:CH|SEG)\d+\b|\b\d{6,}\b")
+_RE_CHAVE_ID = re.compile(r"chave\s+(?:N[AF]\s+)?((?:CH|SEG)\d+|\d{6,})", re.IGNORECASE)
+_RE_LOADMULT = re.compile(r"(?:loadmult|multiplicador)\D{0,12}(\d+(?:[.,]\d+)?)", re.IGNORECASE)
+_CAMPOS_TOPOLOGIA = (
+    (("km", "quilômetro", "quilometro", "extens"), ("km",), "km de rede MT"),
+    (("trafo", "transformador"), ("clientes", "trafos"), "transformadores"),
+    (("kva",), ("clientes", "kva"), "kVA instalados"),
+    (("ucmt",), ("clientes", "ucmt"), "UCMT"),
+    (("ucbt", "cliente", "consumidor", "unidade"), ("clientes", "ucbt"), "UCBT"),
+    (("interliga", "tie"), ("ties",), "interligações (chaves NA de fronteira)"),
+    (("normalmente aberta", "chaves na", " na ", "(na)"), ("chaves_NA",), "chaves NA"),
+    (("chave",), ("chaves",), "chaves"),
+    (("trecho", "segmento"), ("trechos",), "trechos MT"),
+    (("nó", "nos ", "pac"), ("nos",), "nós"),
+)
+
+
+def _pergunta_do_historico(messages: Sequence[Message]) -> tuple[str, bool]:
+    """Texto da pergunta e se a situação da sessão registra uma falta."""
+    for m in messages:
+        if m.role == "user" and m.content:
+            achado = _RE_PERGUNTA.search(m.content)
+            if achado:
+                return achado.group(1).strip(), "Falta registrada" in m.content
+    return "", False
+
+
+def _caminho(dados: Any, *chaves: str) -> Any:
+    for c in chaves:
+        if not isinstance(dados, Mapping):
+            return None
+        dados = dados.get(c)
+    return dados
+
+
+def _fmt_int(valor: Any) -> str:
+    n = _numero(valor)
+    return "?" if n is None else (str(int(n)) if float(n).is_integer() else f"{n:.3f}")
+
+
+def _responder_pergunta(
+    messages: Sequence[Message],
+    feitas: Sequence[tuple[str, dict, Any]],
+    disponiveis: set[str],
+    chamar: Callable[..., ToolCalls],
+    modelo: str,
+) -> Resposta:
+    """Regras do operador fake para PERGUNTA: identifica CTMT/chave/falta/fluxo na pergunta, chama
+    a ferramenta certa e responde **só** a grandeza pedida (baseline honesto do benchmark)."""
+    pergunta, tem_falta = _pergunta_do_historico(messages)
+    q = pergunta.lower()
+    nomes = [n for n, _, _ in feitas]
+
+    def resultado_de(nome: str) -> Any:
+        for n, _, r in reversed(feitas):
+            if n == nome and isinstance(r, dict) and "erro" not in r:
+                return r
+        return None
+
+    def texto(t: str) -> Text:
+        return Text(t, modelo=modelo, uso=Uso())
+
+    ids = [m.group(1) for m in _RE_CHAVE_ID.finditer(pergunta)] or _RE_ID.findall(pergunta)
+    ctmt = _RE_CTMT.search(pergunta)
+    # "chave 1006470683" é pergunta sobre a chave; "trecho 11304252 ... chaves" é sobre a falta
+    sobre_chave = bool(_RE_CHAVE_ID.search(pergunta)) or ("chave" in q and ids and not tem_falta)
+    sobre_falta = tem_falta and any(
+        k in q
+        for k in (
+            "falta",
+            "isol",
+            "restaur",
+            "opç",
+            "zona",
+            "fronteira",
+            "margem",
+            "viáve",
+            "recuper",
+        )
+    )
+    if sobre_chave and any(k in q for k in ("client", "ucbt", "jusante", "sem tensão", "abrir")):
+        if "downstream_customers" not in nomes and "downstream_customers" in disponiveis:
+            return chamar("downstream_customers", chave=ids[0])
+        r = resultado_de("downstream_customers") or {}
+        c = r.get("clientes") or {}
+        return texto(
+            f"A jusante da chave {ids[0]} ficam {_fmt_int(c.get('ucbt'))} UCBT "
+            f"({_fmt_int(c.get('total'))} clientes, {_fmt_int(r.get('n_nos'))} nós)."
+        )
+    if sobre_chave:
+        if "get_switch_state" not in nomes and "get_switch_state" in disponiveis:
+            return chamar("get_switch_state", chave=ids[0])
+        r = resultado_de("get_switch_state") or {}
+        return texto(
+            f"Chave {ids[0]}: {r.get('estado', '?')}, normal {r.get('normal', '?')}, "
+            f"telecomando {'sim' if r.get('tlcd') else 'não'}, CTMT {r.get('ctmt', '?')}."
+        )
+    if sobre_falta:
+        quer_restauracao = any(k in q for k in ("opç", "margem", "viáve", "melhor", "recuper")) or (
+            "restaur" in q and not any(k in q for k in ("continuam", "permanec"))
+        )
+        quer_fronteira = "fronteira" in q and ("quantas chaves" in q or "abrir" in q)
+        quer_isolamento = quer_restauracao or (
+            not quer_fronteira
+            and any(k in q for k in ("isol", "continuam", "permanec", "após", "depois"))
+        )
+        if "locate_fault" not in nomes:
+            return chamar("locate_fault")
+        if quer_isolamento and "isolate_fault" not in nomes:
+            return chamar("isolate_fault")
+        if quer_restauracao and "restore_options" not in nomes:
+            return chamar("restore_options", score=True)
+        loc = resultado_de("locate_fault") or {}
+        iso = resultado_de("isolate_fault") or {}
+        opt = resultado_de("restore_options") or {}
+        if quer_restauracao:
+            opcoes = opt.get("opcoes") or []
+            melhor = opcoes[0] if opcoes else None
+            desl = _caminho(opt, "desligados", "clientes", "ucbt")
+            viaveis = _caminho(opt, "score", "viaveis")
+            if melhor is None:
+                return texto(
+                    f"Não há opção de restauração para a falta em {loc.get('trecho', '?')}: "
+                    f"{_fmt_int(desl)} UCBT sãs continuam sem tensão após o isolamento; 0 opções."
+                )
+            sc = melhor.get("score") or {}
+            margem = _numero(sc.get("margem_disjuntor"))
+            margem_pct = None if margem is None else 100 * margem
+            return texto(
+                f"Melhor opção: fechar {melhor.get('chave')} → {melhor.get('fonte')}, recupera "
+                f"{_fmt_int(_caminho(melhor, 'clientes', 'ucbt'))} UCBT; margem do disjuntor "
+                f"{_fmt(margem_pct)} %, Vmin MT {_fmt_pu(sc.get('vmin_mt_pu'))} pu. "
+                f"{_fmt_int(opt.get('n_opcoes'))} opções, {_fmt_int(viaveis)} viáveis."
+            )
+        if quer_isolamento:
+            desl = _caminho(iso, "clientes_desligados", "ucbt")
+            return texto(
+                f"Após isolar a zona em falta ({_sequencia_texto(iso.get('sequencia'))}), "
+                f"{_fmt_int(desl)} UCBT sãs continuam sem tensão"
+                + (" e o religador pode religar." if iso.get("religar_apos_isolar") else ".")
+            )
+        zona = loc.get("zona") or {}
+        n_nos = zona.get("n_nos", len(zona.get("nos") or []))
+        fronteira = loc.get("chaves_fronteira") or []
+        if quer_fronteira:
+            return texto(
+                f"Devem abrir {len(fronteira)} chaves de fronteira: {', '.join(fronteira)}."
+            )
+        if "client" in q or "ucbt" in q:
+            return texto(
+                f"A zona de falta tem {_fmt_int(_caminho(zona, 'clientes', 'ucbt'))} UCBT."
+            )
+        if "indica" in q:
+            ind = loc.get("chaves_com_indicacao") or []
+            return texto(f"{len(ind)} chaves com indicação de falta: {', '.join(ind)}.")
+        return texto(f"A zona de falta tem {_fmt_int(n_nos)} nós.")
+    if any(k in q for k in ("fluxo", "loadmult", "tensão mínima", "tensao minima", "caso base")):
+        if "run_powerflow" not in nomes and "run_powerflow" in disponiveis:
+            lm = _RE_LOADMULT.search(pergunta)
+            args = {"loadmult": float(lm.group(1).replace(",", "."))} if lm else {}
+            return chamar("run_powerflow", **args)
+        r = resultado_de("run_powerflow") or {}
+        return texto(
+            f"Fluxo {'convergiu' if r.get('convergiu') else 'não convergiu'} (loadmult "
+            f"{r.get('loadmult', 1.0)}): Vmin {_fmt_pu(r.get('v_min_pu'))} pu, Vmax "
+            f"{_fmt_pu(r.get('v_max_pu'))} pu, {_fmt_int(r.get('n_sobrecargas'))} sobrecargas, "
+            f"perdas {_fmt(r.get('perdas_kw'))} kW."
+        )
+    if "get_topology" not in nomes and "get_topology" in disponiveis:
+        args = {"ctmt": ctmt.group(0)} if ctmt else {}
+        return chamar("get_topology", com_chaves=False, **args)
+    resumo = (resultado_de("get_topology") or {}).get("resumo", {})
+    if ctmt:
+        for palavras, caminho, rotulo in _CAMPOS_TOPOLOGIA:
+            if any(p in q for p in palavras):
+                valor = _caminho(resumo, *caminho)
+                unidade = " km" if caminho == ("km",) else ""
+                return texto(
+                    f"O alimentador {ctmt.group(0)} tem {_fmt_int(valor)}{unidade} ({rotulo})."
+                )
+    return texto(
+        "Resumo do cluster: " + ", ".join(f"{k} {v}" for k, v in list(resumo.items())[:8]) + "."
+    )
 
 
 def _fmt(valor: Any) -> str:
@@ -1098,9 +1316,15 @@ def _resumo_falta(feitas: Sequence[tuple[str, dict, Any]]) -> str:
     opt = por_nome.get("restore_options", {})
     prop = por_nome.get("propose_plan")
     sem = (loc.get("sem_tensao") or {}).get("clientes", {})
+    restam = (iso.get("clientes_desligados") or {}).get("total")
     linhas = [
         f"Falta permanente no trecho {loc.get('trecho', '?')} ({loc.get('ctmt', '?')}), religador "
-        f"{loc.get('religador', '?')} aberto: {sem.get('total', '?')} clientes sem tensão.",
+        f"{loc.get('religador', '?')} aberto: {sem.get('total', '?')} clientes sem tensão"
+        + (
+            f"; após isolar a falta e religar o tronco são, {restam} continuam sem tensão."
+            if restam is not None
+            else "."
+        ),
         f"Isolamento (fronteira {', '.join(iso.get('chaves') or []) or '—'}): "
         f"{_sequencia_texto(iso.get('sequencia')) if iso.get('sequencia') else 'já isolada'}"
         + ("; religar o tronco são" if iso.get("religar_apos_isolar") else "")
@@ -1139,4 +1363,6 @@ def _resumo_falta(feitas: Sequence[tuple[str, dict, Any]]) -> str:
 def _sequencia_texto(manobras: Any) -> str:
     if not manobras:
         return "—"
-    return ", ".join(f"{m.get('acao')} {m.get('chave')}" for m in manobras)
+    return ", ".join(
+        m if isinstance(m, str) else f"{m.get('acao')} {m.get('chave')}" for m in manobras
+    )

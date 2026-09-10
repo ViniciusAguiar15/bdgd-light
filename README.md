@@ -14,7 +14,7 @@ arquitetura (e alternativas descartadas) em [`docs/adr/ADR-001-stack.md`](docs/a
 src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim)
   catalogo.py          IDs da BDGD por distribuidora/ano, camadas-chave, domínios TEN_NOM e TIP_UNID
   cli.py               CLI `bdgd-light` (typer): export, inventario, vizinhos, recortar, grafo, dss,
-                       tiles, llm, audit, mcp, aprovar, sim, agente, serve
+                       tiles, llm, audit, mcp, aprovar, sim, agente, serve, bench
   ingest/export.py     exportação de camadas para GeoParquet/Parquet/GeoPackage, em lotes
   ingest/parquet.py    leitura das camadas exportadas com filtros empurrados ao pyarrow
   ingest/interligacoes.py  detecção geométrica de chaves NA de interligação entre CTMT
@@ -637,6 +637,24 @@ uv run bdgd-light serve --cluster tijuca --provider gemini --sem-segredo        
 uv run bdgd-light serve --cluster ipanema --sem-agente                              # só fila + aprovação manual
 cd console && SMOKE_FLUXO=1 SMOKE_TOKEN=demo npm run smoke -- "http://127.0.0.1:8000/?cenario=tijuca"
 #   demo headless: injeta, espera a proposta, aprova e confere o mapa recolorido (falha se > 60 s)
+```
+
+### `bdgd-light bench` — benchmark do agente (pass@k, ordenação, tokens por acerto)
+
+Roda as 30 tarefas de `bench/tarefas.yaml` (10 *simple* — topologia; 10 *medium* — chave, zona e
+isolamento de uma falta; 10 *hard* — restauração com o gêmeo, três delas o evento completo com
+proposta) `n` vezes com um provedor, calcula pass@1/pass@k, ordenação e precisão da sequência de
+ferramentas (LCS contra a referência anotada), tokens por acerto e tempo, e grava
+`docs/bench/<data>-<provedor>[-modo].csv|.md` com a tabela comparativa de todos os CSVs da pasta.
+O gabarito de cada tarefa é recalculado pelas próprias ferramentas da sessão (`--gabarito` só
+confere). Metodologia e resultados em [`docs/bench.md`](docs/bench.md).
+
+```bash
+uv run bdgd-light bench --gabarito                                  # confere os 30 gabaritos (sem LLM)
+uv run bdgd-light bench --provider fake --k 5 --seed 42             # baseline determinístico, 150 execuções
+uv run bdgd-light bench --provider gemini --nivel simple --k 3 --seed 42
+uv run bdgd-light bench --provider openai --k 5 --seed 42           # OPENAI_API_KEY no ambiente
+uv run bdgd-light bench --provider fake --k 5 --seed 42 --sem-compactar   # mede o custo sem compactação
 ```
 
 ## Console (mapa do operador)

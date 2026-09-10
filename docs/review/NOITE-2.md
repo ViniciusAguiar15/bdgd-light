@@ -692,3 +692,85 @@ achados corrigidos no caminho (commit `fix(agent)`/`feat(console)` abaixo):
   `docs/review/RESULTADOS-OPENAI.md` (linhas OpenAI já incorporadas em `docs/agent.md` no `cd224bb`;
   a observação do Ipanema entra em `docs/backlog/15-benchmark.md` no PR do #36). O pedido 2 (motivo
   de descarte) é barato e entra no #36 junto da compactação; 1 e 3 ficam registrados como pendência.
+
+## 9. #36 — benchmark do agente: pass@k, ordenação, tokens; fake × Gemini (16:15–18:10)
+
+| | |
+|---|---|
+| Branch | `feat/benchmark` (a partir de `main` `c75ac47`) |
+| PR | ver "Fechamento" ao fim da seção |
+| Pedidos de `docs/review/` | `PR-15.md` pedido 2 (motivo de descarte por alternativa) → commit próprio `feat(console)`; `PR-14.md` pedido 3 (recusa forçada do verificador) → seção nova em `docs/agent.md` com a rodada real `--vmin 1.01`; `RESULTADOS-OPENAI.md` (Ipanema "1.730 clientes") → virou o critério `verificar: resposta` do benchmark e observação em `docs/backlog/15-benchmark.md`. Pedidos 1 (passo a passo) e 3 (GIF) do PR-15 seguem pendentes. |
+
+### Decisões
+
+- **Harness** em `src/bdgd_light/bench.py` + `bdgd-light bench` (`cli.py`), tarefas em
+  `bench/tarefas.yaml` (30: 10 simple/10 medium/10 hard; Tijuca 12, Ipanema 8, Taquara 10) e
+  fixture `tests/fixtures/bench_mini.yaml` (10 tarefas sobre o cluster de teste; `tests/test_bench.py`
+  exige 100 % com o fake — o CI valida o harness, não um modelo).
+- **Gabarito recalculado em tempo de execução** pelas ferramentas da sessão (com a falta injetada),
+  nunca lido do YAML — `esperado` é documental e `bench --gabarito` acusa divergência. Para propostas
+  o gabarito é o **conjunto** de chaves equivalentes (viáveis, mesmos clientes, margem a ≤ 2 p.p. da
+  maior), o mesmo empate que o verificador tolera: Taquara tem 10 equivalentes, Tijuca 2, Ipanema ∅.
+- **Tolerância** padrão: contagens inteiras exatas (±0,5), grandezas fracionárias ±2 %; `escala`
+  aceita fração ou percentual. Antes ±2 % em tudo aceitaria 4.036 ≈ 4.100 — inútil para contagens.
+- **Métricas** (PowerChain): pass@1, pass@k não enviesado (Codex) por tarefa, ordem (LCS/len ref.),
+  precisão (LCS/len seq.), tokens/pass@1, `chars_ferramentas` (proxy de custo que existe para o fake
+  e mede a compactação), s/exec., rodadas, recusas/replanejamentos. CSV tipado (colunas JSON) com
+  *round-trip* exato + `.md` com comparativo automático entre os CSVs mais recentes por provedor·modo.
+- **Operador fake responde perguntas** (`orquestrador._responder_pergunta`): roteia por palavras-chave
+  (CTMT/chave/falta/fronteira/isolamento/restauração) e lê os retornos **compactados** — é o piso de
+  sanidade: 150/150 nos três modos. Não mede inteligência; mede harness + gabaritos.
+- **Compactação** (PR-14) medida: 7.114 → 1.811 chars/execução (−74 %); hard 17,4 k → 4,6 k.
+- **`--acrescentar`**: acumula no CSV do dia do mesmo rótulo (rodar níveis em sessões separadas sem
+  perder as linhas anteriores); o comparativo passa a pegar o **arquivo** mais recente por rótulo.
+- **Custo de execuções que falham**: `conversar` anexa à exceção um `ConversaParcial` (rodadas,
+  usos — inclusive das tentativas falhas, que o Gemini cobra — e tempo); o orquestrador soma na
+  `Execucao`. Antes uma falha do provedor registrava 0 rodadas/0 tokens e subestimava tokens/pass@1.
+
+### Achado — `MALFORMED_FUNCTION_CALL` do Gemini era causado pela compactação
+
+1. Rodada hard k=2 sem nada: **13/20** — 6 falhas `finish_reason='function_call_filter:
+   MALFORMED_FUNCTION_CALL'` sempre na chamada seguinte a `isolate_fault`, 3 tentativas idênticas;
+   +1 resposta numérica errada (H03 rep. 2: "6 viáveis" com 4 na ferramenta).
+2. Lembrete extra no pedido repetido (`LEMBRETE_CHAMADA`, `agent/llm.py`): **15/20** (5 falhas) — não
+   resolve, mas fica (barato, e cobre o caso transitório).
+3. A/B `--sem-compactar` nas 5 tarefas afetadas × 2: **10/10** → compactação é a causa. Diferença
+   relevante: `manobras`/`sequencia` viravam texto `"abrir 479996584"`.
+4. `compactar._manobras` mantém objetos `{"acao", "chave"}` (+~60 chars por retorno): mesmas 5 × 2 com
+   compactação **10/10**; rodada hard completa **19/20**, zero `MALFORMED`. O único erro (H09 rep. 2)
+   é resposta implícita — "a melhor é 11053620 … outras 9 viáveis", o 10 nunca aparece — e o modelo
+   ainda propôs plano sem ninguém pedir (precisão 95 %).
+   Dados das rodadas 1–2 ficaram fora do repositório (`/tmp/bench/*.csv`); o CSV versionado tem só a
+   rodada com o código corrigido, para o relatório refletir o commit.
+
+### Validação (números finais em `docs/bench.md` e `docs/bench/2026-09-10-*.md`)
+
+| rodada | exec. | pass@1 | pass@k | ordem | precisão | tokens/exec. | chars ferr. | s/exec. |
+|---|---|---|---|---|---|---|---|---|
+| fake k=5 | 150 | 100 % | 100 % | 100 % | 100 % | 0 | 1.811 | 2,5 |
+| fake k=5 `--sem-compactar` | 150 | 100 % | 100 % | 100 % | 100 % | 0 | 7.114 | 2,5 |
+| fake k=5 `--sem-exemplos` | 150 | 100 % | 100 % | 100 % | 100 % | 0 | 1.811 | 2,3 |
+| gemini-2.5-flash simple+medium k=3 | 60 | 100 % | 100 % | 98 % | 100 % | 5.546 | 1.018 | 1,9 |
+| gemini-2.5-flash hard k=2 (corrigido) | 20 | 95 % | 100 % | 100 % | 95 % | 19.955 | 5.349 | 19,2 |
+
+```bash
+uv run bdgd-light bench --gabarito                                              # 30/30 conferem
+uv run bdgd-light bench --provider fake --k 5 --seed 42 --estado /tmp/bench/estado
+uv run bdgd-light bench --provider fake --k 5 --seed 42 --sem-compactar --estado /tmp/bench/estado
+uv run bdgd-light bench --provider fake --k 5 --seed 42 --sem-exemplos --estado /tmp/bench/estado
+uv run bdgd-light bench --provider gemini --nivel simple,medium --k 3 --seed 42 --estado /tmp/bench/estado-gemini
+uv run bdgd-light bench --provider gemini --nivel hard --k 2 --seed 42 --acrescentar --estado /tmp/bench/estado-gemini
+uv run bdgd-light agente --cenario taquara_bocari --provider fake --vmin 1.01 --estado /tmp/ag-recusa/estado --saida /tmp/ag-recusa/taquara_vmin101.json  # recusa forçada
+uv run ruff check . && uv run ruff format . && uv run pytest                    # verdes antes do push
+```
+
+### Pendências
+
+1. **OpenAI não rodou** (`OPENAI_API_KEY` ausente aqui). Comandos em `docs/bench.md` → "Resultados";
+   começar por `--nivel simple --k 3` e acumular com `--acrescentar`.
+2. PR-15 pedido 1 (modo passo a passo no console) e pedido 3 (GIF/capturas no README).
+3. Gemini sem `seed`: k=2 nas hard é pouco; subir para k=5 quando houver orçamento (~26 k tok × 50).
+4. Tarefas: mais medium/hard de Ipanema (3 e 2 hoje); eventos `chave_indisponivel`/`falta_transitoria`
+   no harness (só injeta `falta_permanente`).
+5. Resposta implícita (H09) e resposta errada com proposta certa (H03): o critério estrito está certo,
+   mas vale um *prompt* que exija o número pedido explicitamente na resposta final.

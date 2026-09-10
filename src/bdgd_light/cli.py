@@ -1227,6 +1227,14 @@ def agente(
             "checa tensão/corrente).",
         ),
     ] = False,
+    sem_compactar: Annotated[
+        bool,
+        typer.Option(
+            "--sem-compactar",
+            help="Envia ao modelo os retornos íntegros das ferramentas (padrão: compactados — "
+            "contagens no lugar de listas de nós, top-N opções; ver agent/compactar.py).",
+        ),
+    ] = False,
     vmin: Annotated[float, typer.Option("--vmin", help="Limite inferior de tensão (pu).")] = 0.93,
     vmax: Annotated[float, typer.Option("--vmax", help="Limite superior de tensão (pu).")] = 1.05,
     fila: Annotated[
@@ -1324,6 +1332,7 @@ def agente(
         vmax=vmax,
         exigir_score=not sem_score,
         provider=provider,
+        compactar=not sem_compactar,
     )
     if not json_:
         console.print(
@@ -1351,6 +1360,270 @@ def agente(
             console.print(f"[dim]execução gravada em {saida}[/]")
     if d["erro"]:
         raise typer.Exit(code=1)
+
+
+@app.command()
+def bench(
+    provider: Annotated[
+        str,
+        typer.Option(
+            "--provider", help="Perfil LLM: fake (operador roteirizado), openai, gemini, ollama."
+        ),
+    ] = "fake",
+    modelo: Annotated[
+        str | None, typer.Option("--modelo", help="Modelo (sobrepõe o padrão do perfil).")
+    ] = None,
+    k: Annotated[int, typer.Option("--k", min=1, help="k do pass@k.")] = 5,
+    n: Annotated[
+        int | None,
+        typer.Option("--n", min=1, help="Repetições por tarefa (padrão: k)."),
+    ] = None,
+    tarefas: Annotated[Path, typer.Option("--tarefas", help="YAML de tarefas.")] = Path(
+        "bench/tarefas.yaml"
+    ),
+    nivel: Annotated[
+        str | None,
+        typer.Option("--nivel", help="Só estes níveis (simple,medium,hard; vírgula)."),
+    ] = None,
+    ids: Annotated[
+        str | None, typer.Option("--ids", help="Só estas tarefas (ids separados por vírgula).")
+    ] = None,
+    clusters: Annotated[
+        str | None, typer.Option("--cluster", help="Só estes clusters (vírgula).")
+    ] = None,
+    seed: Annotated[
+        int | None,
+        typer.Option(
+            "--seed",
+            help="Semente: ordem das execuções, simulador e (OpenAI) parâmetro seed da API.",
+        ),
+    ] = None,
+    sem_exemplos: Annotated[
+        bool, typer.Option("--sem-exemplos", help="Sem exemplos anotados no prompt (top-k 0).")
+    ] = False,
+    sem_compactar: Annotated[
+        bool, typer.Option("--sem-compactar", help="Retornos íntegros das ferramentas ao modelo.")
+    ] = False,
+    sem_score: Annotated[
+        bool, typer.Option("--sem-score", help="Sem gêmeo OpenDSS em restore_options.")
+    ] = False,
+    top_k: Annotated[int, typer.Option("--top-k", help="Exemplos anotados por prompt.")] = 3,
+    max_rodadas: Annotated[int, typer.Option("--max-rodadas")] = 8,
+    replanejar: Annotated[int, typer.Option("--replanejar")] = 2,
+    gabarito: Annotated[
+        bool,
+        typer.Option(
+            "--gabarito",
+            help="Só recalcula o gabarito de cada tarefa e confere com 'esperado' (sem LLM).",
+        ),
+    ] = False,
+    saida: Annotated[
+        Path, typer.Option("--saida", help="Pasta dos relatórios (CSV + Markdown).")
+    ] = Path("docs/bench"),
+    sem_relatorio: Annotated[
+        bool, typer.Option("--sem-relatorio", help="Não grava CSV/Markdown; só imprime.")
+    ] = False,
+    acrescentar: Annotated[
+        bool,
+        typer.Option(
+            "--acrescentar",
+            help="Acumula no CSV do dia (mesmo provedor/modo) em vez de sobrescrever — para rodar "
+            "os níveis em etapas; o relatório cobre tudo o que está no arquivo.",
+        ),
+    ] = False,
+    feeders: Annotated[Path, typer.Option("--feeders")] = Path("data/feeders"),
+    dss_out: Annotated[Path, typer.Option("--dss-out")] = Path("data/dss/gpkg"),
+    estado: Annotated[
+        Path,
+        typer.Option("--estado", help="Pasta de estado da sessão do benchmark (auditoria)."),
+    ] = Path("data/bench/estado"),
+    dia: Annotated[str, typer.Option("--dia")] = "DU",
+    mes: Annotated[int, typer.Option("--mes", min=1, max=12)] = 1,
+    json_: Annotated[bool, typer.Option("--json", help="Imprime o resumo como JSON.")] = False,
+) -> None:
+    """Benchmark do agente (estilo PowerChain): roda as tarefas de `bench/tarefas.yaml` n vezes
+    com um provedor, mede pass@1/pass@k, ordenação e precisão da sequência de ferramentas, tokens
+    por acerto e tempo, e grava `docs/bench/<data>-<provedor>[-modo].csv|.md` com a tabela
+    comparativa de todos os CSVs da pasta. `--gabarito` só confere as respostas esperadas."""
+    try:
+        from bdgd_light.agent import LLMError, TokenAusenteError
+        from bdgd_light.agent.orquestrador import carregar_exemplos
+        from bdgd_light.bench import (
+            BenchError,
+            Benchmark,
+            Configuracao,
+            Gabarito,
+            carregar_comparativo,
+            carregar_tarefas,
+            comparativo,
+            escrever_csv,
+            filtrar,
+            nome_relatorio,
+            relatorio_markdown,
+            resumir,
+        )
+        from bdgd_light.mcp_server import SessaoCOD, SessaoError
+    except ImportError as erro:
+        _erro(f"{erro} — instale os extras: uv sync --extra agent --extra twin")
+        return
+    try:
+        lista = filtrar(
+            carregar_tarefas(tarefas),
+            niveis=_lista(nivel),
+            ids=_lista(ids),
+            clusters=_lista(clusters),
+        )
+    except BenchError as erro:
+        _erro(str(erro))
+        return
+    if not lista:
+        _erro("nenhuma tarefa selecionada")
+        return
+    if gabarito:
+        sessao = SessaoCOD(feeders=feeders, dss_out=dss_out, estado_dir=estado, dia=dia, mes=mes)
+        gab = Gabarito(sessao, feeders)
+        divergentes = 0
+        for t in lista:
+            try:
+                valor = gab.esperado(t)
+            except (BenchError, SessaoError, FileNotFoundError, KeyError) as erro:
+                console.print(f"[red]{t.id}[/] erro: {erro}")
+                divergentes += 1
+                continue
+            igual = _gabarito_igual(valor, t)
+            divergentes += 0 if igual else 1
+            cor = "green" if igual else "yellow"
+            console.print(
+                f"[{cor}]{t.id}[/] {t.nivel:6} {t.cluster:8} calculado={_fmt_gabarito(valor)} "
+                f"esperado={_fmt_gabarito(t.esperado)}"
+            )
+        if divergentes:
+            console.print(f"[yellow]{divergentes} tarefa(s) divergem de 'esperado'[/]")
+            raise typer.Exit(code=1)
+        console.print(f"[green]{len(lista)} gabaritos conferem[/]")
+        return
+    config = Configuracao(
+        provider=provider,
+        modelo=modelo,
+        k=k,
+        n=n,
+        seed=seed,
+        exemplos=not sem_exemplos,
+        compactar=not sem_compactar,
+        top_k=top_k,
+        max_rodadas=max_rodadas,
+        replanejamentos=replanejar,
+        exigir_score=not sem_score,
+        dia=dia,
+        mes=mes,
+    )
+    try:
+        bench_ = Benchmark(feeders, dss_out, estado, config, exemplos=carregar_exemplos())
+    except (TokenAusenteError, ValueError, FileNotFoundError, SessaoError) as erro:
+        _erro(str(erro))
+        return
+    total = len(lista) * config.repeticoes
+    console.print(
+        f"[dim]bench · {config.rotulo} · {bench_.modelo or provider} · {len(lista)} tarefas × "
+        f"{config.repeticoes} = {total} execuções · k={k} · seed={seed}[/]"
+    )
+
+    def progresso(r, i, n_total):
+        cor = "green" if r.acerto else ("red" if r.erro else "yellow")
+        detalhe = r.erro or f"obtido={_fmt_gabarito(r.obtido)} esperado={_fmt_gabarito(r.esperado)}"
+        console.print(
+            f"[{cor}]{'✓' if r.acerto else '✗'}[/] {i:>3}/{n_total} {r.tarefa} rep.{r.repeticao} "
+            f"{' → '.join(r.sequencia) or '—'} · {r.segundos_total:.1f} s · "
+            f"{r.tokens_total or r.chars_ferramentas} {'tok' if r.tokens_total else 'chars'} "
+            f"· {detalhe}"
+        )
+
+    try:
+        rodadas = bench_.rodar(lista, progresso=None if json_ else progresso)
+    except LLMError as erro:
+        _erro(str(erro))
+        return
+    resumo = resumir(rodadas, k)
+    if json_:
+        console.print_json(json.dumps(resumo, ensure_ascii=False, default=str))
+    else:
+        _imprimir_bench(resumo, k)
+    if sem_relatorio:
+        return
+    nome = nome_relatorio(config)
+    csv_path = saida / f"{nome}.csv"
+    todas = list(rodadas)
+    if acrescentar and csv_path.exists():
+        from bdgd_light.bench import ler_csv
+
+        anteriores = ler_csv(csv_path)
+        todas = anteriores + todas
+        console.print(
+            f"[dim]acrescentando às {len(anteriores)} execuções já em {csv_path} "
+            f"({len(todas)} no total)[/]"
+        )
+    csv_path = escrever_csv(todas, csv_path)
+    comp = comparativo(carregar_comparativo(saida), k)
+    todas_tarefas = carregar_tarefas(tarefas) if acrescentar else lista
+    md = relatorio_markdown(
+        todas,
+        config,
+        tarefas=todas_tarefas,
+        arquivo_tarefas=tarefas,
+        csv_path=csv_path,
+        comparativo_md=comp,
+        k=k,
+    )
+    md_path = saida / f"{nome}.md"
+    md_path.write_text(md, encoding="utf-8")
+    console.print(f"[dim]relatório: {md_path} · csv: {csv_path}[/]")
+
+
+def _gabarito_igual(valor, tarefa) -> bool:
+    esperado = tarefa.esperado
+    if esperado is None:
+        return True
+    if isinstance(valor, list):
+        return sorted(map(str, valor)) == sorted(map(str, esperado or []))
+    if isinstance(valor, int | float) and isinstance(esperado, int | float):
+        from bdgd_light.bench import confere
+
+        return confere(float(valor), float(esperado), tarefa)
+    return str(valor) == str(esperado)
+
+
+def _fmt_gabarito(valor) -> str:
+    if valor is None:
+        return "—"
+    if isinstance(valor, list):
+        return "{" + ", ".join(map(str, valor)) + "}" if valor else "∅"
+    if isinstance(valor, float):
+        return f"{valor:.4g}" if abs(valor) < 1000 else f"{valor:.0f}"
+    return str(valor)
+
+
+def _imprimir_bench(resumo: dict, k: int) -> None:
+    tabela = Table(title="benchmark", show_lines=False)
+    for col in (
+        "nível", "tarefas", "exec.", "pass@1", f"pass@{k}", "ordem", "precisão",
+        "tokens", "tokens/pass@1", "chars ferr.", "s/exec.",
+    ):  # fmt: skip
+        tabela.add_column(col, justify="right" if col not in ("nível",) else "left")
+    for nivel, m in resumo.items():
+        tabela.add_row(
+            nivel,
+            str(m["tarefas"]),
+            str(m["execucoes"]),
+            f"{100 * m['pass@1']:.0f} %",
+            f"{100 * m[f'pass@{k}']:.0f} %",
+            f"{100 * m['ordem']:.0f} %",
+            f"{100 * m['precisao']:.0f} %",
+            f"{m['tokens_medio']:,.0f}",
+            "—" if m["tokens_por_pass1"] is None else f"{m['tokens_por_pass1']:,.0f}",
+            f"{m['chars_ferramentas_medio']:,.0f}",
+            f"{m['segundos_medio']:.1f}",
+        )
+    console.print(tabela)
 
 
 @app.command()
@@ -1405,6 +1678,9 @@ def serve(
     top_k: Annotated[int, typer.Option("--top-k", min=0)] = 3,
     sem_score: Annotated[
         bool, typer.Option("--sem-score", help="Sem gêmeo OpenDSS em restore_options.")
+    ] = False,
+    sem_compactar: Annotated[
+        bool, typer.Option("--sem-compactar", help="Retornos íntegros das ferramentas ao modelo.")
     ] = False,
     vmin: Annotated[float, typer.Option("--vmin")] = 0.93,
     vmax: Annotated[float, typer.Option("--vmax")] = 1.05,
@@ -1477,6 +1753,7 @@ def serve(
             vmax=vmax,
             exigir_score=not sem_score,
             provider=provider,
+            compactar=not sem_compactar,
         )
         agente = AgenteEmSegundoPlano(orq)
         console.print(
