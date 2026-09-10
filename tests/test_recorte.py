@@ -152,7 +152,7 @@ def test_contagens_esperadas_por_alimentador(recorte_cluster):
         "SUB": 1,
         "UNTRAT": 2,
         "SSDMT": 4,
-        "UNSEMT": 3,
+        "UNSEMT": 4,
         "UNTRMT": 2,
         "UNREMT": 0,
         "UNCRMT": 1,
@@ -166,13 +166,13 @@ def test_contagens_esperadas_por_alimentador(recorte_cluster):
         "UGBT_tab": 1,
         "PONNOT": 15,
         "EQTRMT": 2,
-        "EQSE": 3,
+        "EQSE": 4,
         "SEGCON": 2,
         "CRVCRG": 6,
         "INTERLIGACOES": 3,
     }
     assert contagens["RJO002"]["UCBT_tab"] == 2  # UC00007 (CTMT="RJO002" na tabela) fica em RJO001
-    assert contagens["RJO002"]["UNSEMT"] == 3 and contagens["RJO002"]["UNCRMT"] == 0
+    assert contagens["RJO002"]["UNSEMT"] == 4 and contagens["RJO002"]["UNCRMT"] == 0
     ucbt_1 = pyogrio.read_dataframe(recorte_cluster.recortes[0].gpkg, layer="UCBT_tab")
     assert sorted(ucbt_1["COD_ID"]) == ["UC00001", "UC00002", "UC00003", "UC00007"]
 

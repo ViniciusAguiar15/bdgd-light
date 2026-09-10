@@ -11,7 +11,11 @@ SIRGAS 2000 — EPSG:4674), com poucas feições por camada e valores inventados
   telecomandado de RJO001 junto ao fim de ``SEG007`` de RJO002), ``CH005`` (chave faca manual de
   RJO002 junto ao fim de ``SEG006`` de RJO001) e ``CH007`` (disjuntor de RJO002 dentro do pátio
   da ``SE001``, junto ao início de ``SEG001`` de RJO001 — o caso "tie de subestação").
-  ``CH006`` é NA telecomandada de RJO001 que **não** é interligação (longe de outro CTMT).
+  ``CH006`` é NA telecomandada de RJO001 que **não** é interligação (longe de outro CTMT): fecha
+  um anel interno entre ``RJO001_MT_5`` e ``RJO001_MT_6``.
+- Como na Light 2025, ``CTMT.PAC_INI`` é o ``PAC_1`` do disjuntor de saída (``CH008`` em RJO001,
+  ``CH009`` em RJO002, ``TIP_UNID = 29``, NF) e não aparece em nenhum ``SSDMT``; RJO003 não tem
+  disjuntor cadastrado, para exercitar o fallback do grafo (issue #6).
 - ``RJO003`` (LSA, 25 kV) sai de ``SE002``, em outro município, e não tem interligação.
 
 Também há uma UCBT (``UC00007``) cuja coluna ``CTMT`` diverge do CTMT do transformador (como em
@@ -41,6 +45,7 @@ MUN_NOVA_IGUACU = "3303500"
 # Pontos de acoplamento (PAC) da rede MT sintética, em graus (lon, lat), zona norte do Rio.
 # 0,00001° ≈ 1,0 m em longitude e 1,1 m em latitude nesta latitude.
 PACS = {
+    "RJO001_MT_0": (-43.20003, -22.9100),  # PAC_INI: barra da SE001, lado fonte do disjuntor CH008
     "RJO001_MT_1": (-43.2000, -22.9100),
     "RJO001_MT_2": (-43.1990, -22.9100),
     "RJO001_MT_3": (-43.1988, -22.9100),
@@ -48,6 +53,7 @@ PACS = {
     "RJO001_MT_5": (-43.1968, -22.9100),
     "RJO001_MT_6": (-43.1978, -22.9106),
     "RJO001_MT_7": (-43.1968, -22.9100),  # lado "aberto" de CH003 (sem trecho)
+    "RJO002_MT_0": (-43.19297, -22.9110),  # PAC_INI: lado fonte do disjuntor CH009
     "RJO002_MT_1": (-43.1930, -22.9110),
     "RJO002_MT_2": (-43.1940, -22.9110),
     "RJO002_MT_3": (-43.1942, -22.9110),
@@ -269,11 +275,12 @@ def unsemt() -> gpd.GeoDataFrame:
         _chave("CH004", "RJO003", "RJO003_MT_2", "RJO003_MT_3", "F", fas_con="AB", tip_unid="22"),
         # NA de interligação manual de RJO002, junto ao fim de SEG006 (RJO001)
         _chave("CH005", "RJO002", "RJO002_MT_6", "RJO002_MT_7", "A"),
-        # NA telecomandada de RJO001 que NÃO é interligação (nenhum trecho de outro CTMT a 2 m)
+        # NA telecomandada de RJO001 que NÃO é interligação (nenhum trecho de outro CTMT a 2 m);
+        # fecha um anel interno SEG003 + SEG006 (pares de PAC nunca se repetem, como na base real)
         _chave(
             "CH006",
             "RJO001",
-            "RJO001_MT_4",
+            "RJO001_MT_5",
             "RJO001_MT_6",
             "A",
             tip_unid="32",
@@ -282,6 +289,9 @@ def unsemt() -> gpd.GeoDataFrame:
         ),  # fmt: skip
         # NA (disjuntor) de RJO002 dentro do pátio da SE001, junto ao início de SEG001 (RJO001)
         _chave("CH007", "RJO002", "RJO002_MT_8", "RJO002_MT_9", "A", tip_unid="29", tlcd=1),
+        # disjuntores de saída (NF): PAC_1 = CTMT.PAC_INI, PAC_2 = início do primeiro trecho
+        _chave("CH008", "RJO001", "RJO001_MT_0", "RJO001_MT_1", "F", tip_unid="29", tlcd=1),
+        _chave("CH009", "RJO002", "RJO002_MT_0", "RJO002_MT_1", "F", tip_unid="29", tlcd=1),
     ]
     return _geo(linhas, ["DIST", "TLCD", "CONJ"])
 

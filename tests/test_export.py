@@ -33,7 +33,7 @@ CAMADAS_FIXTURE = {
     "SUB": 2,
     "UNTRAT": 3,
     "SSDMT": 9,
-    "UNSEMT": 7,
+    "UNSEMT": 9,
     "UNTRMT": 4,
     "UNREMT": 1,
     "UNCRMT": 1,
@@ -49,7 +49,7 @@ CAMADAS_FIXTURE = {
     "CRVCRG": 6,
     "SEGCON": 3,
     "EQTRMT": 4,
-    "EQSE": 7,
+    "EQSE": 9,
 }
 GEOGRAFICAS = {
     "SUB": "MultiPolygon",
@@ -98,7 +98,7 @@ def test_fixture_reproduz_estrutura_da_bdgd(bdgd_mini):
     chaves = gpd.read_file(bdgd_mini, layer="UNSEMT", engine="pyogrio")
     esperadas = {"COD_ID", "CTMT", "PAC_1", "PAC_2", "P_N_OPE", "TLCD", "TIP_UNID"}
     assert esperadas <= set(chaves.columns)
-    assert chaves["P_N_OPE"].value_counts().to_dict() == {"A": 4, "F": 3}
+    assert chaves["P_N_OPE"].value_counts().to_dict() == {"A": 4, "F": 5}
     # nenhum PAC é compartilhado entre CTMT (a interligação é só geométrica, como na base real)
     trechos = gpd.read_file(bdgd_mini, layer="SSDMT", engine="pyogrio")
     pacs = pd.concat([trechos["PAC_1"], trechos["PAC_2"]])
@@ -163,14 +163,14 @@ def test_exporta_tabelas_sem_geometria_como_parquet(bdgd_mini, tmp_path):
 
 def test_chaves_preservam_atributos_e_geometria(bdgd_mini, tmp_path):
     resultado = exportar_camada(bdgd_mini, "UNSEMT", tmp_path)
-    assert resultado.feicoes == 7 and resultado.geometria == "Point"
+    assert resultado.feicoes == 9 and resultado.geometria == "Point"
     assert resultado.parquet == tmp_path / "UNSEMT.parquet" and resultado.gpkg is None
 
     chaves = gpd.read_parquet(resultado.parquet)
     original = gpd.read_file(bdgd_mini, layer="UNSEMT", engine="pyogrio")
     assert set(chaves.columns) == set(original.columns)
     assert chaves.geometry.geom_equals(original.geometry).all()
-    assert chaves["P_N_OPE"].value_counts().to_dict() == {"A": 4, "F": 3}
+    assert chaves["P_N_OPE"].value_counts().to_dict() == {"A": 4, "F": 5}
     tie = chaves.set_index("COD_ID").loc["CH003"]
     assert (tie["PAC_1"], tie["PAC_2"], tie["TLCD"]) == ("RJO001_MT_5", "RJO001_MT_7", 1)
     assert tie.geometry.x == pytest.approx(-43.1968) and tie.geometry.y == pytest.approx(-22.91)
@@ -213,7 +213,7 @@ def test_gpkg_unico_com_camadas_geograficas_e_tabelas(bdgd_mini, tmp_path):
 
     # reexportar substitui a camada no GeoPackage em vez de duplicar feições
     exportar(bdgd_mini, ["UNSEMT"], tmp_path / "parquet", gpkg=gpkg, console=console_silenciosa())
-    assert pyogrio.read_info(gpkg, layer="UNSEMT")["features"] == 7
+    assert pyogrio.read_info(gpkg, layer="UNSEMT")["features"] == 9
     assert set(listar_camadas(gpkg)) == set(NUCLEO)
 
 
@@ -313,7 +313,7 @@ def test_cli_exporta_com_layers_out_e_gpkg(bdgd_mini, tmp_path):
         "UNSEMT.parquet",
     ]
     assert set(listar_camadas(gpkg)) == {"CTMT", "UNSEMT"}
-    assert "7 feições" in saida(resultado) and "Resumo da exportação" in saida(resultado)
+    assert "9 feições" in saida(resultado) and "Resumo da exportação" in saida(resultado)
 
 
 def test_cli_help_e_versao():

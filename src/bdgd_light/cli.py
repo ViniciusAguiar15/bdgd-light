@@ -11,6 +11,16 @@ from rich.console import Console
 from rich.table import Table
 
 from bdgd_light import __version__
+from bdgd_light.grid import (
+    ChaveInexistenteError,
+    Clientes,
+    Cluster,
+    Feeder,
+    Rede,
+    TrechoInexistenteError,
+    estado_geojson,
+    ler_camadas,
+)
 from bdgd_light.ingest.export import TAMANHO_LOTE_PADRAO, CamadaInexistenteError, exportar
 from bdgd_light.ingest.interligacoes import (
     RAIO_PADRAO_M,
@@ -278,6 +288,181 @@ def recortar_cmd(
         recorte.gpkg.replace(nome_gpkg)
         recorte.meta.replace(nome_gpkg.with_suffix(".meta.json"))
         console.print(f"[green]✔[/] recorte gravado em [bold]{nome_gpkg}[/]")
+
+
+@app.command()
+def grafo(
+    gpkg: Annotated[
+        Path,
+        typer.Option(
+            "--gpkg",
+            help="GeoPackage do `bdgd-light recortar`: <CTMT>.gpkg (um alimentador) ou "
+            "cluster_<A>-<B>….gpkg (vários, com as ties ligadas pelos PAC reais).",
+        ),
+    ],
+    falha: Annotated[
+        str | None,
+        typer.Option(
+            "--falha",
+            help="COD_ID de um trecho SSDMT em falta: mostra as chaves a abrir para isolá-lo e as "
+            "chaves NA que restauram os nós sãos desligados.",
+        ),
+    ] = None,
+    abrir: Annotated[
+        str | None,
+        typer.Option("--abrir", help="COD_ID de chaves UNSEMT a abrir antes da análise (vírgula)."),
+    ] = None,
+    fechar: Annotated[
+        str | None,
+        typer.Option("--fechar", help="COD_ID de chaves a fechar antes da análise, por vírgula."),
+    ] = None,
+    geojson: Annotated[
+        Path | None,
+        typer.Option(
+            "--geojson",
+            help="Grava o estado da rede (energizado/fonte por trecho, chaves, trafos) em GeoJSON "
+            "EPSG:4326. Com --falha, o estado é o de depois da manobra de isolamento.",
+        ),
+    ] = None,
+    ties_na_se: Annotated[
+        bool,
+        typer.Option(
+            "--ties-na-se/--sem-ties-na-se",
+            help="Inclui como ties as chaves NA dentro do polígono da SE (padrão: ignora).",
+        ),
+    ] = False,
+) -> None:
+    """Monta o grafo MT do alimentador (nós = PAC; arestas = trechos SSDMT e chaves UNSEMT),
+    energiza a partir do disjuntor da SE e simula falta, isolamento e restauração via ties."""
+    try:
+        camadas = ler_camadas(gpkg)
+        rede: Rede = (
+            Feeder(camadas, ties_na_se=ties_na_se)
+            if len(camadas.ctmt) == 1
+            else Cluster(camadas, ties_na_se=ties_na_se)
+        )
+        for cod in _lista(abrir):
+            rede.open_switch(cod)
+        for cod in _lista(fechar):
+            rede.close_switch(cod)
+    except (FileNotFoundError, DataSourceError, ValueError, ChaveInexistenteError) as erro:
+        _erro(str(erro))
+        return
+    _imprimir_resumo(rede)
+    for aviso in rede.avisos:
+        console.print(f"[yellow]![/] {aviso}")
+    _imprimir_ties(rede)
+    if falha is not None:
+        try:
+            isolamento = rede.isolate_segment(falha)
+            opcoes = rede.restore_options(falha)
+        except TrechoInexistenteError as erro:
+            _erro(str(erro))
+            return
+        console.print(
+            f"\n[bold]Falta em {falha}[/] → abrir {', '.join(isolamento.chaves) or 'nenhuma chave'}"
+        )
+        console.print(
+            f"  zona isolada: {len(isolamento.zona)} nós, {_fmt_clientes(isolamento.clientes_zona)}"
+        )
+        console.print(
+            f"  desligados restauráveis: {len(isolamento.desligados)} nós, "
+            f"{_fmt_clientes(isolamento.clientes_desligados)}"
+        )
+        if opcoes:
+            tabela = Table(title=f"Opções de restauração ({len(opcoes)})")
+            for rotulo, alinhamento in [
+                ("Fechar", "left"),
+                ("Chave de", "left"),
+                ("Fonte", "left"),
+                ("TLCD", "center"),
+                ("Nós", "right"),
+                ("UCBT", "right"),
+                ("UCMT", "right"),
+                ("kVA", "right"),
+                ("UC na fonte", "right"),
+            ]:
+                tabela.add_column(rotulo, justify=alinhamento, overflow="fold")
+            for o in opcoes:
+                tabela.add_row(
+                    o.chave + (" (externa)" if o.externa else ""),
+                    o.ctmt_chave,
+                    o.fonte,
+                    "sim" if o.tlcd else "não",
+                    _fmt_int(len(o.nos)),
+                    _fmt_int(o.clientes.ucbt),
+                    _fmt_int(o.clientes.ucmt),
+                    _fmt_int(int(o.clientes.kva)),
+                    _fmt_int(o.clientes_fonte.total) if o.fonte in rede.ctmts else "?",
+                )
+            console.print(tabela)
+        elif isolamento.desligados:
+            console.print("  [red]nenhuma chave NA restaura os nós desligados[/]")
+        rede.isolate_segment(falha, aplicar=True)
+    if geojson is not None:
+        estado_geojson(rede, geojson)
+        console.print(f"[green]✔[/] estado gravado em [bold]{geojson}[/]")
+
+
+def _lista(valor: str | None) -> list[str]:
+    return [c.strip() for c in (valor or "").split(",") if c.strip()]
+
+
+def _fmt_clientes(c: Clientes) -> str:
+    return (
+        f"{_fmt_int(c.ucbt)} UCBT, {_fmt_int(c.ucmt)} UCMT, {_fmt_int(c.trafos)} trafos "
+        f"({_fmt_int(int(c.kva))} kVA)"
+    )
+
+
+def _imprimir_resumo(rede: Rede) -> None:
+    r = rede.resumo()
+    tabela = Table(title=f"Grafo de {', '.join(r['ctmt'])}", show_header=False)
+    tabela.add_column("campo", style="bold")
+    tabela.add_column("valor")
+    linhas = [
+        ("Fonte(s)", ", ".join(f"{c}: {n}" for c, n in r["fontes"].items()) or "nenhuma"),
+        ("Nós (PAC MT)", _fmt_int(r["nos"])),
+        ("Trechos SSDMT", f"{_fmt_int(r['trechos'])} ({r['km']:.3f} km)"),
+        ("Chaves UNSEMT", f"{r['chaves']} ({r['chaves_NF']} NF, {r['chaves_NA']} NA)"),
+        ("Ties", f"{r['ties']} ({r['ties_externas']} de chaves de outros CTMT)"),
+        ("CTMT externos", ", ".join(r["externos"]) or "nenhum"),
+        ("Transformadores", _fmt_int(r["trafos"])),
+        ("Clientes", _fmt_clientes(r["clientes"])),
+        ("Nós energizados", f"{_fmt_int(r['energizados'])} de {_fmt_int(r['nos'])}"),
+    ]
+    for campo, valor in linhas:
+        tabela.add_row(campo, valor)
+    console.print(tabela)
+
+
+def _imprimir_ties(rede: Rede) -> None:
+    ties = rede.tie_switches()
+    if ties.empty:
+        console.print("Nenhuma tie (chave NA de interligação) no grafo.")
+        return
+    tabela = Table(title=f"Ties ({len(ties)})")
+    for rotulo, alinhamento in [
+        ("Chave", "left"),
+        ("CTMT", "left"),
+        ("Vizinho", "left"),
+        ("PAC", "left"),
+        ("TLCD", "center"),
+        ("Estado", "center"),
+        ("Dist. m", "right"),
+    ]:
+        tabela.add_column(rotulo, justify=alinhamento, overflow="fold")
+    for t in ties.itertuples(index=False):
+        tabela.add_row(
+            t.chave + (" (externa)" if t.externa else ""),
+            t.ctmt,
+            t.ctmt_viz,
+            t.pac,
+            "sim" if t.tlcd else "não",
+            "aberta" if t.aberta else "fechada",
+            f"{t.dist_m:.1f}",
+        )
+    console.print(tabela)
 
 
 def _fmt_int(n: int) -> str:

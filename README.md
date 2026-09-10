@@ -12,19 +12,22 @@ Plano completo, módulos e fases em [`docs/PLANO.md`](docs/PLANO.md).
 ```
 src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim)
   catalogo.py          IDs da BDGD por distribuidora/ano, camadas-chave, domínios TEN_NOM e TIP_UNID
-  cli.py               CLI `bdgd-light` (typer): export, inventario, vizinhos, recortar
+  cli.py               CLI `bdgd-light` (typer): export, inventario, vizinhos, recortar, grafo
   ingest/export.py     exportação de camadas para GeoParquet/Parquet/GeoPackage, em lotes
   ingest/parquet.py    leitura das camadas exportadas com filtros empurrados ao pyarrow
   ingest/interligacoes.py  detecção geométrica de chaves NA de interligação entre CTMT
   ingest/inventario.py inventário de alimentadores (CSV + tabela)
   ingest/recorte.py    recorte de todas as camadas por CTMT → GeoPackage + meta.json
+  grid/rede.py         grafo MT (networkx) do alimentador/cluster: fonte, chaves, ties, isolamento,
+                       restauração; grid/geojson.py exporta o estado em GeoJSON 4326
 scripts/
   baixar_bdgd.py       baixa e extrai a BDGD (Light 2025 por padrão)
   listar_camadas.py    lista as camadas do .gdb
   converter.py         camada → GeoJSON (EPSG:4326) com recorte por bbox
 index.html             visor Leaflet legado (será substituído pelo console MapLibre)
 docs/                  plano, ADRs, notas da BDGD Light 2025 (bdgd-light-2025.md), regras de junção
-                       entre camadas (bdgd-relacoes.md), escolha dos alimentadores (escopo-alimentadores.md)
+                       entre camadas (bdgd-relacoes.md), escolha dos alimentadores (escopo-alimentadores.md),
+                       mapeamento BDGD → grafo (grid-modelo.md)
 tests/                 pytest (fixtures sintéticas; dados reais nunca vão para o git)
   fixtures/            bdgd_mini.gpkg (BDGD sintética, 21 camadas, 3 CTMT com interligações
                        geométricas), bairro_sintetico.geojson e gerar_fixture.py, que os (re)cria
@@ -199,6 +202,50 @@ SSDMT, 82 UNTRMT, 50 UNSEMT, 6.268 UCBT), CURUMAU 14.608, BOCARI 10.853, cluster
 cada) em ~3 s; ties de campo PARNAIBA–BOCARI 8 (2 telecomandadas), CURUMAU–BOCARI 7 (1),
 PARNAIBA–CURUMAU 2 (1). Cluster alternativo `BMT0001,BMT29737,CBI33798` (DEPAIVA / AVEMAR / RABELO):
 22.039 feições, todos os pares com ≥ 1 tie de campo telecomandada.
+
+### `bdgd-light grafo` — grafo do alimentador, falta, isolamento e restauração
+
+Monta a rede MT de um recorte como `networkx.Graph` (nós = PAC; arestas = trechos `SSDMT`, chaves
+`UNSEMT` com estado NA/NF e ties da camada `INTERLIGACOES`), energiza a partir do disjuntor de saída
+da SE (`CTMT.PAC_INI`) e simula manobras. Mapeamento e decisões em
+[`docs/grid-modelo.md`](docs/grid-modelo.md).
+
+```bash
+# resumo + ties de um alimentador
+uv run bdgd-light grafo --gpkg data/feeders/TQR0007.gpkg
+# falta num trecho: chaves a abrir, clientes desligados e chaves NA que restauram; estado em GeoJSON
+uv run bdgd-light grafo --gpkg data/feeders/cluster_TQR0007-TQR33859-TQR33862.gpkg \
+    --falha 11798327 --geojson data/feeders/estado_tqr.geojson
+# manobras manuais antes da análise
+uv run bdgd-light grafo --gpkg data/feeders/TQR0007.gpkg --abrir 310744064 --fechar 752622332
+```
+
+| opção | padrão | descrição |
+|---|---|---|
+| `--gpkg` | (obrigatório) | `<CTMT>.gpkg` (um alimentador; vizinhos viram nós externos `EXT:<CTMT>`) ou `cluster_….gpkg` (ties ligadas pelos PAC reais) |
+| `--falha` | — | `COD_ID` de um trecho `SSDMT` em falta |
+| `--abrir` / `--fechar` | — | `COD_ID` de chaves `UNSEMT` a manobrar antes da análise, por vírgula |
+| `--geojson` | — | grava o estado (energizado/fonte por trecho, chaves, trafos) em EPSG:4326; com `--falha`, depois do isolamento |
+| `--ties-na-se` | desligado | inclui como ties as chaves NA dentro do polígono da SE |
+
+Em Python:
+
+```python
+from bdgd_light.grid import Cluster, Feeder, estado_geojson
+
+f = Feeder.from_gpkg("data/feeders/TQR0007.gpkg")  # 719 nós, 675 trechos, 50 chaves, 13 ties
+f.energized_nodes()
+f.customers_downstream("TQR0007_MT_52738")
+iso = f.isolate_segment("310743928")  # chaves mínimas a abrir, zona, desligados
+for op in f.restore_options("310743928"):  # chaves NA que devolvem tensão, por clientes
+    print(op.chave, op.fonte, op.tlcd, op.clientes)
+c = Cluster.from_gpkg("data/feeders/cluster_TQR0007-TQR33859-TQR33862.gpkg")
+estado_geojson(c, "estado.geojson")
+```
+
+Cluster TQR na Light 2025: 2.069 nós, 46,65 km, 162 chaves, 35 ties, 16.504 UCBT, 0,1 s para montar.
+Falta no tronco de BOCARI (`11798327`): abrir 4 chaves, 2.023 UCBT desligados, 10 opções que
+restauram 1.984 via PARNAIBA (3 telecomandadas) ou CURUMAU (1 telecomandada).
 
 ## Fluxo de trabalho
 

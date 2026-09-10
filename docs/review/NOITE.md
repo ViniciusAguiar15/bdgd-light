@@ -30,7 +30,7 @@ Pendente: nada.
 | | |
 |---|---|
 | Branch | `fix/ajustes-pr-02` |
-| PR | ver seção "PRs abertos/mergeados" no fim |
+| PR | #12 — CI verde, squash-merge → `main` `2196a77` |
 | Origem | `docs/review/PR-02.md`, seção "Ajustes pedidos" |
 
 O que foi feito:
@@ -87,3 +87,81 @@ Resultados:
 - Os seis CTMT têm `TEN_NOM = 46` (13,2 kV).
 
 Pendente: nada. `data/feeders/` agora contém os três clusters (PDG, TQR, BMT/CBI); é ignorado pelo git.
+
+## 2. Issue #6 — grafo do alimentador (21:30–21:50)
+
+| | |
+|---|---|
+| Branch | `feat/grafo-alimentador` (de `main` `2196a77`) |
+| PR | ver seção "PRs abertos/mergeados" no fim |
+| Origem | `docs/backlog/06-grafo-alimentador.md` + "Próximo passo" de `docs/review/PR-02.md` |
+
+O que foi feito:
+
+1. **Fixture.** `gerar_fixture.py` ganhou o barramento `PAC_INI` real: `RJO001_MT_0`/`RJO002_MT_0` com
+   disjuntores NF `CH008`/`CH009` (TIP 29, TLCD) saindo deles; `CH006` virou um anel interno de
+   verdade (`MT_5`—`MT_6`; antes repetia o par de PAC de `SEG006`). `RJO003` ficou sem disjuntor de
+   propósito, para testar o fallback da fonte. Contagens ajustadas nos testes existentes.
+2. **`bdgd_light.grid`** (`rede.py`, `geojson.py`): `Rede` / `Feeder` (1 CTMT) / `Cluster` (n CTMT,
+   `from_gpkg` ou `from_gpkgs`), `Camadas`, `ler_camadas`, `Clientes`, `Isolamento`,
+   `OpcaoRestauracao`, `estado_geojson`. Métodos pedidos: `energized_nodes`, `energized_by`,
+   `downstream`, `customers_downstream`, `open_switch`/`close_switch`/`reset_switches`,
+   `tie_switches`, `isolate_segment`, `restore_options`, `copy`, `resumo`.
+3. **CLI** `bdgd-light grafo --gpkg … [--falha SEG] [--abrir] [--fechar] [--geojson] [--ties-na-se]`.
+4. **Docs**: `docs/grid-modelo.md` (mapeamento, medições na Light, decisões, limitações), README
+   (seção do comando + estrutura), `docs/bdgd-relacoes.md` (nota do `PAC_INI` corrigida: ele **é** o
+   `PAC_1` do disjuntor).
+5. **Testes**: `tests/test_grid.py` — 18 testes (topologia, ties com/sem SE, clientes, fallback de
+   fonte, energização e manobras, downstream em anel, isolamento com e sem desligados, restauração
+   pela tie própria e pela chave do vizinho, cluster com PAC reais e `clientes_fonte`, GeoJSON, CLI,
+   fumaça com `data/feeders/TQR0007.gpkg` marcado `skipif`). Suite: 81 verdes.
+
+Decisões (detalhe em `docs/grid-modelo.md`):
+
+- **Nó-fonte = `CTMT.PAC_INI`.** Medi na Light: `PAC_INI` é o `PAC_1` de uma `UNSEMT` em 1.802/1.802
+  CTMT e nunca um PAC de SSDMT — é o barramento da SE, e a chave que sai dele é o disjuntor
+  (`TIP_UNID 29`). Então o disjuntor entra no grafo e o `PAC_INI` é a fonte; se não estiver no grafo,
+  fallback para o PAC de SSDMT do CTMT mais próximo do polígono da `SUB`, com aviso.
+- **Só rede MT.** O backlog original citava SSDBT/UNSEBT; o "Próximo passo" da PR-02 restringiu a MT
+  (`UNTRMT.PAC_1`). Clientes (`UCBT_tab` via `UNI_TR_MT`, `UCMT_tab` via `PAC`) ficam no nó MT do
+  transformador. BT é radial por trafo e não muda manobra MT; entra no OpenDSS como carga agregada.
+- **Ties**: aresta `tie` (impedância zero, sempre passável) da **ponta de fora** da chave (PAC que não
+  está na rede do CTMT dono; ambíguo → `PAC_2`, pois `PAC_1` é o lado fonte) até o `PAC_VIZ` real se o
+  vizinho está carregado (`Cluster`), senão até um nó externo `EXT:<CTMT>` tratado como fonte sempre
+  energizada. Chaves NA do vizinho que encostam na nossa rede entram como aresta `chave` `externa`.
+  Assim `restore_options` funciona no `Feeder` sozinho (sem saber a carga do vizinho — CLI mostra `?`)
+  e no `Cluster` com transferência real (`clientes_fonte` diz quanto a fonte já atende).
+- **Ties dentro da SE ignoradas por padrão** (`ties_na_se=False`), mesma regra do inventário/vizinhos.
+- `isolate_segment`: zona = fecho do trecho por arestas que não são chave; abre as chaves fechadas da
+  fronteira (mínimas, a primeira em cada direção). `restore_options`: chaves abertas com uma ponta nos
+  desligados e a outra energizada, agrupadas por componente; ordem clientes ↓, TLCD ↓, código.
+- Chave externa que toca vários PAC nossos: fica com o mais próximo (`DIST_M`), com aviso.
+- GeoJSON: coordenadas em listas (não tuplas) para o dicionário em memória ser igual ao gravado.
+
+Validação com dados reais (Light 2025):
+
+```bash
+uv run bdgd-light grafo --gpkg data/feeders/TQR0007.gpkg --falha 310743928 --geojson /tmp/tqr0007.geojson
+uv run bdgd-light grafo --gpkg data/feeders/cluster_TQR0007-TQR33859-TQR33862.gpkg --falha 11798327 \
+    --geojson /tmp/cluster_tqr.geojson
+uv run pytest tests/test_grid.py -q     # inclui a fumaça em data/feeders/TQR0007.gpkg
+```
+
+Resultados:
+
+- **TQR0007**: 719 nós, 675 trechos (16,474 km), 50 chaves (40 NF, 10 NA), 13 ties (10 de chaves de
+  TQR33830/TQR33859/TQR33862), 82 trafos, 6.268 UCBT + 4 UCMT, **719/719 energizados**, 0 avisos, 0,13 s.
+  Fonte `TQR0007_MT_52737` = `PAC_1` do disjuntor `358368825`. Falta no trecho do disjuntor
+  (`310743928`): abrir `310744064` + `358368825`, 677 nós / 6.268 UCBT desligados, 13 opções
+  (TLCD primeiro: `1007642983` e `625884927` externas, `752622332` própria).
+- **Cluster TQR**: 2.069 nós, 1.924 trechos (46,65 km), 162 chaves, 35 ties (12 externas, 7 CTMT
+  externos), 263 trafos, 16.504 UCBT, 2.068/2.069 energizados (1 PAC solto de chave), 0,11 s. Cada
+  CTMT alimentado só pela própria fonte no estado normal (723 / 731 / 608 nós). Falta no tronco de
+  BOCARI (`11798327`): abrir 4 chaves, zona 43 nós / 516 UCBT, 295 nós / 2.023 UCBT desligados, 10
+  opções restauram 287 nós / 1.984 UCBT via PARNAIBA (já com 6.272 UC; 2 TLCD) ou CURUMAU (5.889 UC;
+  1 TLCD) — o cenário FLISR do escopo v2. 8 nós / 39 UCBT sem NA para nenhuma fonte.
+- GeoJSON do cluster: 2.361 feições (1.924 SSDMT, 174 UNSEMT, 263 UNTRMT), 314 trechos desenergizados
+  após a manobra.
+
+Pendente: nada para a issue. Fica anotado para o #5: o gêmeo OpenDSS deve ler o estado das chaves
+deste grafo (`aberta`) em vez de `P_N_OPE` direto.

@@ -95,8 +95,8 @@ def test_rede_carga_e_clientes(inventario):
 def test_chaves_e_interligacoes_geometricas(inventario):
     rjo1, rjo2, rjo3 = (inventario.loc[c] for c in ("RJO001", "RJO002", "RJO003"))
     chaves = ["chaves_total", "chaves_NA", "chaves_NF", "chaves_telecomandadas"]
-    assert rjo1[chaves].tolist() == [3, 2, 1, 2]
-    assert rjo2[chaves].tolist() == [3, 2, 1, 1]
+    assert rjo1[chaves].tolist() == [4, 2, 2, 3]
+    assert rjo2[chaves].tolist() == [4, 2, 2, 2]
     assert rjo3[chaves].tolist() == [1, 0, 1, 0]
     ties = [
         "NA_interligacao",
