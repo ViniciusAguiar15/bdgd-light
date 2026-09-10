@@ -1,0 +1,116 @@
+# Exemplos anotados do orquestrador (issue #34, padrão PowerChain): pares "tarefa → sequência de
+# ferramentas + justificativa". O agente escolhe os top-K por afinidade lexical com o evento ou a
+# pergunta (tags valem o dobro) e os anexa ao prompt de sistema. Só ferramentas expostas ao modelo
+# (set_switch nunca aparece: manobra é sempre uma proposta pendente de aprovação humana).
+exemplos:
+  - id: falta_simples_uma_rota
+    tags: [falta_permanente, uma_opcao, flisr]
+    tarefa: >-
+      Falta permanente em trecho MT de um alimentador com uma única chave NA capaz de restaurar os
+      clientes desligados a jusante.
+    ferramentas: [locate_fault, isolate_fault, "restore_options(score=true)", "propose_plan(chave=<a única viável>)"]
+    justificativa: >-
+      Só há uma rota; ainda assim o score elétrico confirma que o disjuntor da fonte receptora e a
+      tensão MT ficam dentro dos limites antes de propor. A proposta abre a fronteira, religa o
+      tronco são (se a falta não está colada no religador) e só então fecha a NA.
+
+  - id: falta_duas_rotas
+    tags: [falta_permanente, duas_opcoes, margem, flisr]
+    tarefa: >-
+      Falta permanente no tronco com duas ou três chaves NA para SEs vizinhas; todas viáveis no
+      gêmeo.
+    ferramentas: [locate_fault, isolate_fault, "restore_options(score=true)", "propose_plan(chave=<maior margem>)"]
+    justificativa: >-
+      Entre viáveis, escolher a maior margem no disjuntor da fonte receptora (folga para o pico do
+      dia) e, em empate, a que recupera mais UCBT e melhor Vmin. As demais entram no resumo como
+      alternativas descartadas, com os números.
+
+  - id: rota_inviavel_por_corrente
+    tags: [falta_permanente, inviavel, sobrecarga, corrente, gargalo]
+    tarefa: >-
+      Falta permanente em que a opção topologicamente melhor (mais clientes) é inviável no gêmeo
+      por sobrecarga de um condutor MT no caminho até a tie (gargalo) ou por corrente acima da
+      nominal do disjuntor.
+    ferramentas: [locate_fault, isolate_fault, "restore_options(score=true)", "propose_plan(chave=<melhor viável>)"]
+    justificativa: >-
+      O grafo não enxerga ampacidade; o gêmeo enxerga. Descartar a opção com viavel=false e citar o
+      motivo (elemento a X %, corrente A > nominal A) no resumo. Nunca propor uma opção inviável
+      "só para ver": o verificador recusa.
+
+  - id: rota_inviavel_por_tensao
+    tags: [falta_permanente, inviavel, tensao, vmin]
+    tarefa: >-
+      Falta permanente em que uma opção deixa a tensão MT mínima abaixo de 0,93 pu na zona
+      transferida (rota longa ou alimentador já carregado).
+    ferramentas: [locate_fault, isolate_fault, "restore_options(score=true)", "propose_plan(chave=<viável com Vmin ≥ 0,93>)"]
+    justificativa: >-
+      Tensão fora de faixa é violação do PRODIST (Módulo 8); preferir opção com Vmin dentro da
+      faixa mesmo com menos clientes recuperados, e registrar que o restante fica para equipe.
+
+  - id: sem_opcao_negativo
+    tags: [falta_permanente, sem_opcao, negativo, subestacao, despacho]
+    tarefa: >-
+      Falta permanente perto da subestação, em que restore_options não devolve nenhuma opção (as
+      NA são pátio de manobra da SE) ou nenhuma é viável.
+    ferramentas: [locate_fault, isolate_fault, "restore_options(score=true)", "propose_plan()"]
+    justificativa: >-
+      Reconhecer a ausência de opção é a resposta certa: propor só o isolamento (abrir a fronteira e
+      religar o tronco são, se possível) e recomendar despacho de equipe para o trecho. Não inventar
+      chave.
+
+  - id: verificador_recusou_replanejar
+    tags: [falta_permanente, verificador, recusa, replanejar]
+    tarefa: >-
+      propose_plan devolveu erro do verificador (chave fora de restore_options, sequência fecha
+      antes de abrir, tensão/corrente fora de faixa ou chave indisponível).
+    ferramentas: ["propose_plan(chave=<outra opção viável>)", "ou propose_plan()"]
+    justificativa: >-
+      Ler os "problemas", escolher a próxima opção viável de restore_options (não repetir a
+      recusada) ou propor só o isolamento. Uma execução termina com no máximo uma proposta aceita.
+
+  - id: chave_indisponivel_com_falta
+    tags: [chave_indisponivel, restricao, telecomando, falta_permanente]
+    tarefa: >-
+      Falta permanente quando uma das chaves telecomandadas do plano está indisponível (evento
+      chave_indisponivel anterior ou informado na situação da sessão).
+    ferramentas: [locate_fault, isolate_fault, "restore_options(score=true)", "propose_plan(chave=<viável que não use a chave indisponível>)"]
+    justificativa: >-
+      Chave sem telecomando não entra em plano remoto; se toda opção depender dela, propor só o
+      isolamento e registrar que a manobra local exige equipe.
+
+  - id: falta_transitoria
+    tags: [falta_transitoria, sem_manobra]
+    tarefa: Falta transitória em trecho MT; o religador do alimentador religou após o tempo morto.
+    ferramentas: []
+    justificativa: >-
+      Nenhuma manobra: registrar trecho, CTMT, religador e tempo morto, e recomendar acompanhar
+      reincidência (três religamentos no mesmo trecho pedem inspeção).
+
+  - id: pico_carga
+    tags: [pico_carga, loadmult, fluxo, violacoes]
+    tarefa: Pico de carga em um alimentador do cluster (loadmult acima de 1) por alguns minutos.
+    ferramentas: ["run_powerflow(loadmult=<do evento>)"]
+    justificativa: >-
+      Rodar o fluxo com o multiplicador do evento e relatar convergência, Vmin/Vmax, violações e
+      sobrecargas; sem proposta de manobra, salvo violação grave, quando se recomenda análise do
+      operador.
+
+  - id: chave_indisponivel
+    tags: [chave_indisponivel, restricao]
+    tarefa: Chave telecomandada indisponível (falha de comunicação, bateria, manutenção).
+    ferramentas: ["get_switch_state(chave)", "downstream_customers(chave=...)"]
+    justificativa: >-
+      Registrar a restrição e o que ela significa: clientes a jusante que dependeriam dela e que
+      qualquer manobra ali passa a ser local. Sem proposta.
+
+  - id: pergunta_clientes_jusante
+    tags: [pergunta, informativa, clientes, jusante]
+    tarefa: Pergunta informativa — quantos clientes ficam sem tensão se uma chave abrir?
+    ferramentas: ["downstream_customers(chave=...)"]
+    justificativa: Responder com UCBT, UCMT, trafos e kVA da ferramenta, sem propor nada.
+
+  - id: pergunta_topologia
+    tags: [pergunta, informativa, topologia, ctmt]
+    tarefa: Pergunta informativa sobre o cluster ou um alimentador (km, chaves, ties, religador).
+    ferramentas: ["get_topology(ctmt=...)"]
+    justificativa: Resumir o retorno com unidades (km, chaves NF/NA, ties, clientes); sem manobra.

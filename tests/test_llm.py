@@ -16,6 +16,7 @@ httpx = pytest.importorskip("httpx")
 from bdgd_light.agent import (  # noqa: E402
     PERFIS,
     SOMA,
+    AuditLog,
     FakeLLMClient,
     Ferramenta,
     GitHubModelsClient,
@@ -554,3 +555,28 @@ def test_script_listar_modelos_por_perfil_gemini(monkeypatch, capsys):
     assert "models/gemini-2.5-flash" in texto and "embedding" not in texto
     assert "1 modelos (1 com tool calling)" in texto
     assert pedidos[0].headers["authorization"] == "Bearer chave-gemini"
+
+
+def test_cliente_do_ambiente_registra_proveniencia_no_audit(monkeypatch, tmp_path):
+    for var in ("BDGD_LLM_PROVIDER", "BDGD_LLM_ENDPOINT", "OPENAI_API_KEY", "GITHUB_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "AIzaFAKE")
+    log = AuditLog(tmp_path / "audit.jsonl")
+    cliente = cliente_do_ambiente(audit=log)
+    registro = log.registros[-1]
+    assert registro.tipo == "llm.cliente"
+    assert registro.dados["perfil"] == "gemini"
+    assert registro.dados["origem"] == "GEMINI_API_KEY"
+    assert registro.dados["modelo"] == cliente.modelo == "gemini-2.5-flash"
+    assert registro.dados["endpoint"].startswith("https://generativelanguage.googleapis.com/")
+    assert "AIzaFAKE" not in (tmp_path / "audit.jsonl").read_text()
+    # perfil explícito e fake também ficam registrados
+    cliente_por_perfil("fake", audit=log)
+    assert log.registros[-1].dados == {
+        "perfil": "fake",
+        "origem": "perfil",
+        "tipo": "FakeLLMClient",
+        "modelo": None,
+        "endpoint": None,
+    }
+    assert log.verificar() == len(log)

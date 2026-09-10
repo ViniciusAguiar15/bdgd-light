@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 from typing import Annotated
@@ -792,7 +793,7 @@ def llm(
         elif endpoint:
             cliente = OpenAICompatClient(endpoint, modelo=modelo)
         else:
-            cliente = cliente_do_ambiente(modelo, provider=provider)
+            cliente = cliente_do_ambiente(modelo, provider=provider, audit=log)
         conversa = conversar(
             cliente, [Message.system(sistema), Message.user(pergunta)], [SOMA], audit=log
         )
@@ -1135,6 +1136,272 @@ def sim(
         _erro(str(erro))
         return
     _imprimir_eventos(eventos, json_, titulo=None if sem_publicar else f"publicados em {fila}")
+
+
+@app.command()
+def agente(
+    evento: Annotated[
+        str | None,
+        typer.Option(
+            "--evento",
+            help="Evento a tratar: JSON inline, caminho de um arquivo JSON/JSONL (usa o último) "
+            "ou id de um evento da fila (E-0001, procurado em --fila).",
+        ),
+    ] = None,
+    cenario: Annotated[
+        str | None,
+        typer.Option(
+            "--cenario",
+            help="Gera e trata o evento de um cenário nomeado (tijuca_cabofrio_tronco, "
+            "ipanema_9210, taquara_bocari).",
+        ),
+    ] = None,
+    pergunta: Annotated[
+        str | None,
+        typer.Option("--pergunta", help="Pergunta em linguagem natural sobre o cluster."),
+    ] = None,
+    cluster: Annotated[
+        str | None,
+        typer.Option(
+            "--cluster",
+            help="Cluster: nome da demo (tijuca, ipanema, taquara) ou GeoPackage do recorte. "
+            "Obrigatório com --pergunta; com evento, sobrepõe o cluster do evento.",
+        ),
+    ] = None,
+    provider: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            help="openai (padrão), gemini, ollama ou fake (operador roteirizado, sem rede). "
+            "Sem ele, segue BDGD_LLM_PROVIDER e as chaves presentes no ambiente.",
+        ),
+    ] = None,
+    modelo: Annotated[
+        str | None, typer.Option("--modelo", help="Modelo (sobrepõe o padrão do perfil).")
+    ] = None,
+    max_rodadas: Annotated[
+        int, typer.Option("--max-rodadas", min=1, help="Rodadas de tool calling por conversa.")
+    ] = 8,
+    replanejar: Annotated[
+        int,
+        typer.Option(
+            "--replanejar", min=0, help="Quantas vezes pedir replanejamento se não houver proposta."
+        ),
+    ] = 2,
+    top_k: Annotated[
+        int, typer.Option("--top-k", min=0, help="Exemplos anotados anexados ao prompt.")
+    ] = 3,
+    exemplos: Annotated[
+        Path | None,
+        typer.Option("--exemplos", help="YAML de exemplos (padrão: docs/agent/exemplos.yaml)."),
+    ] = None,
+    sem_score: Annotated[
+        bool,
+        typer.Option(
+            "--sem-score",
+            help="Não roda o gêmeo OpenDSS em restore_options (só topologia; o verificador não "
+            "checa tensão/corrente).",
+        ),
+    ] = False,
+    vmin: Annotated[float, typer.Option("--vmin", help="Limite inferior de tensão (pu).")] = 0.93,
+    vmax: Annotated[float, typer.Option("--vmax", help="Limite superior de tensão (pu).")] = 1.05,
+    fila: Annotated[
+        Path, typer.Option("--fila", help="Fila JSONL de eventos do simulador.")
+    ] = Path("data/eventos/eventos.jsonl"),
+    feeders: Annotated[
+        Path, typer.Option("--feeders", help="Pasta dos recortes (GeoPackages).")
+    ] = Path("data/feeders"),
+    dss_out: Annotated[Path, typer.Option("--dss-out", help="Modelos OpenDSS do gêmeo.")] = Path(
+        "data/dss/gpkg"
+    ),
+    estado: Annotated[
+        Path,
+        typer.Option(
+            "--estado",
+            help="Pasta de estado da sessão (audit.jsonl e propostas.json — a mesma de "
+            "`bdgd-light mcp` e `bdgd-light aprovar`).",
+        ),
+    ] = Path("data/agent"),
+    dia: Annotated[str, typer.Option("--dia", help="Tipo de dia das cargas: DU, SA ou DO.")] = "DU",
+    mes: Annotated[int, typer.Option("--mes", min=1, max=12, help="Mês das cargas.")] = 1,
+    seed: Annotated[
+        int | None, typer.Option("--seed", help="Semente do simulador (com --cenario).")
+    ] = None,
+    json_: Annotated[
+        bool, typer.Option("--json", help="Imprime a execução completa como JSON.")
+    ] = False,
+    saida: Annotated[
+        Path | None, typer.Option("--saida", help="Grava a execução (JSON) neste arquivo.")
+    ] = None,
+) -> None:
+    """Agente orquestrador + verificador HITL: recebe um evento da fila do simulador (ou uma
+    pergunta), chama o LLM com as ferramentas de rede (locate/isolate_fault, restore_options com
+    score elétrico, run_powerflow…) e, para falta permanente, termina em propose_plan — só depois
+    de o verificador aprovar a sequência (chave entre as opções, abre antes de fechar, tensão e
+    corrente dentro dos limites). Nada é manobrado: a proposta fica pendente para
+    `bdgd-light aprovar`. Métricas (rodadas, tokens, tempo, hash da auditoria) saem no fim."""
+    try:
+        from bdgd_light.agent import (
+            LLMError,
+            TokenAusenteError,
+            cliente_do_ambiente,
+        )
+        from bdgd_light.agent.orquestrador import Orquestrador, carregar_exemplos, fake_operador
+        from bdgd_light.mcp_server import SessaoCOD, SessaoError
+        from bdgd_light.sim import CENARIOS, Evento, FilaEventos, Simulador
+    except ImportError as erro:
+        _erro(f"{erro} — instale o extra: uv sync --extra agent")
+        return
+    if sum(x is not None for x in (evento, cenario, pergunta)) != 1:
+        _erro("informe exatamente um de --evento, --cenario ou --pergunta")
+        return
+    ev: Evento | None = None
+    if cenario is not None:
+        if cenario not in CENARIOS or CENARIOS[cenario].cluster is None:
+            nomes = ", ".join(n for n, c in CENARIOS.items() if c.cluster)
+            _erro(f"cenário {cenario!r} desconhecido; use {nomes}")
+            return
+        ev = Simulador(None, CENARIOS[cenario].cluster, seed=seed).cenario(cenario)
+    elif evento is not None:
+        try:
+            ev = _carregar_evento(evento, fila, Evento, FilaEventos)
+        except (ValueError, FileNotFoundError, KeyError) as erro:
+            _erro(str(erro))
+            return
+    if ev is not None and cluster is not None:
+        ev.cluster = cluster
+    if pergunta is not None and cluster is None:
+        _erro("--pergunta exige --cluster")
+        return
+    sessao = SessaoCOD(
+        feeders=feeders, dss_out=dss_out, estado_dir=estado, dia=dia.upper(), mes=mes
+    )
+    try:
+        if provider == "fake":
+            cliente = fake_operador(modelo or "fake-operador")
+        else:
+            cliente = cliente_do_ambiente(modelo, provider=provider, audit=sessao.audit)
+    except (TokenAusenteError, ValueError, KeyError) as erro:
+        _erro(str(erro))
+        return
+    try:
+        lista = carregar_exemplos(exemplos) if exemplos is not None else None
+    except (ValueError, FileNotFoundError) as erro:
+        _erro(str(erro))
+        return
+    orq = Orquestrador(
+        sessao,
+        cliente,
+        exemplos=lista,
+        top_k=top_k,
+        max_rodadas=max_rodadas,
+        replanejamentos=replanejar,
+        vmin=vmin,
+        vmax=vmax,
+        exigir_score=not sem_score,
+        provider=provider,
+    )
+    if not json_:
+        console.print(
+            f"[dim]agente · {getattr(cliente, 'modelo', None) or provider or 'ambiente'} · "
+            f"exemplos: {len(orq.exemplos)} "
+            f"(top {top_k}) · estado: {estado}[/]"
+        )
+    try:
+        if ev is not None:
+            execucao = orq.executar_evento(ev)
+        else:
+            execucao = orq.responder(pergunta or "", cluster=cluster)
+    except (FileNotFoundError, DataSourceError, SessaoError, LLMError) as erro:
+        _erro(str(erro))
+        return
+    d = execucao.to_dict()
+    if saida is not None:
+        saida.parent.mkdir(parents=True, exist_ok=True)
+        saida.write_text(json.dumps(d, ensure_ascii=False, indent=2, default=str) + "\n")
+    if json_:
+        console.print_json(json.dumps(d, ensure_ascii=False, default=str))
+    else:
+        _imprimir_execucao(d)
+        if saida is not None:
+            console.print(f"[dim]execução gravada em {saida}[/]")
+    if d["erro"]:
+        raise typer.Exit(code=1)
+
+
+def _carregar_evento(texto: str, fila: Path, evento_cls, fila_cls):
+    """--evento aceita JSON inline, arquivo JSON/JSONL ou id (E-0001) procurado na fila."""
+    if texto.lstrip().startswith("{"):
+        return evento_cls.de_dict(json.loads(texto))
+    caminho = Path(texto)
+    if caminho.exists():
+        linhas = [ln for ln in caminho.read_text().splitlines() if ln.strip()]
+        if not linhas:
+            raise ValueError(f"{caminho}: arquivo vazio")
+        return evento_cls.de_dict(json.loads(linhas[-1]))
+    for ev in fila_cls(fila).listar():
+        if ev.id == texto:
+            return ev
+    raise ValueError(f"evento {texto!r} não está em {fila}")
+
+
+def _imprimir_execucao(d: dict) -> None:
+    ev = d.get("evento") or {}
+    if d["tipo"] == "pergunta":
+        console.print(f"[bold]Pergunta:[/] {d['pergunta']}")
+    else:
+        console.print(
+            f"[bold]Evento {ev.get('id', '?')}[/] {ev.get('tipo')} em {d.get('cluster')}"
+            + (f" · trecho {ev['trecho']}" if ev.get("trecho") else "")
+            + (f" · CTMT {ev['ctmt']}" if ev.get("ctmt") else "")
+            + (f" · chave {ev['chave']}" if ev.get("chave") else "")
+        )
+    if d["ferramentas"]:
+        tabela = Table("#", "ferramenta", "argumentos", "resultado", "s", title="Chamadas")
+        for i, f in enumerate(d["ferramentas"], 1):
+            tabela.add_row(
+                str(i),
+                f["ferramenta"],
+                _resumir(f.get("argumentos") or {}, 60),
+                ("[red]erro:[/] " if f.get("erro") else "") + _resumir(f.get("resumo"), 80),
+                f"{f.get('segundos', 0):.1f}",
+            )
+        console.print(tabela)
+    for r in d["recusas_verificador"]:
+        console.print(
+            f"[yellow]verificador recusou[/] chave={r.get('chave') or '(só isolar)'}: "
+            + "; ".join(r.get("problemas", []))
+        )
+    p = d.get("proposta")
+    if p:
+        seq = " → ".join(f"{m['acao']} {m['chave']}" for m in p.get("manobras", []))
+        console.print(
+            f"[green]Proposta {p['id']}[/] ({p['status']}): fechar "
+            f"{p.get('chave') or '— (só isolar)'} · fonte {p.get('fonte')} · "
+            f"{(p.get('clientes') or {}).get('total', '?')} clientes · {seq}"
+        )
+    v = d.get("veredito")
+    if v:
+        ok = "[green]ok[/]" if v["ok"] else "[red]recusado[/]"
+        checagens = ", ".join(f"{k}={'✔' if val else '✘'}" for k, val in v["checagens"].items())
+        console.print(f"Verificador: {ok} · {checagens}")
+        for a in v.get("avisos", []):
+            console.print(f"  [yellow]aviso:[/] {a}")
+        for pr in v.get("problemas", []):
+            console.print(f"  [red]problema:[/] {pr}")
+    console.print()
+    console.print(d["resposta"] or "[dim](sem resposta em texto)[/]")
+    uso = d.get("uso") or {}
+    console.print(
+        f"\n[dim]{d.get('modelo') or '?'} · {d['rodadas']} rodada(s), "
+        f"{d['replanejamentos']} replanejamento(s), {d['n_ferramentas']} chamada(s) · tokens "
+        f"{uso.get('prompt_tokens', 0)}+{uso.get('completion_tokens', 0)}="
+        f"{uso.get('total_tokens', 0)} · LLM {d['segundos_llm']:.1f}s + ferramentas "
+        f"{d['segundos_ferramentas']:.1f}s = {d['segundos_total']:.1f}s · auditoria "
+        f"{d.get('hash_auditoria') or '—'}[/]"
+    )
+    if d["erro"]:
+        console.print(f"[red]Erro:[/] {d['erro']}")
 
 
 def _imprimir_eventos(eventos, como_json: bool, titulo: str | None) -> None:

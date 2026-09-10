@@ -40,6 +40,10 @@ src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim
   sim/                 simulador de eventos (faltas permanentes/transitórias por km, pico de carga,
                        chave telecomandada indisponível; cenários nomeados da demo) + fila JSONL
                        em data/eventos/; docs/sim.md
+  agent/orquestrador.py  agente orquestrador + verificador HITL (padrão PowerChain): prompt com
+                       exemplos anotados (docs/agent/exemplos.yaml), ferramentas da SessaoCOD sem
+                       set_switch, verificador determinístico antes de propose_plan, operador fake
+                       para testes e métricas por execução; docs/agent.md
 console/               console do operador: Vite + TypeScript + MapLibre GL JS lendo PMTiles
                        (public/tiles/exemplo_{tijuca,ipanema}.pmtiles = clusters da demo; exemplo.pmtiles
                        = TQR, regressão), seletor de cenário, sobreposição do estado do grafo,
@@ -583,6 +587,29 @@ uv run bdgd-light sim --cenario tijuca_cabofrio_tronco         # cenário A da d
 uv run bdgd-light sim --cluster ipanema --emitir 5 --seed 42   # 5 eventos reprodutíveis
 uv run bdgd-light sim --cluster tijuca --tipo falta --json     # 1 falta sorteada, em JSON Lines
 uv run bdgd-light sim --mostrar 5                              # últimos 5 da fila
+```
+
+### `bdgd-light agente` — orquestrador + verificador HITL
+
+O agente (issue #34) recebe um evento da fila (ou uma pergunta), monta o prompt com o papel, as
+regras e os top-K exemplos anotados de [`docs/agent/exemplos.yaml`](docs/agent/exemplos.yaml), e
+chama o LLM com as ferramentas da sessão (`locate_fault`, `isolate_fault`, `restore_options` com
+score elétrico, `run_powerflow`, …). Para falta permanente a execução termina em `propose_plan`, que
+só passa se o **verificador** aprovar (chave entre as opções, chaves existentes e disponíveis, abre
+antes de fechar, fronteira isolada, gêmeo convergiu com tensão MT e corrente do disjuntor dentro
+dos limites); uma recusa volta ao modelo como erro para replanejar. `set_switch` nunca é exposto —
+a proposta fica pendente para `bdgd-light aprovar`. Cada execução devolve métricas (rodadas,
+replanejamentos, chamadas, tokens, tempo do LLM × das ferramentas, hash da auditoria).
+Provedores: `openai` (padrão), `gemini`, `ollama` ou `fake` (operador roteirizado, sem rede).
+Arquitetura, prompt, limites e validação com modelos reais em [`docs/agent.md`](docs/agent.md).
+
+```bash
+uv run bdgd-light agente --cenario tijuca_cabofrio_tronco --provider gemini   # cenário A com Gemini
+uv run bdgd-light agente --cenario ipanema_9210 --json --saida /tmp/ipanema.json  # OpenAI (padrão)
+uv run bdgd-light agente --evento E-0003                        # evento da fila data/eventos/
+uv run bdgd-light agente --pergunta "quantos km tem o ALC9925?" --cluster tijuca
+uv run bdgd-light agente --cenario taquara_bocari --provider fake   # sem LLM (testes/demo offline)
+uv run bdgd-light aprovar                                       # a proposta espera o operador aqui
 ```
 
 ## Console (mapa do operador)

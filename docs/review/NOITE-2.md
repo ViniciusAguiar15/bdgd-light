@@ -487,3 +487,85 @@ uv run bdgd-light sim --mostrar 5
    consome `FilaEventos.listar(desde=)` em processo.
 3. Sem fusíveis/religadores intermediários nem indicadores de falta em campo — telemetria = chaves
    fechadas no caminho.
+
+### Fechamento
+
+PR [#45](https://github.com/ViniciusAguiar15/bdgd-light/pull/45) — CI verde na 1ª tentativa; merge
+squash em `main` `1033eca` às 13:44.
+
+## 7. #34 — agente orquestrador + verificador HITL (13:45–14:10)
+
+| | |
+|---|---|
+| Branch | `feat/agente-hitl` (a partir de `main` `1033eca`, pós-PR #45) |
+| PR | ver "Fechamento" |
+| docs/review | **PR-09** (pedido reservado para esta issue) aplicado em commit próprio `76e4cda`: `cliente_por_perfil`/`cliente_do_ambiente` registram `llm.cliente` (perfil, modelo, endpoint, origem) no `AuditLog` quando recebem `audit=`; o CLI `llm` e o agente passam o log da sessão. **PR-12 pedido 3** aplicado: `docs/mcp-ferramentas.md` ganhou a sessão Tijuca completa (`docs/agent/sessao-tijuca.json`, 12 chamadas com resultado integral) e a leitura do caso. PR-12 pedidos 1–2 seguem para #35; PR-11 pedido 1 (`COR_NOM`) segue com o mantenedor |
+| Módulo | `src/bdgd_light/agent/orquestrador.py` (`Orquestrador`, `Verificador`, `Veredito`, `Execucao`, `Exemplo`, `carregar_exemplos`, `selecionar_exemplos`, `especificacoes`, `fake_operador`), `docs/agent/exemplos.yaml` (12 exemplos), CLI `agente`, `docs/agent.md`, `tests/test_agente.py` (20 testes) |
+
+### Decisões
+
+1. **Agente em processo, não via transporte MCP.** O orquestrador usa os métodos da `SessaoCOD`
+   diretamente, com os mesmos descritores (gerados da assinatura + `DESCRICAO_PARAMETROS`) e a mesma
+   auditoria. Evita subir servidor + cliente para a demo e o benchmark; o servidor MCP continua sendo
+   a porta para clientes externos.
+2. **`set_switch` nunca chega ao modelo** (nem `load_cluster`): manobra é sempre `propose_plan` →
+   `bdgd-light aprovar` → token. O orquestrador carrega o cluster do evento e, em falta permanente,
+   injeta a falta antes de chamar o LLM (o prompt manda não usar `inject_fault` em eventos).
+3. **Verificador como gate dentro de `propose_plan`**: 12 checagens determinísticas (chave entre as
+   opções, chaves existem/disponíveis, abre antes de fechar, fronteira isolada, e o veredito do gêmeo:
+   convergiu, tensão MT, corrente do disjuntor, sobrecarga MT, viável). Recusa vira erro de ferramenta
+   com `problemas` para o modelo replanejar (padrão PowerChain), registro `agente.verificador.recusa`
+   e entrada em `Execucao.recusas`. Uma proposta por execução; a segunda é recusada.
+4. **Exemplos anotados em YAML com seleção lexical**: o `tipo` do evento presente nas tags vale 10
+   (categoria domina), palavra da consulta nas tags 2, no texto 1 (normalizado). Testei Jaccard puro
+   primeiro: um exemplo curto de falta transitória ganhava de todos os de falta permanente por
+   compartilhar "religador" — daí o bônus categórico e tags só categóricas.
+5. **Replanejamento**: em falta permanente sem proposta ao fim da conversa, o orquestrador anexa uma
+   mensagem de replanejamento (citando os problemas da última recusa) até `--replanejar` vezes; se
+   ainda assim não há proposta, `Execucao.erro` é preenchido e o CLI sai com 1.
+6. **`fake_operador()`** — `FakeLLMClient` com regra que lê o histórico (linha `EVENTO {json}` da
+   mensagem do usuário e os pares tool_call/tool) e segue o fluxo do prompt. Serve aos testes, ao
+   `--provider fake` e como baseline do #36.
+7. `run_powerflow` ganhou `loadmult` (0 < x ≤ 5) na sessão e no MCP para o evento `pico_carga`.
+   `bdgd_light.agent/__init__` **não** reexporta o orquestrador: fecharia o ciclo
+   `mcp_server.sessao → agent.audit → agent/__init__ → orquestrador → mcp_server.sessao` (descoberto
+   no smoke; documentado no docstring do pacote).
+8. Métricas separam tempo do LLM e das ferramentas (`conversa.segundos` inclui a execução das
+   ferramentas — `segundos_llm = conversa.segundos − Σ segundos das chamadas`).
+9. `pyyaml` entrou no extra `agent` (`uv add --optional agent`).
+
+### Validação real (Gemini 2.5 Flash; OPENAI_API_KEY ausente nesta máquina)
+
+```bash
+for c in tijuca_cabofrio_tronco ipanema_9210 taquara_bocari; do
+  uv run bdgd-light agente --cenario $c --provider gemini --estado /tmp/ag/estado --saida /tmp/ag/${c}_gemini.json
+done
+```
+
+| cenário | proposta | verificador | rodadas | tokens | LLM / ferramentas |
+|---|---|---|---|---|---|
+| tijuca_cabofrio_tronco | P-0001 abrir 11035901, fechar 974020904 → ALC9946 (4042 clientes, margem 46 %) | ok | 5 | 49 360 + 735 = 53 480 | ≈23 s / 6,9 s |
+| ipanema_9210 | P-0002 sem chave (isolar 505111870, 561826961) + despacho | ok | 5 | 63 179 + 389 = 65 474 | 14,4 s / 0,1 s |
+| taquara_bocari | P-0003 abrir 4 chaves, religar 10924213, fechar 11056672 → TQR33859 (1984 clientes, margem 62 %) | ok | 5 | 54 075 + 468 = 59 395 | 25,8 s / 18,5 s |
+
+Zero replanejamentos, zero recusas; o modelo escolheu a mesma opção do ranking elétrico do gêmeo e
+descartou URG29983 pelo gargalo `Line.smt_11051956` (180 %). Detalhes e leitura em `docs/agent.md`.
+
+```bash
+uv run ruff check . && uv run ruff format . && uv run pytest        # 239 passed (218 + 20 + 1 real gated)
+uv run pytest tests/test_agente.py -q                                # roteiros, verificador, operador fake, CLI
+uv run bdgd-light agente --cenario taquara_bocari --provider fake    # sem LLM, com o recorte local
+uv run bdgd-light agente --pergunta "quantos km tem o ALC9925?" --cluster tijuca --provider gemini
+```
+
+### Pendências
+
+1. **OpenAI**: rodar os três cenários com `--provider openai` (a chave não estava no ambiente desta
+   sessão) e anexar a linha à tabela de `docs/agent.md`; comando pronto acima.
+2. Custo: ~50–65 k tokens de prompt por falta permanente (rodadas cumulativas; `restore_options` com
+   10 opções e scores é o grosso). Compactar o retorno para o modelo (top-N + resumo) é o primeiro
+   item do #36.
+3. Seleção de exemplos é lexical; com mais exemplos, trocar por embeddings (o `LLMClient` ainda não
+   tem `embed`).
+4. O `run_powerflow` do cluster Tijuca inteiro (MT+BT) segue com índices BT contaminados (#44); o
+   score MT não é afetado.
