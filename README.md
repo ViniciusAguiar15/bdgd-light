@@ -334,6 +334,11 @@ ligação com centenas de metros cadastrados na própria BDGD. Cluster TQR (3 al
 barras, 33.340 cargas): 9 iterações, 1,2 s; a restauração de BOCARI via PARNAIBA leva o disjuntor de
 149 A a 221 A e a MT transferida fica em ≥ 1,004 pu, sem sobrecarga na MT.
 
+> **Métricas de decisão do MVP são MT.** A BT do modelo herda ramais de ligação (`RAMLIG.COMP`)
+> suspeitos da própria BDGD (700–900 m em 220 V), que produzem as tensões BT abaixo de 0,5 pu e as
+> sobrecargas reportadas; o veredito de uma manobra usa **tensão MT** (0,93–1,05 pu) e **corrente no
+> disjuntor/tronco**, nunca a BT (`docs/spike-opendss.md`, revisão `docs/review/PR-04.md`).
+
 ### `bdgd-light llm` — cliente LLM com *tool calling* (spike da issue #7)
 
 Exemplo mínimo do agente: manda a pergunta ao modelo com a ferramenta `soma(a, b)` disponível,
@@ -348,6 +353,7 @@ export BDGD_LLM_ENDPOINT=https://SEU-PROVEDOR/v1/chat/completions   # API compat
 export BDGD_LLM_TOKEN=...   BDGD_LLM_MODEL=gpt-4.1-mini              # segredos só por ambiente
 uv run bdgd-light llm "Quanto é 2 + 3?" --json data/conversa.json    # grava a conversa completa
 uv run scripts/listar_modelos.py --tools                             # modelos com tool calling
+uv run bdgd-light audit data/audit/llm.jsonl --mostrar 5             # confere o log de auditoria
 ```
 
 | opção | padrão | descrição |
@@ -358,6 +364,13 @@ uv run scripts/listar_modelos.py --tools                             # modelos c
 | `--modelo` | `$BDGD_LLM_MODEL` | id do modelo |
 | `--sistema` | assistente do COD | mensagem de sistema |
 | `--json` | — | grava mensagens, chamadas de ferramenta, resultados e uso de tokens |
+| `--audit` | `data/audit/llm.jsonl` | log de auditoria só de acréscimo (ADR-001, decisão 6); `--sem-audit` desliga |
+
+Toda conversa é anexada ao **log de auditoria**: JSON Lines em que cada registro (`llm.rodada` com as
+mensagens enviadas, a resposta, as chamadas de ferramenta com argumentos e resultados e o uso de
+tokens; `conversa.fim`/`conversa.erro` no encerramento) carrega o hash SHA-256 do registro anterior.
+`bdgd-light audit ARQUIVO` recalcula a cadeia e sai com código 1 se alguma linha foi alterada,
+removida ou reordenada. É a base do RACI-A e do benchmark (tokens/pass@1).
 
 O **GitHub Models foi aposentado em 30/07/2026** (a API responde `410
 github_models_retirement_brownout`); `GitHubModelsClient` continua como *preset* que falha com uma
@@ -370,7 +383,14 @@ from bdgd_light.agent import Message, SOMA, cliente_do_ambiente, conversar, fake
 cliente = fake_soma()  # ou cliente_do_ambiente() com BDGD_LLM_ENDPOINT/BDGD_LLM_TOKEN
 conversa = conversar(cliente, [Message.user("Quanto é 2 + 3?")], [SOMA])
 conversa.resposta.content  # 'O resultado é 5.'
-conversa.to_dict()  # histórico serializável (base do log de auditoria)
+conversa.to_dict()  # histórico serializável
+
+from bdgd_light.agent import AuditLog
+
+log = AuditLog("data/audit/llm.jsonl")  # continua a cadeia se o arquivo existir
+conversa = conversar(cliente, [Message.user("Quanto é 2 + 3?")], [SOMA], audit=log)
+conversa.hash_auditoria, conversa.uso_total  # hash do último registro, tokens somados
+AuditLog.verificar_arquivo("data/audit/llm.jsonl")  # nº de registros ou AuditError
 ```
 
 ## Fluxo de trabalho

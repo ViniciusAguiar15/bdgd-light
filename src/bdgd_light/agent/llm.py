@@ -20,6 +20,8 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
+from bdgd_light.agent.audit import AuditLog
+
 ENV_MODELO = "BDGD_LLM_MODEL"
 ENV_ENDPOINT = "BDGD_LLM_ENDPOINT"
 ENV_TOKEN = "BDGD_LLM_TOKEN"
@@ -297,21 +299,32 @@ def fake_soma() -> FakeLLMClient:
 
     def regra(messages: Sequence[Message], tools: Sequence[ToolSpec]) -> Resposta:
         ultima = messages[-1]
+        uso = _uso_estimado(messages)
         if ultima.role == "tool":
             try:
                 valor = json.loads(ultima.content or "null")
             except json.JSONDecodeError:
                 valor = ultima.content
-            return Text(f"O resultado é {_fmt_num(valor)}.", modelo="fake")
+            texto = f"O resultado é {_fmt_num(valor)}."
+            return Text(texto, uso=uso, modelo="fake", finish_reason="stop")
         numeros = _numeros(ultima.content or "")
         if len(numeros) >= 2 and any(t.name == "soma" for t in tools):
             a, b = numeros[0], numeros[1]
-            return ToolCalls(
-                (ToolCall("call_fake_1", "soma", {"a": a, "b": b}),), None, modelo="fake"
-            )
-        return Text("Não encontrei dois números para somar.", modelo="fake")
+            chamada = ToolCall("call_fake_1", "soma", {"a": a, "b": b})
+            return ToolCalls((chamada,), None, uso=uso, modelo="fake", finish_reason="tool_calls")
+        return Text(
+            "Não encontrei dois números para somar.", uso=uso, modelo="fake", finish_reason="stop"
+        )
 
     return FakeLLMClient(regra=regra)
+
+
+def _uso_estimado(messages: Sequence[Message], completion: int = 12) -> Uso:
+    """Contagem de tokens fictícia (~4 caracteres por token) para o fake alimentar o log de
+    auditoria e o benchmark com números plausíveis e determinísticos."""
+    caracteres = sum(len(m.content or "") for m in messages)
+    prompt = 10 + caracteres // 4 + 8 * sum(len(m.tool_calls) for m in messages)
+    return Uso(prompt, completion, prompt + completion)
 
 
 def _numeros(texto: str) -> list[float]:
@@ -551,8 +564,18 @@ class Conversa:
     resposta: Text
     rodadas: int
     execucoes: list[tuple[ToolCall, Any]] = field(default_factory=list)
+    hash_auditoria: str | None = None
+    """Hash do último registro gravado no ``AuditLog`` (liga a conversa ao log)."""
+
+    @property
+    def uso_total(self) -> Uso | None:
+        """Soma do uso de tokens de todas as rodadas (quando o cliente informa)."""
+        return _somar_uso(self._usos)
+
+    _usos: list[Uso] = field(default_factory=list, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
+        uso_total = self.uso_total
         return {
             "mensagens": [m.to_openai() for m in self.mensagens],
             "resposta": self.resposta.content,
@@ -563,7 +586,32 @@ class Conversa:
             ],
             "modelo": self.resposta.modelo,
             "uso": None if self.resposta.uso is None else vars(self.resposta.uso),
+            "uso_total": None if uso_total is None else vars(uso_total),
+            "hash_auditoria": self.hash_auditoria,
         }
+
+
+def _somar_uso(usos: Sequence[Uso]) -> Uso | None:
+    if not usos:
+        return None
+    return Uso(
+        sum(u.prompt_tokens for u in usos),
+        sum(u.completion_tokens for u in usos),
+        sum(u.total_tokens for u in usos),
+    )
+
+
+def _resposta_para_log(resposta: Resposta) -> dict[str, Any]:
+    d: dict[str, Any] = {
+        "tipo": "texto" if isinstance(resposta, Text) else "tool_calls",
+        "content": resposta.content,
+        "finish_reason": resposta.finish_reason,
+    }
+    if isinstance(resposta, ToolCalls):
+        d["tool_calls"] = [
+            {"id": c.id, "ferramenta": c.name, "argumentos": dict(c.arguments)} for c in resposta
+        ]
+    return d
 
 
 def conversar(
@@ -572,23 +620,74 @@ def conversar(
     ferramentas: Sequence[Ferramenta] = (),
     *,
     max_rodadas: int = 5,
+    audit: AuditLog | None = None,
 ) -> Conversa:
     """Laço mínimo de *tool calling*: chama o modelo, executa cada ferramenta pedida, devolve os
     resultados como mensagens ``tool`` e repete até receber texto. Ferramenta desconhecida ou
-    exceção viram ``{"erro": ...}`` para o modelo se corrigir; ``max_rodadas`` limita o laço."""
+    exceção viram ``{"erro": ...}`` para o modelo se corrigir; ``max_rodadas`` limita o laço.
+
+    Com ``audit``, cada rodada vira um registro ``llm.rodada`` (mensagens enviadas naquela rodada,
+    resposta do modelo, chamadas de ferramenta com argumentos e resultados, uso de tokens) e o
+    fim vira ``conversa.fim`` (ou ``conversa.erro``) — ADR-001, decisão 6."""
     historico = list(mensagens)
     por_nome = {f.name: f for f in ferramentas}
     specs = [f.spec for f in ferramentas]
     execucoes: list[tuple[ToolCall, Any]] = []
+    usos: list[Uso] = []
+    modelo = getattr(cliente, "modelo", None)
+    enviadas_desde = 0
     for rodada in range(1, max_rodadas + 1):
         resposta = cliente.chat(historico, specs)
+        if resposta.uso is not None:
+            usos.append(resposta.uso)
+        modelo = resposta.modelo or modelo
+        novas = historico[enviadas_desde:]
+        enviadas_desde = len(historico)
+        execucoes_rodada: list[dict[str, Any]] = []
+        if isinstance(resposta, ToolCalls):
+            historico.append(Message.assistant(resposta.content, resposta.calls))
+            for chamada in resposta.calls:
+                resultado = _executar(por_nome.get(chamada.name), chamada)
+                execucoes.append((chamada, resultado))
+                historico.append(Message.tool(chamada, resultado))
+                execucoes_rodada.append(
+                    {
+                        "id": chamada.id,
+                        "ferramenta": chamada.name,
+                        "argumentos": dict(chamada.arguments),
+                        "resultado": resultado,
+                    }
+                )
+        if audit is not None:
+            audit.registrar(
+                "llm.rodada",
+                rodada=rodada,
+                modelo=modelo,
+                mensagens=[m.to_openai() for m in novas],
+                resposta=_resposta_para_log(resposta),
+                execucoes=execucoes_rodada,
+                uso=None if resposta.uso is None else vars(resposta.uso),
+            )
         if isinstance(resposta, Text):
-            return Conversa(historico, resposta, rodada, execucoes)
-        historico.append(Message.assistant(resposta.content, resposta.calls))
-        for chamada in resposta.calls:
-            resultado = _executar(por_nome.get(chamada.name), chamada)
-            execucoes.append((chamada, resultado))
-            historico.append(Message.tool(chamada, resultado))
+            hash_final = None
+            if audit is not None:
+                uso_total = _somar_uso(usos)
+                hash_final = audit.registrar(
+                    "conversa.fim",
+                    rodadas=rodada,
+                    modelo=modelo,
+                    resposta=resposta.content,
+                    ferramentas_executadas=len(execucoes),
+                    uso_total=None if uso_total is None else vars(uso_total),
+                ).hash
+            return Conversa(historico, resposta, rodada, execucoes, hash_final, usos)
+    if audit is not None:
+        audit.registrar(
+            "conversa.erro",
+            rodadas=max_rodadas,
+            modelo=modelo,
+            erro=f"não concluiu em {max_rodadas} rodadas",
+        )
     raise LLMError(f"o modelo não concluiu em {max_rodadas} rodadas de ferramentas.")
 
 

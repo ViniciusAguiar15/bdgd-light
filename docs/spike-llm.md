@@ -59,8 +59,11 @@ Copilot. Não há limite de taxa nem de tokens a observar — o serviço não ex
 5. **Laço de *tool calling* tolerante**: ferramenta desconhecida ou exceção na execução viram
    `{"erro": ...}` devolvido ao modelo (que pode se corrigir), em vez de derrubar a conversa;
    `max_rodadas` (padrão 5) evita laço infinito. Tudo o que aconteceu fica em `Conversa`
-   (mensagens, execuções com argumentos e resultados, modelo, tokens) e `to_dict()` é JSON puro —
-   é o embrião do log de auditoria da decisão 6 da ADR-001.
+   (mensagens, execuções com argumentos e resultados, modelo, tokens) e `to_dict()` é JSON puro.
+   Com `audit=AuditLog(...)` (`bdgd_light.agent.audit`, pedido da revisão PR-06) cada rodada vira
+   um registro `llm.rodada` no log de auditoria da decisão 6 da ADR-001 — JSON Lines com hash
+   SHA-256 encadeado, verificável por `bdgd-light audit` — e o fim vira `conversa.fim`/`conversa.erro`
+   com o uso total de tokens (insumo do benchmark tokens/pass@1).
 6. **`temperature=0` por padrão** (reprodutibilidade das propostas do agente); `None` desliga o
    envio para provedores/modelos que rejeitam o parâmetro (ex.: família `o1`/`o3`).
 7. **Modelo padrão**: sem GitHub Models não há catálogo "grátis" a recomendar. Padrão do cliente
@@ -134,6 +137,7 @@ conversa.to_dict()
 2. Expor as ferramentas do grafo/gêmeo (`load_feeder`, `downstream_customers`, `propose_flisr`,
    `run_powerflow`…) como `Ferramenta` — ou, conforme a decisão 9 da ADR, via servidor MCP com o
    mesmo `ToolSpec`.
-3. Transformar `Conversa.to_dict()` no registro do log de auditoria (JSON Lines, hash encadeado) e
-   acrescentar o verificador determinístico antes de qualquer ferramenta de escrita.
+3. ~~Log de auditoria~~ (feito: `AuditLog`, registros `llm.rodada`/`conversa.fim`); falta
+   registrar a aprovação/rejeição humana e acrescentar o verificador determinístico
+   (`twin.score_eletrico`, issue #18) antes de qualquer ferramenta de escrita.
 4. Suporte a *streaming* e a mensagens multimodais só se o console precisar.

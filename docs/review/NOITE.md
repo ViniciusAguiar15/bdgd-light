@@ -366,3 +366,57 @@ uv run pytest tests/test_llm.py -q                             # 28 passed, sem 
 BDGD_LLM_ENDPOINT=http://localhost:11434/v1/chat/completions BDGD_LLM_TOKEN=ollama \
   BDGD_LLM_MODEL=llama3.1:8b uv run bdgd-light llm "Quanto é 2 + 3?"
 ```
+
+## 6a. Ajustes das revisões PR-04, PR-05 e PR-06 (23:03–23:45)
+
+| | |
+|---|---|
+| Branch | `fix/review-pr04-pr06` |
+| PR | #19 |
+| Origem | `docs/review/PR-04.md`, `PR-05.md`, `PR-06.md` (apareceram às 23:03, durante a issue #4) |
+
+Os três arquivos chegaram com a issue #4 já em andamento (comando `tiles` pronto, console em
+construção). Guardei o trabalho do console num *stash*, voltei a `main` e apliquei os pedidos em PR
+próprio antes de retomar.
+
+O que foi feito:
+
+1. **PR-06 — log de auditoria (pedido pequeno).** `bdgd_light.agent.audit`: `AuditLog` só de
+   acréscimo em JSON Lines; cada registro tem `seq`, `ts` (UTC, ms), `tipo`, `dados`, `hash_anterior`
+   e `hash` SHA-256 do JSON canônico (chaves ordenadas), primeiro elo = `GENESIS` (64 zeros). Reabrir
+   um arquivo continua a cadeia; `verificar`/`verificar_arquivo` recalculam tudo e apontam a linha
+   alterada, removida ou reordenada (`AuditError`). `conversar(..., audit=log)` grava um `llm.rodada`
+   por rodada (mensagens **novas** daquela rodada, resposta com `tool_calls`, execuções com argumentos e
+   resultados, `uso`) e `conversa.fim` (rodadas, ferramentas executadas, `uso_total`) ou
+   `conversa.erro`. `Conversa` ganhou `hash_auditoria` e `uso_total`. CLI: `bdgd-light llm --audit`
+   (padrão `data/audit/llm.jsonl`, `--sem-audit` desliga) e novo `bdgd-light audit ARQUIVO
+   [--mostrar N]` (exit 1 se a cadeia quebrar). `fake_soma()` passou a devolver `Uso` estimado e
+   `finish_reason` para o log ter números. 13 testes novos (`tests/test_audit.py`) + CLI.
+2. **PR-04 item 3 — nota "métricas MT".** README (seção `dss`) e `docs/escopo-alimentadores.md`
+   registram que a BT do modelo herda ramais `RAMLIG.COMP` suspeitos e que o veredito do MVP é MT
+   (tensão MT 0,93–1,05 pu, corrente no disjuntor/tronco).
+3. **PR-04 itens 1 e 2 — fase 3, não bloqueiam.** Abertas as issues **#17** (Master do gêmeo a partir
+   do GPKG do recorte) e **#18** (`twin.score_eletrico`, verificador elétrico das opções) com critérios
+   de aceite; não implementadas hoje porque a revisão as classifica como fase 3.
+4. **PR-05 — regra para ADRs.** Anotada: decisões novas vão em ADR-002+ (não editar a 001). A issue #4
+   (console) sairá com `docs/adr/ADR-002-console-maplibre-pmtiles.md` em vez de alterar a decisão 8.
+
+Decisões tomadas:
+- Hash cobre `{seq, ts, tipo, dados, hash_anterior}` serializados com `sort_keys`, sem espaços e
+  `ensure_ascii=False`; `dados` passa por `json.loads(json.dumps(..., default=str))` antes de entrar
+  na cadeia, para que o que se verifica seja exatamente o que está no disco.
+- Um registro por rodada (e não um por mensagem) — mantém o log legível e alinhado ao que o benchmark
+  precisa (rodadas, tokens, ferramentas); a aprovação/rejeição humana entra como tipo novo quando
+  existir HITL de verdade.
+- O padrão `data/audit/llm.jsonl` fica fora do git (`data/` ignorado); os testes passam `--audit
+  tmp_path`.
+
+Para validar:
+
+```bash
+uv run bdgd-light llm --fake "Quanto é 2 + 3?"          # … auditoria: 3 registro(s) em data/audit/llm.jsonl · hash …
+uv run bdgd-light llm --fake "Quanto é 10 + 32?"        # … 6 registro(s) (a cadeia continua)
+uv run bdgd-light audit data/audit/llm.jsonl --mostrar 3  # ✔ 6 registro(s), cadeia íntegra
+sed -i '' '2s/"a":2.0/"a":9.0/' data/audit/llm.jsonl && uv run bdgd-light audit   # exit 1: seq=2: hash não bate
+uv run pytest tests/test_audit.py tests/test_llm.py -q  # 41 passed
+```
