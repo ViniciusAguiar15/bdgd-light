@@ -287,7 +287,7 @@ uv run pytest tests/test_gpkg2dss.py -q   # 8 testes; o de paridade usa data/fee
 |---|---|
 | Branch | `feat/twin-score-eletrico` (a partir de `main` `f63a09a`, pós-PR #41) |
 | PR | ver "Fechamento" |
-| docs/review | sem arquivos novos (PR-08/09 já tratados na §3) |
+| docs/review | **PR-10.md** (revisão do PR #41, aprovado) apareceu durante a issue. Pedidos aplicados em commit próprio: (1) seção "Quando usar `--gpkg` × `--gdb`" no spike e README com `--gpkg` como padrão e `--gdb` só como oráculo de paridade; (2) comando de paridade para o mantenedor (abaixo e no README); (3) o `--score` já roda sobre `data/dss/gpkg` (padrão de `--dss-out`). |
 | Módulo | `src/bdgd_light/twin/score.py`: `score_eletrico`, `ScoreEletrico`, `ordenar_scores`, `trechos_tronco`, `ampacidade_tronco`; `PowerFlowResult.fontes` ganhou `i_a` (corrente máx. de fase da `Vsource`) |
 
 ### Decisões
@@ -332,6 +332,9 @@ ou restrição real? Em ambos os casos é um bom momento da demo.
 uv run ruff check . && uv run ruff format . && uv run pytest         # 187 passed
 uv run bdgd-light grafo --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 --score   # 10 opções, 10 s
 uv run pytest tests/test_twin.py -q -k "score or tronco"              # 5 testes (cluster_mini)
+# paridade gpkg2dss × bdgd2opendss (PR-10, pedido 2): rodar após regerar recortes ou mexer no conversor
+uv run bdgd-light dss --gdb data/Light_382_2025-12-31_V11_20260824-0926.gdb --ctmt TQR0007 --out data/dss --sem-fluxo
+uv run pytest tests/test_gpkg2dss.py -q -k paridade                    # skip automático sem os dados
 ```
 
 ### Pendências

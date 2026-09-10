@@ -101,6 +101,24 @@ bdgd2opendss arrasta customtkinter, plotly, xlsxwriter e holidays, ~40 MB).
    caminho e grava em `data/dss/gpkg/<CTMT>/`; o bdgd2opendss continua disponível com `--gdb` e é a
    referência de paridade.
 
+## Quando usar `--gpkg` × `--gdb`
+
+| | `--gpkg` (padrão) | `--gdb` (bdgd2opendss) |
+|---|---|---|
+| Entrada | GeoPackage do `bdgd-light recortar` — **a mesma rede do grafo** | `.gdb` inteiro da BDGD |
+| Saída | `data/dss/gpkg/<CTMT>/` (só DU/SA/DO do mês pedido) | `data/dss/sub_<SUB>/<CTMT>/` (36 Masters) |
+| Tempo | ≈1 s por alimentador | ≈3 min por alimentador (carrega o GDB todo) |
+| Usar para | tudo: `dss`, `grafo --score`, MCP, agente, console, testes | **regressão de paridade** do conversor (`tests/test_gpkg2dss.py::test_paridade_tqr0007_real`) e conferência de um resultado suspeito contra o oráculo |
+| Não misturar | os `--out` são distintos por padrão; `dss --out data/dss` força os modelos do bdgd2opendss num cenário |
+
+Regra: a rede que o operador vê (grafo/console) e a rede que o gêmeo resolve são **o recorte**; o
+bdgd2opendss só entra quando o conversor muda ou os recortes são regerados — aí o mantenedor roda:
+
+```bash
+uv run bdgd-light dss --gdb data/Light_382_2025-12-31_V11_20260824-0926.gdb --ctmt TQR0007 --out data/dss --sem-fluxo
+uv run pytest tests/test_gpkg2dss.py -q -k paridade     # skip automático sem data/feeders + data/dss
+```
+
 ## Master a partir do GPKG (issue #17)
 
 `bdgd_light.twin.gpkg2dss` (`converter_ctmt`, `converter_gpkg`, `listar_ctmts`, `dias_por_tipo`)
@@ -248,7 +266,9 @@ Pendência: obter a tabela `COR_NOM` do Manual (Módulo 10) e colocá-la em `cat
 
 ```bash
 uv sync --extra dev --extra twin
-# converte (≈3 min; lê o GDB inteiro) e resolve o Master DU01 — reaproveita data/dss se já existir
+# padrão: Master direto do GPKG do recorte (≈1 s por CTMT, em data/dss/gpkg/<CTMT>/)
+uv run bdgd-light dss --gpkg data/feeders/TQR0007.gpkg --json data/dss/gpkg/TQR0007_DU01.json
+# oráculo (bdgd2opendss, ≈3 min; lê o GDB inteiro) — só para a paridade; reaproveita data/dss se já existir
 uv run bdgd-light dss --gdb data/Light_382_2025-12-31_V11_20260824-0926.gdb --ctmt TQR0007 \
     --out data/dss --json data/dss/TQR0007_fluxo_DU01.json
 # outro patamar / outro Master / sem estabilizadores
@@ -264,8 +284,7 @@ uv run bdgd-light dss --ctmt TQR0007,TQR33859,TQR33862 --out data/dss --gpkg $G 
 uv run bdgd-light dss --ctmt TQR0007,TQR33859,TQR33862 --out data/dss --gpkg $G --falha 11798327 \
     --restaurar 789941518                                                                             # via CURUMAU
 # para converter os vizinhos de uma vez (≈5 min), passe --gdb junto com os três --ctmt
-# sem GDB: Master direto do GPKG do recorte (≈1 s por CTMT, em data/dss/gpkg/<CTMT>/)
-uv run bdgd-light dss --gpkg data/feeders/TQR0007.gpkg --json data/dss/gpkg/TQR0007_DU01.json
+# cluster Tijuca direto do GPKG
 uv run bdgd-light dss --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 --restaurar 974020904
 # score elétrico de todas as opções de restauração (Masters do GPKG em data/dss/gpkg)
 uv run bdgd-light grafo --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 --score
