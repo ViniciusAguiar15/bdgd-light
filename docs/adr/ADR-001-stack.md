@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **Aceita** (decisões 1–7 já implementadas em `main`; 8–11 propostas para as fases F1/F3, a confirmar nas issues #4 e #7) |
+| Status | **Aceita** (decisões 1–7 já implementadas em `main`; 8, 9 e 11 propostas para as fases F1/F3–F4; **10 alterada em 2026-09-09** pela spike da issue #7) |
 | Data | 2026-09-09 |
 | Origem | `docs/PLANO.md`, `docs/escopo-alimentadores.md`, `docs/bdgd-relacoes.md`, `docs/grid-modelo.md`, `docs/spike-opendss.md`, revisões em `docs/review/` |
 | Issue | #8 |
@@ -168,19 +168,28 @@ MCP; nenhuma ferramenta de escrita age sem o token de aprovação da decisão 6.
 **Consequências.** As mesmas ferramentas servem à demo e ao benchmark; o log de auditoria captura
 chamadas no ponto único de passagem. Overhead de serialização e mais um processo para orquestrar.
 
-## 10. LLM via GitHub Models atrás de uma interface `LLMClient`
+## 10. LLM atrás de uma interface `LLMClient` — provedor compatível com a OpenAI (era GitHub Models)
 
-**Contexto.** Queremos usar modelos com *tool calling* sem contratar provedor extra durante a POC e
-sem acoplar o agente a um SDK específico; segredos só por variável de ambiente.
+**Contexto.** Queremos usar modelos com *tool calling* sem acoplar o agente a um SDK específico;
+segredos só por variável de ambiente. A proposta original era o GitHub Models (catálogo
+multi-fornecedor com o `GITHUB_TOKEN` que o repositório já tem), mas a spike da issue #7
+(2026-09-09) encontrou o serviço **aposentado em 30/07/2026**: a API responde `410
+github_models_retirement_brownout` para qualquer token e a documentação confirma o encerramento de
+playground, catálogo, inferência e BYOK (`docs/spike-llm.md`).
 
-**Decisão.** Interface `LLMClient.chat(messages, tools) -> ToolCalls | Text` com duas implementações:
-`GitHubModelsClient` (endpoint de inferência do GitHub Models, `GITHUB_TOKEN`, modelo por
-`BDGD_LLM_MODEL`) e um cliente **fake** determinístico para testes — nenhuma chamada de rede na
-suite. Se a API recusar ou limitar (rate limit da POC), o agente continua funcionando com o fake e
-o limite fica documentado em `docs/spike-llm.md`.
+**Decisão (alterada).** Interface `LLMClient.chat(messages, tools) -> ToolCalls | Text`
+(`bdgd_light.agent`) com três implementações: `OpenAICompatClient`, o cliente **real**, para
+qualquer endpoint `chat/completions` compatível com a OpenAI (Azure AI Foundry, OpenAI, Ollama/LM
+Studio locais…) configurado por `BDGD_LLM_ENDPOINT`/`BDGD_LLM_TOKEN`/`BDGD_LLM_MODEL`;
+`GitHubModelsClient`, mantido como *preset* nomeado que falha com `ServicoIndisponivelError`
+explicando a aposentadoria; e `FakeLLMClient`, determinístico, para testes — nenhuma chamada de
+rede na suite. O laço de *tool calling* (`conversar`) devolve o histórico serializável que vira o
+log de auditoria da decisão 6. Provedor recomendado para a F3: Azure AI Foundry com `gpt-4.1-mini`
+(destino indicado pelo GitHub, mesmo formato de API) ou Ollama local para desenvolvimento offline.
 
-**Consequências.** Troca de provedor sem tocar no orquestrador; testes rápidos e offline. Limites de
-taxa/tokens do GitHub Models podem restringir o benchmark (medir em F4). Issue #7.
+**Consequências.** Troca de provedor sem tocar no orquestrador (só URL, token e id do modelo);
+testes rápidos e offline; sem SDK de provedor. Perde-se o "de graça com o token do Actions": rodar o
+agente no CI exigirá um *secret* `BDGD_LLM_TOKEN`; até lá o CI usa só o fake. Issue #7.
 
 ## 11. Benchmark e simulador como parte do produto (F4)
 
@@ -208,4 +217,5 @@ ordenação das opções e tokens/pass@1 a partir do log de auditoria.
 | pandapower / OpenDSS via COM | sem modelo de carga ANEEL pronto; COM é só Windows |
 | Leaflet + GeoJSON | não escala para a rede inteira nem para estado em tempo real |
 | Chamar o SDK do provedor direto no agente | acopla e impede testes offline |
+| GitHub Models como provedor | aposentado em 30/07/2026 (API responde 410); ver `docs/spike-llm.md` |
 | Autonomia nível 3+ (agente executa) | fora do escopo de governança do MVP |
