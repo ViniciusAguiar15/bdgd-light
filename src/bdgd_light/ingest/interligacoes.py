@@ -164,12 +164,15 @@ def contar_por_ctmt(interligacoes: pd.DataFrame) -> pd.DataFrame:
     """Contagens simétricas por CTMT: ties (chaves distintas), telecomandadas, em SE e vizinhos.
 
     Colunas: ``NA_interligacao``, ``NA_interligacao_telecomandada``, ``NA_interligacao_SE``,
+    ``NA_interligacao_campo`` (fora de polígono ``SUB``), ``NA_interligacao_campo_telecomandada``,
     ``n_vizinhos``, ``vizinhos`` (códigos separados por ``;``), indexadas por ``CTMT``.
     """
     colunas = {
         "NA_interligacao": "int64",
         "NA_interligacao_telecomandada": "int64",
         "NA_interligacao_SE": "int64",
+        "NA_interligacao_campo": "int64",
+        "NA_interligacao_campo_telecomandada": "int64",
         "n_vizinhos": "int64",
         "vizinhos": "object",
     }
@@ -177,6 +180,7 @@ def contar_por_ctmt(interligacoes: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame({c: pd.Series(dtype=t) for c, t in colunas.items()}).rename_axis("CTMT")
     pares = _pares_simetricos(interligacoes)
     grupos = pares.groupby("CTMT")
+    campo = pares[~pares["EM_SUB"]]
     resumo = pd.DataFrame(
         {
             "NA_interligacao": grupos["COD_ID"].nunique(),
@@ -184,6 +188,10 @@ def contar_por_ctmt(interligacoes: pd.DataFrame) -> pd.DataFrame:
             .groupby("CTMT")["COD_ID"]
             .nunique(),
             "NA_interligacao_SE": pares[pares["EM_SUB"]].groupby("CTMT")["COD_ID"].nunique(),
+            "NA_interligacao_campo": campo.groupby("CTMT")["COD_ID"].nunique(),
+            "NA_interligacao_campo_telecomandada": campo[campo["TLCD"] == 1]
+            .groupby("CTMT")["COD_ID"]
+            .nunique(),
             "n_vizinhos": grupos["CTMT_VIZ"].nunique(),
             "vizinhos": grupos["CTMT_VIZ"].agg(lambda s: ";".join(sorted(set(s)))),
         }
@@ -194,51 +202,50 @@ def contar_por_ctmt(interligacoes: pd.DataFrame) -> pd.DataFrame:
     return resumo
 
 
-def vizinhos_de(interligacoes: pd.DataFrame, ctmt: str) -> pd.DataFrame:
+COLUNAS_VIZINHOS = [
+    "CTMT_VIZ",
+    "ties",
+    "ties_telecomandadas",
+    "ties_manuais",
+    "ties_em_SE",
+    "ties_proprias",
+    "ties_do_vizinho",
+    "chaves",
+]
+
+
+def vizinhos_de(interligacoes: pd.DataFrame, ctmt: str, *, sem_se: bool = False) -> pd.DataFrame:
     """CTMT interligados a ``ctmt`` e quantas ties há com cada um (dos dois lados).
 
     Colunas: ``CTMT_VIZ``, ``ties``, ``ties_telecomandadas``, ``ties_manuais``, ``ties_em_SE``,
     ``ties_proprias`` (chave pertence a ``ctmt``), ``ties_do_vizinho``, ``chaves`` (códigos).
-    Ordenado por ``ties`` decrescente.
+    Com ``sem_se=True`` as chaves dentro de polígono ``SUB`` (disjuntores de saída, não são ties de
+    campo) saem de todas as contagens e ficam só em ``ties_em_SE``; vizinhos ligados apenas por elas
+    continuam listados, com ``ties = 0``. Ordenado por ``ties`` decrescente.
     """
     pares = _pares_simetricos(interligacoes) if not interligacoes.empty else pd.DataFrame()
     pares = pares[pares["CTMT"] == ctmt] if not pares.empty else pares
     if pares.empty:
-        return pd.DataFrame(
-            columns=[
-                "CTMT_VIZ",
-                "ties",
-                "ties_telecomandadas",
-                "ties_manuais",
-                "ties_em_SE",
-                "ties_proprias",
-                "ties_do_vizinho",
-                "chaves",
-            ]
-        )
+        return pd.DataFrame(columns=COLUNAS_VIZINHOS)
     pares = pares.drop_duplicates(["CTMT_VIZ", "COD_ID"])
-    grupos = pares.groupby("CTMT_VIZ")
+    em_se = pares[pares["EM_SUB"]].groupby("CTMT_VIZ").size()
+    campo = pares[~pares["EM_SUB"]] if sem_se else pares
+    grupos = campo.groupby("CTMT_VIZ")
     resumo = pd.DataFrame(
         {
             "ties": grupos.size(),
             "ties_telecomandadas": grupos["TLCD"].apply(lambda s: int((s == 1).sum())),
-            "ties_em_SE": grupos["EM_SUB"].sum().astype(int),
             "ties_proprias": grupos["DONO"].sum().astype(int),
             "chaves": grupos["COD_ID"].agg(lambda s: ";".join(sorted(s.astype(str)))),
         }
     )
+    resumo = resumo.reindex(sorted(set(pares["CTMT_VIZ"])))
+    resumo["ties_em_SE"] = em_se
+    for coluna in ("ties", "ties_telecomandadas", "ties_proprias", "ties_em_SE"):
+        resumo[coluna] = resumo[coluna].fillna(0).astype(int)
+    resumo["chaves"] = resumo["chaves"].fillna("")
     resumo["ties_manuais"] = resumo["ties"] - resumo["ties_telecomandadas"]
     resumo["ties_do_vizinho"] = resumo["ties"] - resumo["ties_proprias"]
-    resumo = resumo.reset_index().sort_values(["ties", "CTMT_VIZ"], ascending=[False, True])
-    return resumo[
-        [
-            "CTMT_VIZ",
-            "ties",
-            "ties_telecomandadas",
-            "ties_manuais",
-            "ties_em_SE",
-            "ties_proprias",
-            "ties_do_vizinho",
-            "chaves",
-        ]
-    ].reset_index(drop=True)
+    resumo = resumo.rename_axis("CTMT_VIZ").reset_index()
+    resumo = resumo.sort_values(["ties", "ties_em_SE", "CTMT_VIZ"], ascending=[False, False, True])
+    return resumo[COLUNAS_VIZINHOS].reset_index(drop=True)

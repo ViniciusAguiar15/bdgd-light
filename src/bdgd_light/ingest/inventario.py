@@ -57,6 +57,8 @@ COLUNAS_INVENTARIO = [
     "NA_interligacao",
     "NA_interligacao_telecomandada",
     "NA_interligacao_SE",
+    "NA_interligacao_campo",
+    "NA_interligacao_campo_telecomandada",
     "n_vizinhos",
     "vizinhos",
     "n_UNREMT",
@@ -79,6 +81,8 @@ _INTEIRAS = [
     "NA_interligacao",
     "NA_interligacao_telecomandada",
     "NA_interligacao_SE",
+    "NA_interligacao_campo",
+    "NA_interligacao_campo_telecomandada",
     "n_vizinhos",
     "n_UNREMT",
     "n_UNCRMT",
@@ -226,7 +230,8 @@ def inventariar(
         if coluna not in tabela.columns and coluna != "COD_ID":
             tabela[coluna] = np.nan
     tabela["vizinhos"] = tabela["vizinhos"].fillna("")
-    tabela["score"] = tabela["NA_interligacao"].fillna(0) * (
+    # score usa só ties de campo: disjuntores no pátio da SE não transferem carga (review PR-02)
+    tabela["score"] = tabela["NA_interligacao_campo"].fillna(0) * (
         tabela["n_UCBT"].fillna(0) + tabela["n_UCMT"].fillna(0)
     )
     for coluna in _INTEIRAS:
@@ -236,7 +241,8 @@ def inventariar(
     tabela["ENE_MWh_ano"] = tabela["ENE_MWh_ano"].astype("float64").round(3)
 
     tabela = tabela.reset_index().sort_values(
-        ["score", "NA_interligacao", "n_UCBT", "COD_ID"], ascending=[False, False, False, True]
+        ["score", "NA_interligacao_campo", "n_UCBT", "COD_ID"],
+        ascending=[False, False, False, True],
     )
     tabela = tabela[COLUNAS_INVENTARIO].reset_index(drop=True)
     return ResultadoInventario(
@@ -347,7 +353,7 @@ def gravar_csv(tabela: pd.DataFrame, destino: str | Path) -> Path:
 
 
 def tabela_top(tabela: pd.DataFrame, n: int = 20, titulo: str | None = None) -> Table:
-    """Tabela rich com os ``n`` CTMT de maior ``score`` (chaves NA de interligação × clientes)."""
+    """Tabela rich com os ``n`` CTMT de maior ``score`` (ties de campo × clientes)."""
     colunas = [
         ("COD_ID", "CTMT", "left"),
         ("NOME", "Nome", "left"),
@@ -359,14 +365,15 @@ def tabela_top(tabela: pd.DataFrame, n: int = 20, titulo: str | None = None) -> 
         ("kVA_instalado", "kVA", "right"),
         ("n_UC", "UC", "right"),
         ("chaves_NA", "NA", "right"),
-        ("NA_interligacao", "NA tie", "right"),
-        ("NA_interligacao_telecomandada", "tie TLCD", "right"),
+        ("NA_interligacao_campo", "Tie campo", "right"),
+        ("NA_interligacao_campo_telecomandada", "Tie TLCD", "right"),
+        ("NA_interligacao_SE", "Tie SE", "right"),
         ("n_DER", "DER", "right"),
         ("score", "Score", "right"),
     ]
     tabela = tabela.assign(n_UC=tabela["n_UCBT"] + tabela["n_UCMT"])
     rich_tabela = Table(
-        title=titulo or f"Top {n} alimentadores por score (NA de interligação × clientes)"
+        title=titulo or f"Top {n} alimentadores por score (ties de campo × clientes)"
     )
     for _, rotulo, alinhamento in colunas:
         rich_tabela.add_column(rotulo, justify=alinhamento, overflow="fold")

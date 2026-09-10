@@ -133,7 +133,8 @@ def inventario(
     """Inventário de alimentadores (CTMT): extensão, carga, clientes, chaves NA/NF, interligações,
     DER e bbox — para escolher o escopo de um cenário FLISR.
 
-    Score = chaves NA de interligação × (UCBT + UCMT). Colunas explicadas no README.
+    Score = chaves NA de interligação de campo (fora da SE) × (UCBT + UCMT). Colunas explicadas
+    no README.
     """
     try:
         poligono = carregar_bairro(bairro) if bairro else None
@@ -159,9 +160,17 @@ def vizinhos(
     ctmt: Annotated[str, typer.Option("--ctmt", help="COD_ID do alimentador.")],
     parquet: OpcaoParquet = Path("data/parquet"),
     raio_tie: OpcaoRaioTie = RAIO_PADRAO_M,
+    sem_se: Annotated[
+        bool,
+        typer.Option(
+            "--sem-se/--com-se",
+            help="Ignora nas contagens as chaves dentro do polígono da SE (disjuntores de saída, "
+            "não transferem carga); elas aparecem só na coluna 'Na SE'. --com-se conta tudo.",
+        ),
+    ] = True,
 ) -> None:
-    """Lista os CTMT interligados a um alimentador e quantas chaves NA de interligação (ties) há
-    com cada um — telecomandadas ou manuais, no campo ou dentro da subestação."""
+    """Lista os CTMT interligados a um alimentador e quantas chaves NA de interligação (ties) de
+    campo há com cada um — telecomandadas ou manuais; as de dentro da SE ficam à parte."""
     try:
         fonte = DiretorioParquet(parquet)
         ctmts = set(fonte.ler("CTMT", ["COD_ID"])["COD_ID"])
@@ -176,7 +185,7 @@ def vizinhos(
     except (FileNotFoundError, CamadaAusenteError, CtmtInexistenteError) as erro:
         _erro(str(erro))
         return
-    tabela = vizinhos_de(interligacoes, ctmt)
+    tabela = vizinhos_de(interligacoes, ctmt, sem_se=sem_se)
     if tabela.empty:
         console.print(f"{ctmt}: nenhuma interligação detectada (raio {raio_tie:g} m).")
         return
@@ -193,13 +202,23 @@ def vizinhos(
     # o mesmo COD_ID pode tocar vários vizinhos (barramento de SE): o título conta chaves
     # distintas, como o inventário; a tabela conta pares chave × vizinho
     totais = contar_por_ctmt(interligacoes).loc[ctmt]
-    rich_tabela = Table(
-        title=f"Vizinhos de {ctmt}: {len(tabela)} CTMT, "
-        f"{int(totais['NA_interligacao'])} chaves NA de interligação "
-        f"({int(totais['NA_interligacao_telecomandada'])} telecomandadas, "
-        f"{int(totais['NA_interligacao_SE'])} na SE), "
-        f"{int(tabela['ties'].sum())} pares chave×vizinho"
-    )
+    if sem_se:
+        titulo = (
+            f"Vizinhos de {ctmt}: {len(tabela)} CTMT, "
+            f"{int(totais['NA_interligacao_campo'])} chaves NA de interligação de campo "
+            f"({int(totais['NA_interligacao_campo_telecomandada'])} telecomandadas), "
+            f"{int(tabela['ties'].sum())} pares chave×vizinho; "
+            f"{int(totais['NA_interligacao_SE'])} chaves na SE descontadas"
+        )
+    else:
+        titulo = (
+            f"Vizinhos de {ctmt}: {len(tabela)} CTMT, "
+            f"{int(totais['NA_interligacao'])} chaves NA de interligação "
+            f"({int(totais['NA_interligacao_telecomandada'])} telecomandadas, "
+            f"{int(totais['NA_interligacao_SE'])} na SE), "
+            f"{int(tabela['ties'].sum())} pares chave×vizinho"
+        )
+    rich_tabela = Table(title=titulo)
     for _, rotulo, alinhamento in colunas:
         rich_tabela.add_column(rotulo, justify=alinhamento, overflow="fold")
     for _, linha in tabela.iterrows():

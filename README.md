@@ -126,27 +126,36 @@ Colunas do CSV (as regras de junção estão em [`docs/bdgd-relacoes.md`](docs/b
 | `NA_interligacao` | chaves NA que interligam este CTMT a outro (**detecção geométrica**, contadas dos dois lados: a chave cadastrada no vizinho a ≤ 2 m de um trecho deste CTMT também conta) | `UNSEMT.geometry` + `P_N_OPE = "A"` × extremidades de `SSDMT` com outro `CTMT` |
 | `NA_interligacao_telecomandada` | idem, só telecomandadas | + `UNSEMT.TLCD = 1` |
 | `NA_interligacao_SE` | idem, chaves dentro do polígono da subestação (disjuntores de saída de alimentadores da mesma SE — não são *ties* de campo) | + `SUB.geometry` |
+| `NA_interligacao_campo` | `NA_interligacao` menos as da SE — as chaves que interessam a um cenário FLISR | `EM_SUB = False` |
+| `NA_interligacao_campo_telecomandada` | idem, só telecomandadas | + `UNSEMT.TLCD = 1` |
 | `n_vizinhos`, `vizinhos` | CTMT interligados (contagem e lista `;`) | idem |
 | `n_UNREMT`, `n_UNCRMT` | reguladores e capacitores | `UNREMT.CTMT`, `UNCRMT.CTMT` |
 | `lon_min`, `lat_min`, `lon_max`, `lat_max` | bbox da rede MT em EPSG:4326 | limites de `SSDMT.geometry` por CTMT, reprojetados |
-| `score` | `NA_interligacao × (n_UCBT + n_UCMT)` — ordena a tabela `--top` | — |
+| `score` | `NA_interligacao_campo × (n_UCBT + n_UCMT)` — ordena a tabela `--top` (ties de campo × clientes; os disjuntores da SE não contam) | — |
 
 Na Light 2025 os `PAC` são numerados por alimentador e **não há PAC compartilhado entre CTMT**, por
 isso a interligação é detectada geometricamente (chave NA a ≤ 2 m de uma extremidade de `SSDMT` de
 outro CTMT, em UTM SIRGAS 2000). Detalhes e ressalvas (chaves em barramento de SE, chaves com vários
-vizinhos) em [`docs/bdgd-relacoes.md`](docs/bdgd-relacoes.md); a escolha do cluster PDG (MENEZES /
-XINGU / DANTAS) em [`docs/escopo-alimentadores.md`](docs/escopo-alimentadores.md).
+vizinhos) em [`docs/bdgd-relacoes.md`](docs/bdgd-relacoes.md); a escolha do cluster TQR (PARNAIBA /
+CURUMAU / BOCARI, SETD Taquara) em [`docs/escopo-alimentadores.md`](docs/escopo-alimentadores.md).
 
 ### `bdgd-light vizinhos` — com quem um alimentador se interliga
 
 ```bash
-uv run bdgd-light vizinhos --ctmt PDG29724 --parquet data/parquet
+uv run bdgd-light vizinhos --ctmt TQR0007 --parquet data/parquet            # só ties de campo (padrão)
+uv run bdgd-light vizinhos --ctmt TQR0007 --parquet data/parquet --com-se   # inclui disjuntores da SE
 ```
 
 Tabela com um CTMT vizinho por linha: nº de ties, quantas telecomandadas/manuais, quantas dentro da
-SE, quantas chaves são do próprio CTMT e quantas do vizinho, e os `COD_ID` das chaves. O título traz
-os totais em chaves distintas (iguais ao inventário) e em pares chave×vizinho — uma chave num
-barramento de SE pode tocar vários alimentadores. Aceita `--raio-tie`.
+SE, quantas chaves são do próprio CTMT e quantas do vizinho, e os `COD_ID` das chaves. Por padrão
+(`--sem-se`) as chaves dentro do polígono da SE ficam **fora** de todas as contagens e da lista de
+chaves — a coluna "Na SE" mostra quantas foram descontadas e um vizinho ligado só pela SE continua
+listado com 0 ties; `--com-se` conta tudo, como no inventário. O título traz os totais em chaves
+distintas e em pares chave×vizinho — uma chave num barramento de SE pode tocar vários alimentadores.
+Aceita `--raio-tie`.
+
+Para `TQR0007` (PARNAIBA): BOCARI 8 ties (2 telecomandadas), TQR33830 3, CURUMAU 2 (1) — nenhuma na
+SE.
 
 ### `bdgd-light recortar` — um GeoPackage por alimentador (e um do cluster)
 
@@ -155,9 +164,9 @@ GPKG (abre no QGIS), mais um `meta.json` com contagens, bbox e interligações.
 
 ```bash
 # um GPKG por CTMT + o GPKG do cluster (união), em data/feeders/
-uv run bdgd-light recortar --parquet data/parquet --ctmt PDG29724,PDG33499,PDG29731 --out data/feeders
+uv run bdgd-light recortar --parquet data/parquet --ctmt TQR0007,TQR33859,TQR33862 --out data/feeders
 # um só CTMT num arquivo com nome escolhido
-uv run bdgd-light recortar --parquet data/parquet --ctmt PDG29724 --out data/feeders/menezes.gpkg
+uv run bdgd-light recortar --parquet data/parquet --ctmt TQR0007 --out data/feeders/parnaiba.gpkg
 ```
 
 | opção | padrão | descrição |
@@ -182,10 +191,14 @@ garantem que nada de outro CTMT vaza para o recorte (regras em
 
 `meta.json`: `nome`, `ctmt` (`COD_ID`, `NOME`, `SUB`), `gerado_em`, `bdgd_light` (versão), `parquet`,
 `crs` (`EPSG:4674`), `bbox_4326`, `camadas` (contagem por camada) e `interligacoes` (por par CTMT–vizinho:
-`ties`, `ties_telecomandadas`, `ties_em_SE`, `chaves`).
+`ties`, `ties_telecomandadas`, `ties_em_SE`, `chaves` — tudo o que a detecção achou — e `ties_campo`,
+`ties_campo_telecomandadas`, `chaves_campo` — sem os disjuntores da SE, que é o que o FLISR usa).
 
-Cluster do escopo na Light 2025: MENEZES 9.557 feições (666 SSDMT, 102 UNTRMT, 75 UNSEMT, 4.795 UCBT),
-XINGU 6.580, DANTAS 10.775, cluster 26.628 (23 camadas cada) em ~3 s.
+Cluster do escopo na Light 2025 (`--ctmt TQR0007,TQR33859,TQR33862`): PARNAIBA 14.146 feições (675
+SSDMT, 82 UNTRMT, 50 UNSEMT, 6.268 UCBT), CURUMAU 14.608, BOCARI 10.853, cluster 39.185 (23 camadas
+cada) em ~3 s; ties de campo PARNAIBA–BOCARI 8 (2 telecomandadas), CURUMAU–BOCARI 7 (1),
+PARNAIBA–CURUMAU 2 (1). Cluster alternativo `BMT0001,BMT29737,CBI33798` (DEPAIVA / AVEMAR / RABELO):
+22.039 feições, todos os pares com ≥ 1 tie de campo telecomandada.
 
 ## Fluxo de trabalho
 

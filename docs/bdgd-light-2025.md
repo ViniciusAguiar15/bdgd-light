@@ -97,10 +97,11 @@ Códigos presentes em `CTMT`: **`46` (1.665 alimentadores) e `67` (137)**. Segun
 *TEN* (replicada, entre outros, pelo `bdgd2opendss`): `46` = **13,2 kV**, `49` = 13,8 kV, `67` = **25 kV**
 (`37` = 6,6 kV, `72` = 34,5 kV). Observações:
 
-- A hipótese inicial "46 = 13,8 kV" **não bate com o domínio**; a rede de 13,8 kV nominais da Light está
-  codificada como `46`. Nos transformadores desses alimentadores `EQTRMT.TEN_PRI` mistura `46` (13,2) e
-  `49` (13,8). Para o gêmeo OpenDSS, usar a tensão do domínio e `TEN_OPE` (pu) do `CTMT`, e conferir com
-  o Manual antes de fixar 13,2 ou 13,8 kV como base.
+- A hipótese inicial "46 = 13,8 kV" **não bate com o domínio** e foi descartada: a rede que a Light
+  divulga como "13,8 kV" aparece na BDGD como `46`, e o projeto adota o domínio — **`TEN_NOM = 46` →
+  13,2 kV** (`catalogo.TENSAO_KV`, inventário, escopo). Nos transformadores desses alimentadores
+  `EQTRMT.TEN_PRI` mistura `46` (13,2) e `49` (13,8). Para o gêmeo OpenDSS, usar a tensão do domínio e
+  `TEN_OPE` (pu) do `CTMT`.
 - Prefixo do `NOME` × `TEN_NOM`: `LDA` (1.011, rede aérea) e `LDS` (653, rede subterrânea) são todos
   `46`; `LSA` (121) e `LSS` (16) são `67` (25 kV, Zona Oeste), salvo um `LSA` em `46`; há um `TRAFO`.
 

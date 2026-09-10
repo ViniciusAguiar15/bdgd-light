@@ -118,17 +118,22 @@ Colunas da camada `INTERLIGACOES`: `COD_ID` (chave), `CTMT` (dono da chave), `CT
 Contagens (`contar_por_ctmt`): `NA_interligacao` = nº de **chaves distintas** que interligam o CTMT a
 qualquer outro, contando dos dois lados (a chave cadastrada em A que toca B conta para A e para B);
 `NA_interligacao_telecomandada` = as com `TLCD = 1`; `NA_interligacao_SE` = as com `EM_SUB`;
-`vizinhos` = CTMT distintos.
+`NA_interligacao_campo` e `NA_interligacao_campo_telecomandada` = as **sem** `EM_SUB` (ties de campo,
+as que um FLISR pode usar); `vizinhos` = CTMT distintos. O `score` do inventário usa só as de campo
+(`NA_interligacao_campo × (n_UCBT + n_UCMT)`), e `bdgd-light vizinhos` desconta as da SE por padrão
+(`--sem-se`; `--com-se` mostra tudo). No `meta.json` do recorte cada par CTMT–vizinho traz as duas
+visões (`ties*`/`chaves` e `ties_campo*`/`chaves_campo`).
 
 Ressalvas medidas na Light 2025 (5.833 pares, 5.144 chaves, 896 telecomandadas):
 
 - **Chaves dentro da SE** (393, quase todas `TIP_UNID = 29` disjuntores, `EM_SUB = True`): são os
   disjuntores de saída dos alimentadores da mesma subestação, cujas extremidades de `SSDMT` se
   encostam no barramento. Elétrica e operacionalmente não são *ties* de campo; ficam contadas em
-  `NA_interligacao` (com o filtro `EM_SUB` disponível para descontar) porque a regra pedida é
-  puramente geométrica. Em MENEZES (`PDG29724`), 7 das 11 chaves próprias detectadas estão na SE
-  Porta d'Água — e a relação com XINGU/DANTAS do
-  [`escopo-alimentadores.md`](escopo-alimentadores.md) é toda via esses disjuntores.
+  `NA_interligacao` (a regra pedida é puramente geométrica) e descontadas em
+  `NA_interligacao_campo`. Em MENEZES (`PDG29724`), 7 das 11 chaves próprias detectadas estão na SE
+  Porta d'Água — e a relação com XINGU/DANTAS era toda via esses disjuntores, motivo pelo qual o
+  [`escopo-alimentadores.md`](escopo-alimentadores.md) (v2) trocou para o cluster TQR (PARNAIBA /
+  CURUMAU / BOCARI), cujas 17 ties entre os três são todas de campo (4 telecomandadas).
 - **Vários vizinhos no raio**: 296 chaves têm 2 CTMT vizinhos a ≤ 2 m e 139 têm ≥ 3 (máximo 9, em
   barramentos de SE). Cada par vira uma linha; as contagens por CTMT são de chaves distintas.
 - `PAC_INI` do CTMT e PAC compartilhado não ajudam (ver "PAC"); a única ligação entre CTMT é geométrica.

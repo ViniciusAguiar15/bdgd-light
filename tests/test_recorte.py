@@ -202,7 +202,10 @@ def test_meta_json(recorte_cluster):
             "ties": 3,
             "ties_telecomandadas": 2,
             "ties_em_SE": 1,
+            "ties_campo": 2,
+            "ties_campo_telecomandadas": 1,
             "chaves": ["CH003", "CH005", "CH007"],
+            "chaves_campo": ["CH003", "CH005"],
         }
     ]
     assert "gerado_em" in meta and meta["bdgd_light"]
