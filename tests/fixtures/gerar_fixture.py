@@ -84,6 +84,7 @@ TRAFOS = {
     "TR002": ("RJO002", "RJO002_MT_4", 112.5),
     "TR004": ("RJO003", "RJO003_MT_2", 150.0),
 }
+CODIGO_KVA = {45.0: "13", 75.0: "16", 112.5: "20", 150.0: "24"}  # domínio TPOTAPRT (EQTRMT.POT_NOM)
 
 
 def _energia_mensal(base: float) -> dict[str, float]:
@@ -316,8 +317,8 @@ def untrmt() -> gpd.GeoDataFrame:
                 "TEN_LIN_SE": 0.22,
                 "TAP": 1.0,
                 "POT_NOM": kva,
-                "PER_FER": 0.3,
-                "PER_TOT": 1.5,
+                "PER_FER": kva * 3.0,  # W (≈ NBR 5440: 0,3 % em vazio, 1,1 % em carga)
+                "PER_TOT": kva * 14.0,
                 "DAT_CON": "2012-03-01",
                 **_comum(ctmt_id),
                 "BANC": 0,
@@ -671,13 +672,13 @@ def eqtrmt() -> pd.DataFrame:
             "TIP_INST": "RD_AER_URB",
             "UNI_TR_MT": cod,
             "CLAS_TEN": "1",
-            "POT_NOM": str(int(kva)),
+            "POT_NOM": CODIGO_KVA[kva],  # código TPOTAPRT do Manual (não o valor em kVA)
             "LIG": "1",
             "FAS_CON": "ABC",
             "TEN_PRI": "46",
             "TEN_SEC": "11",
-            "PER_FER": 0.3,
-            "PER_TOT": 1.5,
+            "PER_FER": kva * 3.0,
+            "PER_TOT": kva * 14.0,
             "R": 1.0,
             "XHL": 3.5,
             "DESCR": "",
