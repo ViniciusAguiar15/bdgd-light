@@ -22,6 +22,9 @@ from geopandas import GeoDataFrame, GeoSeries
 from pyproj import CRS
 
 RAIO_PADRAO_M = 2.0
+# o polígono de ``SUB`` na Light costuma ser só a casa de comando/edifício (SE Posto Seis: 492 m²);
+# as chaves do pátio ficam a 10–40 m dele, por isso ``EM_SUB`` usa uma folga ao redor do polígono
+RAIO_SUB_PADRAO_M = 50.0
 CRS_METRICO_PADRAO = "EPSG:31983"  # SIRGAS 2000 / UTM 23S (área da Light)
 
 COLUNAS_INTERLIGACAO = [
@@ -77,15 +80,17 @@ def detectar_interligacoes(
     raio_m: float = RAIO_PADRAO_M,
     sub: GeoDataFrame | None = None,
     apenas_na: bool = True,
+    raio_sub_m: float = RAIO_SUB_PADRAO_M,
 ) -> GeoDataFrame:
     """Chaves de ``unsemt`` a até ``raio_m`` de extremidades de ``ssdmt`` de **outro** CTMT.
 
     Devolve um GeoDataFrame (CRS de ``unsemt``) com uma linha por par (chave, CTMT vizinho) e as
     colunas ``COLUNAS_INTERLIGACAO``: ``CTMT`` é o dono da chave, ``CTMT_VIZ``/``SSDMT_VIZ``/
     ``PAC_VIZ`` identificam a extremidade vizinha mais próxima, ``DIST_M`` a distância em metros e
-    ``EM_SUB`` se a chave está dentro de um polígono de ``sub`` (pátio de subestação — bays de
-    transferência entre alimentadores da mesma SE, não ties de campo). Com ``apenas_na`` só chaves
-    ``P_N_OPE == "A"`` são consideradas.
+    ``EM_SUB`` se a chave está dentro de um polígono de ``sub`` ou a até ``raio_sub_m`` dele (pátio
+    de subestação — bays de transferência entre alimentadores da mesma SE, não ties de campo; o
+    polígono da BDGD costuma cobrir só o edifício). Com ``apenas_na`` só chaves ``P_N_OPE == "A"``
+    são consideradas.
     """
     chaves = unsemt
     if apenas_na and "P_N_OPE" in chaves.columns:
@@ -123,7 +128,11 @@ def detectar_interligacoes(
     em_sub = np.zeros(len(chaves), dtype=bool)
     if sub is not None and not sub.empty:
         poligonos = sub.geometry.to_crs(crs).values
-        dentro = shapely.STRtree(poligonos).query(pontos_chave, predicate="within")[0]
+        arvore_sub = shapely.STRtree(poligonos)
+        if raio_sub_m > 0:
+            dentro = arvore_sub.query(pontos_chave, predicate="dwithin", distance=raio_sub_m)[0]
+        else:
+            dentro = arvore_sub.query(pontos_chave, predicate="within")[0]
         em_sub[np.unique(dentro)] = True
     pares["EM_SUB"] = em_sub[pares["_i"].to_numpy()]
     pares["DIST_M"] = pares["DIST_M"].round(3)

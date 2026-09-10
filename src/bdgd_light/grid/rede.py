@@ -392,20 +392,28 @@ class Rede:
             self.grafo.add_node(no, tipo="externo", ctmt=ctmt)
         return no
 
-    def _lado_de_fora(self, cod: str, dono: str) -> str:
-        """PAC da chave que fica do lado do vizinho (o que não está na rede do CTMT dono)."""
+    def _lado_de_fora(self, cod: str, dono: str, viz: str) -> tuple[str, bool]:
+        """PAC da chave que fica do lado do vizinho (o que não está na rede do CTMT dono).
+
+        Devolve ``(pac, ambigua)``: ``ambigua`` quando os dois PAC pertencem à rede do dono (a
+        chave NA é um ponto de anel interno que, por coincidência geométrica, encosta no vizinho).
+        Nesse caso a tie fica ligada ao ``PAC_2``, mas só passável com a chave fechada — senão o
+        vizinho energizaria a nossa rede "por fora" da chave aberta.
+        """
         u, v = self.chaves[cod]
         pacs = self._pacs_por_ctmt.get(dono, set())
         u_in, v_in = u in pacs, v in pacs
         if u_in and not v_in:
-            return v
+            return v, False
         if v_in and not u_in:
-            return u
+            return u, False
         if u_in and v_in:
             self.avisos.append(
-                f"chave {cod}: os dois PAC estão na rede de {dono}; tie ligada ao PAC_2 ({v})"
+                f"chave {cod}: os dois PAC estão na rede de {dono} (anel interno); a tie com {viz} "
+                f"fica no PAC_2 ({v}) e só passa com a chave fechada"
             )
-        return v  # nenhum PAC na rede: PAC_1 é o lado fonte por convenção (como nos disjuntores)
+            return v, True
+        return v, False  # nenhum PAC na rede: PAC_1 é o lado fonte por convenção (disjuntores)
 
     def _montar_ties(self) -> None:
         inter = self.camadas.interligacoes
@@ -438,7 +446,7 @@ class Rede:
                         f"tie {cod} ({dono}→{viz}): chave não está em UNSEMT; ignorada"
                     )
                     continue
-                longe = self._lado_de_fora(cod, dono)
+                longe, ambigua = self._lado_de_fora(cod, dono, viz)
                 alvo = (
                     pac_viz
                     if viz in carregados and pac_viz in self.grafo
@@ -447,9 +455,16 @@ class Rede:
                 if longe == alvo or self.grafo.has_edge(longe, alvo):
                     continue
                 self.grafo.add_edge(
-                    longe, alvo, tipo=TIE, chave=cod, ctmt=dono, ctmt_viz=viz, dist_m=info["dist_m"]
+                    longe,
+                    alvo,
+                    tipo=TIE,
+                    chave=cod,
+                    ctmt=dono,
+                    ctmt_viz=viz,
+                    dist_m=info["dist_m"],
+                    via_chave=cod if ambigua else None,
                 )
-                self._ties.append({**info, "pac": longe, "externa": False})
+                self._ties.append({**info, "pac": longe, "externa": False, "ambigua": ambigua})
             elif viz in carregados:
                 if pac_viz not in self.grafo:
                     self.avisos.append(f"tie {cod} ({dono}→{viz}): PAC_VIZ {pac_viz} fora do grafo")
@@ -474,7 +489,7 @@ class Rede:
                     externa=True,
                 )
                 self.chaves[cod] = (pac_viz, ext)
-                self._ties.append({**info, "pac": pac_viz, "externa": True})
+                self._ties.append({**info, "pac": pac_viz, "externa": True, "ambigua": False})
 
     def _montar_clientes(self) -> None:
         untrmt = self.camadas.untrmt
@@ -538,9 +553,21 @@ class Rede:
 
     def _passavel(self, u: str, v: str, abertas_extra: set[str]) -> bool:
         d = self.grafo.edges[u, v]
-        if d["tipo"] != CHAVE:
-            return True
-        return not d["aberta"] and d["cod"] not in abertas_extra
+        if d["tipo"] == CHAVE:
+            return not d["aberta"] and d["cod"] not in abertas_extra
+        if d["tipo"] == TIE and d.get("via_chave"):
+            # tie de chave ambígua (anel interno): só passa com a chave fechada
+            chave = d["via_chave"]
+            return not self._aresta_chave(chave)["aberta"] and chave not in abertas_extra
+        return True
+
+    def _chave_da_aresta(self, d: Mapping) -> str | None:
+        """Chave que controla a aresta (a própria, se ``chave``; a que gateia, se tie ambígua)."""
+        if d["tipo"] == CHAVE:
+            return d["cod"]
+        if d["tipo"] == TIE:
+            return d.get("via_chave")
+        return None
 
     def _bfs(self, *, abertas_extra: set[str] | None = None, bloqueados: set[str] | None = None):
         """Nó → CTMT que o alimenta, a partir das fontes (PAC_INI) e dos nós externos."""
@@ -628,6 +655,7 @@ class Rede:
             "tlcd",
             "tip_unid",
             "externa",
+            "ambigua",
             "em_sub",
             "dist_m",
             "aberta",
@@ -654,18 +682,18 @@ class Rede:
         while fila:
             a = fila.popleft()
             for b, d in self.grafo.adj[a].items():
-                if d["tipo"] == CHAVE or b in zona or _externo(b):
+                if self._chave_da_aresta(d) or b in zona or _externo(b):
                     continue
                 zona.add(b)
                 fila.append(b)
-        chaves = sorted(
-            {
-                d["cod"]
-                for a in zona
-                for b, d in self.grafo.adj[a].items()
-                if d["tipo"] == CHAVE and not d["aberta"] and b not in zona
-            }
-        )
+        # fronteira: chaves fechadas (e ties gateadas por chave fechada) que saem da zona
+        chaves = set()
+        for a in zona:
+            for b, d in self.grafo.adj[a].items():
+                chave = self._chave_da_aresta(d)
+                if chave and b not in zona and not self._aresta_chave(chave)["aberta"]:
+                    chaves.add(chave)
+        chaves = sorted(chaves)
         antes = self._energizacao()
         depois = self._bfs(abertas_extra=set(chaves))
         desligados = {n for n in antes if n not in depois and n not in zona and not _externo(n)}
@@ -719,23 +747,39 @@ class Rede:
             d = self.grafo.edges[a, b]
             if not d["aberta"] or chave in abertas:
                 continue
-            for lado_sem, lado_com in ((a, b), (b, a)):
-                if lado_sem in desligados and lado_com in energizados:
-                    nos = set(componente[lado_sem])
-                    opcoes.append(
-                        OpcaoRestauracao(
-                            chave=chave,
-                            ctmt_chave=d["ctmt"],
-                            fonte=energizados[lado_com],
-                            tlcd=bool(d["tlcd"]),
-                            tip_unid=d["tip_unid"],
-                            externa=bool(d.get("externa", False)),
-                            nos=nos,
-                            clientes=self.customers(nos),
-                            clientes_fonte=por_fonte.get(energizados[lado_com], Clientes()),
-                            manobras=isolamento.manobras + [manobra(FECHAR, chave)],
+            # pares que a chave liga: os dois PAC dela e, se for tie ambígua (anel interno), o PAC
+            # da tie com o vizinho/nó externo que só passa com ela fechada
+            pares = [(a, b)]
+            for ponta in (a, b):
+                for viz, e in self.grafo.adj[ponta].items():
+                    if e["tipo"] == TIE and e.get("via_chave") == chave:
+                        pares.append((ponta, viz))
+            achou = False
+            for x, y in pares:
+                for lado_sem, lado_com in ((x, y), (y, x)):
+                    if lado_sem in desligados and lado_com in energizados:
+                        # fechar a chave energiza tudo que estiver ligado a qualquer ponta dela
+                        nos: set[str] = set()
+                        for ponta in {p for par in pares for p in par}:
+                            if ponta in desligados:
+                                nos |= componente[ponta]
+                        opcoes.append(
+                            OpcaoRestauracao(
+                                chave=chave,
+                                ctmt_chave=d["ctmt"],
+                                fonte=energizados[lado_com],
+                                tlcd=bool(d["tlcd"]),
+                                tip_unid=d["tip_unid"],
+                                externa=bool(d.get("externa", False)),
+                                nos=nos,
+                                clientes=self.customers(nos),
+                                clientes_fonte=por_fonte.get(energizados[lado_com], Clientes()),
+                                manobras=isolamento.manobras + [manobra(FECHAR, chave)],
+                            )
                         )
-                    )
+                        achou = True
+                        break
+                if achou:
                     break
         opcoes.sort(key=lambda o: (-o.clientes.total, -int(o.tlcd), o.chave))
         return opcoes

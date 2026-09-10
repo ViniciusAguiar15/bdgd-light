@@ -42,6 +42,8 @@ from bdgd_light.ingest.recorte import recortar
 runner = CliRunner()
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 TQR0007 = Path("data/feeders/TQR0007.gpkg")
+TIJUCA = Path("data/feeders/cluster_tijuca.gpkg")
+IPANEMA = Path("data/feeders/cluster_ipanema.gpkg")
 
 
 def saida(resultado) -> str:
@@ -314,6 +316,82 @@ def test_cluster_com_ties_na_se_e_from_gpkgs(feeders, cluster: Cluster):
     assert sorted(separados.chaves) == sorted(cluster.chaves)
 
 
+def _rede_com_anel_e_tie_ambigua() -> Rede:
+    """Alimentador X: SE ─DJ─ MT_1 ─S0─ MT_2 ─NF1─ MT_3 ─S1─ MT_4 ─S2─ MT_5 e anel MT_5 ─CHA (NA)─
+    MT_3; a chave NA do anel encosta (geometricamente) num trecho do CTMT externo Y — caso real de
+    RCP9882/URG29983 na Tijuca, em que os dois PAC da chave pertencem à própria rede."""
+    import pandas as pd
+
+    ctmt = pd.DataFrame(
+        [{"COD_ID": "X", "NOME": "X", "SUB": "SE1", "PAC_INI": "X_MT_0", "TEN_NOM": "46"}]
+    )
+    ssdmt = pd.DataFrame(
+        [
+            {"COD_ID": "S0", "CTMT": "X", "PAC_1": "X_MT_1", "PAC_2": "X_MT_2", "COMP": 100.0},
+            {"COD_ID": "S1", "CTMT": "X", "PAC_1": "X_MT_3", "PAC_2": "X_MT_4", "COMP": 100.0},
+            {"COD_ID": "S2", "CTMT": "X", "PAC_1": "X_MT_4", "PAC_2": "X_MT_5", "COMP": 100.0},
+        ]
+    )
+    unsemt = pd.DataFrame(
+        [
+            {"COD_ID": "DJ", "CTMT": "X", "PAC_1": "X_MT_0", "PAC_2": "X_MT_1", "P_N_OPE": "F"},
+            {"COD_ID": "NF1", "CTMT": "X", "PAC_1": "X_MT_2", "PAC_2": "X_MT_3", "P_N_OPE": "F"},
+            {
+                "COD_ID": "CHA",
+                "CTMT": "X",
+                "PAC_1": "X_MT_5",
+                "PAC_2": "X_MT_3",
+                "P_N_OPE": "A",
+                "TLCD": 1,
+            },
+        ]
+    )
+    inter = pd.DataFrame(
+        [
+            {
+                "COD_ID": "CHA",
+                "CTMT": "X",
+                "CTMT_VIZ": "Y",
+                "SSDMT_VIZ": "SY",
+                "PAC_VIZ": "Y_MT_9",
+                "DIST_M": 0.5,
+                "TLCD": 1,
+                "TIP_UNID": "32",
+                "EM_SUB": False,
+            }
+        ]
+    )
+    return Rede.from_camadas(
+        {"CTMT": ctmt, "SSDMT": ssdmt, "UNSEMT": unsemt, "INTERLIGACOES": inter}
+    )
+
+
+def test_tie_ambigua_de_anel_interno_so_passa_com_a_chave_fechada():
+    rede = _rede_com_anel_e_tie_ambigua()
+    assert any("anel interno" in a for a in rede.avisos)
+    tie = rede.tie_switches().set_index("chave").loc["CHA"]
+    assert bool(tie["ambigua"]) and tie["pac"] == "X_MT_3" and tie["ctmt_viz"] == "Y"
+    assert rede.grafo.edges["X_MT_3", "EXT:Y"]["via_chave"] == "CHA"
+    # estado normal: tudo alimentado por X; o externo Y não entra "por fora" da chave aberta
+    assert {rede.energized_by(n) for n in rede.nos()} == {"X"}
+    # falta em S0 (entre DJ e NF1): MT_3..MT_5 desligam; CHA restaura os três a partir de Y
+    iso = rede.isolate_segment("S0")
+    assert iso.chaves == ["DJ", "NF1"] and iso.desligados == nos("X", 3, 4, 5)
+    opcoes = rede.restore_options("S0")
+    assert [(o.chave, o.fonte, o.tlcd) for o in opcoes] == [("CHA", "Y", True)]
+    assert opcoes[0].nos == nos("X", 3, 4, 5)
+    assert opcoes[0].manobras == [
+        manobra(ABRIR, "DJ"),
+        manobra(ABRIR, "NF1"),
+        manobra(FECHAR, "CHA"),
+    ]
+    # com a chave fechada, a tie passa e Y alimenta o anel; a zona da falta segue sem tensão
+    rede.isolate_segment("S0", aplicar=True)
+    rede.close_switch("CHA")
+    assert {rede.energized_by(n) for n in nos("X", 3, 4, 5)} == {"Y"}
+    assert rede.energized_by("X_MT_1") is None and rede.energized_by("X_MT_2") is None
+
+
 # --- GeoJSON ------------------------------------------------------------------------------------
 
 
@@ -431,3 +509,39 @@ def test_fumaca_tqr0007():
     assert len(colecao["features"]) == len(feeder.trechos) + len(feeder.trafos) + len(
         [d for _, _, d in feeder.grafo.edges(data=True) if d["tipo"] == CHAVE]
     )
+
+
+@pytest.mark.skipif(not TIJUCA.exists(), reason=f"recorte real {TIJUCA} ausente")
+def test_fumaca_cluster_tijuca_cenario_a():
+    """Cenário A da demo (docs/escopo-cidade.md): falta no tronco de CABOFRIO, três rotas de
+    restauração telecomandadas, uma por SE."""
+    rede = Cluster.from_gpkg(TIJUCA)
+    assert set(rede.ctmts) == {"ALC9925", "ALC9946", "URG29983", "RCP9882"}
+    ties = rede.tie_switches()
+    # ties ambíguas de anel interno (bug corrigido na v3): só passam com a chave fechada
+    assert set(ties.loc[ties["ambigua"], "chave"]) == {"757513244", "977464757"}
+    iso = rede.isolate_segment("11304252")
+    assert set(iso.chaves) == {"10927447", "11035901"}
+    assert iso.clientes_desligados.ucbt == 4036 and iso.clientes_desligados.trafos == 63
+    opcoes = rede.restore_options("11304252")
+    tlcd = {o.chave: o.fonte for o in opcoes if o.tlcd}
+    assert tlcd == {
+        "974020904": "ALC9946",
+        "746851189": "RCP9882",
+        "977361689": "URG29983",
+        "1009901594": "URG29706",
+    }
+    assert all(o.clientes == iso.clientes_desligados for o in opcoes if o.tlcd)
+
+
+@pytest.mark.skipif(not IPANEMA.exists(), reason=f"recorte real {IPANEMA} ausente")
+def test_fumaca_cluster_ipanema_cenario_b_negativo():
+    """Cenário B da demo: as chaves NA de PTS0001 são o pátio da SE Posto Seis (EM_SUB) e não
+    restauram nada em campo."""
+    rede = Cluster.from_gpkg(IPANEMA)
+    inter = rede.camadas.interligacoes
+    assert inter["EM_SUB"].sum() >= 70 and rede.tie_switches()["chave"].nunique() <= 2
+    iso = rede.isolate_segment("11409068")
+    assert "10933610" in iso.chaves  # disjuntor de PTS0001
+    assert iso.clientes_desligados.ucbt > 0
+    assert rede.restore_options("11409068") == []

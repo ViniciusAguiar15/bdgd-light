@@ -31,7 +31,7 @@ for f in docs/backlog/*.md; do
   labels=$(sed -n 's/^labels: *//p' "$f" | tr -d ' ')
   milestone=$(sed -n 's/^milestone: *//p' "$f")
   body=$(awk 'BEGIN{c=0} /^---$/{c++; next} c>=2{print}' "$f")
-  if gh issue list --repo "$REPO" --search "\"$title\" in:title" --json title --jq '.[].title' | grep -Fxq "$title"; then
+  if gh issue list --repo "$REPO" --state all --limit 500 --json title --jq '.[].title' | grep -Fxq "$title"; then
     echo "issue já existe: $title"; continue
   fi
   gh issue create --repo "$REPO" --title "$title" --label "$labels" --milestone "$milestone" --body "$body"

@@ -1,0 +1,7 @@
+! bancos de unidades monofásicas (TIP_TRAFO=DF) escritos pelo bdgd2opendss como trifásicos
+New "Transformer.TRF_10908757A" phases=3 windings=2 buses=["ALC9946_MT_356963.2.3" "10908757_BT_22701.2.4"] conns=[Delta Wye] kvs=[13.2 0.22]  kvas=[75 75] %loadloss=3.300000 %noloadloss=0.740000
+New "Transformer.TRF_10908757B" phases=3 windings=2 buses=["ALC9946_MT_356963.3.1" "10908757_BT_22701.3.4"] conns=[Delta Wye] kvs=[13.2 0.22]  kvas=[75 75] %loadloss=3.300000 %noloadloss=0.740000
+New "Reactor.TRF_10908757X_R" phases=1 bus1="10908757_BT_22701.4" R=15 X=0
+! trifásico de verdade (3 nós por barra) e monofásico já correto: ficam como estão
+New "Transformer.TRF_10908700" phases=3 windings=2 buses=["ALC9946_MT_1.1.2.3" "10908700_BT_1.1.2.3.4"] conns=[Delta Wye] kvs=[13.2 0.22]  kvas=[150 150] %loadloss=3.0 %noloadloss=0.5
+New "Transformer.TRF_10908701" phases=1 windings=3 buses=["ALC9946_MT_2.3.1" "10908701_BT_2.3.4" "10908701_BT_2.4.1"] conns=[Delta Wye Wye] kvs=[13.2 0.11 0.11]  kvas=[25 25 25]

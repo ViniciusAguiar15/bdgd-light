@@ -202,6 +202,38 @@ def test_converter_exige_gdb(tmp_path):
         converter(tmp_path / "nao_existe.gdb", "TQR0007", tmp_path / "out")
 
 
+BANCOS_DSS = Path("tests/fixtures/dss/bancos_monofasicos.dss")
+_TRAFOS_DSS = BANCOS_DSS.read_text(encoding="utf-8")
+
+
+def test_corrigir_bancos_monofasicos_reescreve_so_as_unidades_de_2_nos(tmp_path):
+    from bdgd_light.twin import corrigir_bancos_monofasicos
+
+    arquivo = tmp_path / "TransformadorMTMTMTBT_202608382_ALC9946_------1-----.dss"
+    arquivo.write_text(_TRAFOS_DSS, encoding="utf-8")
+
+    assert corrigir_bancos_monofasicos(tmp_path) == 2
+    linhas = arquivo.read_text(encoding="utf-8").splitlines()
+    assert linhas[1].startswith('New "Transformer.TRF_10908757A" phases=1 windings=2 buses=[')
+    assert "kvs=[13.2 0.127]  kvas=[75 75] %loadloss=3.300000" in linhas[1]
+    assert 'New "Transformer.TRF_10908757B" phases=1' in linhas[2]
+    # reator de neutro, trifásico legítimo e monofásico já correto não mudam
+    assert linhas[3] == _TRAFOS_DSS.splitlines()[3]
+    assert linhas[5] == _TRAFOS_DSS.splitlines()[5]
+    assert linhas[6] == _TRAFOS_DSS.splitlines()[6]
+    # idempotente
+    assert corrigir_bancos_monofasicos(tmp_path) == 0
+    assert arquivo.read_text(encoding="utf-8").splitlines() == linhas
+
+
+def test_converter_corrige_bancos_ao_reaproveitar_pasta(tmp_path):
+    pasta = _pasta_fake(tmp_path)
+    (pasta / "TransformadorMTMTMTBT_x.dss").write_text(_TRAFOS_DSS, encoding="utf-8")
+    assert converter(tmp_path / "qualquer.gdb", "TQR0007", tmp_path) == (pasta, 0.0)
+    texto = (pasta / "TransformadorMTMTMTBT_x.dss").read_text(encoding="utf-8")
+    assert texto.count("phases=1 windings=2") == 2 and "kvs=[13.2 0.22]  kvas=[75 75]" not in texto
+
+
 # --- CLI -----------------------------------------------------------------------------------------
 
 
@@ -324,6 +356,25 @@ def test_montar_master_cluster_texto(tmp_path):
         montar_master_cluster([], tmp_path / "x.dss")
     with pytest.raises(FileNotFoundError, match="CircuitoMT"):
         montar_master_cluster([tmp_path], tmp_path / "x.dss")
+
+
+def test_montar_master_cluster_circuito_sem_carga(tmp_path):
+    """Circuito expresso/reserva (0 UCBT): sem CargasBT o Master sai só com fonte e rede."""
+    import shutil
+
+    sem_carga = tmp_path / "RJO002"
+    shutil.copytree(CLUSTER_MINI / "RJO002", sem_carga)
+    for arq in sem_carga.glob("CargasBT_*.dss"):
+        arq.unlink()
+    out = montar_master_cluster([CLUSTER_MINI / "RJO001", sem_carga], tmp_path / "m.dss")
+    texto = out.read_text()
+    assert "! RJO002: sem CargasBT/CargasMT (circuito sem carga)" in texto
+    redirects = [ln for ln in texto.splitlines() if ln.startswith("Redirect")]
+    assert not any("RJO002" in ln and "Cargas" in ln for ln in redirects)
+    fluxo = run_powerflow(out)
+    assert fluxo.convergiu and fluxo.n_desenergizados == 0
+    fontes = fluxo.fontes.set_index("fonte")["kw"]
+    assert fontes["rjo002"] == pytest.approx(0, abs=0.5)  # só perdas a vazio
 
 
 def test_flisr_no_gemeo(cluster_mini: Cluster, tmp_path):

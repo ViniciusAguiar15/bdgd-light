@@ -73,6 +73,21 @@ def test_na_sem_vizinho_e_nf_nao_sao_interligacao(camadas):
 
 def test_raio_controla_a_deteccao(camadas):
     assert detectar_interligacoes(camadas["UNSEMT"], camadas["SSDMT"], raio_m=0.5).empty
+
+
+def test_em_sub_considera_folga_ao_redor_do_poligono(camadas):
+    """O polígono ``SUB`` da Light cobre só o edifício; o pátio (bays) fica a dezenas de metros."""
+    sub = camadas["SUB"].to_crs(31983)
+    # encolhe a SE001 até um ponto central: CH007 fica "fora" do polígono, mas a ~1 m dele
+    sub = sub.assign(geometry=sub.geometry.centroid.buffer(1)).to_crs(camadas["SUB"].crs)
+    ties = detectar_interligacoes(camadas["UNSEMT"], camadas["SSDMT"], sub=sub)
+    assert ties.set_index("COD_ID")["EM_SUB"].to_dict() == {
+        "CH003": False,
+        "CH005": False,
+        "CH007": True,
+    }
+    estrito = detectar_interligacoes(camadas["UNSEMT"], camadas["SSDMT"], sub=sub, raio_sub_m=0)
+    assert not estrito["EM_SUB"].any()
     assert len(detectar_interligacoes(camadas["UNSEMT"], camadas["SSDMT"], raio_m=1.05)) == 2
     # com 50 m a CH006 (a ~22 m do fim de SEG008, de RJO002) passaria a contar — daí o raio de 2 m
     largo = detectar_interligacoes(camadas["UNSEMT"], camadas["SSDMT"], raio_m=50)

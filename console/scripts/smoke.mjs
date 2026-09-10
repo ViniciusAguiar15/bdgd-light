@@ -5,14 +5,14 @@
  * e salva um screenshot.
  *
  * Uso: node scripts/smoke.mjs [URL] [saida.png]
- *   URL padrão: http://localhost:5173/#14/-22.9144/-43.4005 (cluster TQR do exemplo.pmtiles)
+ *   URL padrão: http://localhost:5173/?cenario=tijuca (cenário A; ?cenario=ipanema|taquara para os outros)
  *   CHROME=/caminho/para/chrome para outro binário.
  * Sai com código 1 se houver erro de estilo/JS ou nenhuma feição vetorial renderizada.
  */
 import { spawn } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
 
-const url = process.argv[2] ?? "http://localhost:5173/#14/-22.9144/-43.4005";
+const url = process.argv[2] ?? "http://localhost:5173/?cenario=tijuca";
 const saida = process.argv[3] ?? "smoke.png";
 const porta = 9333 + Math.floor(Math.random() * 500);
 

@@ -14,6 +14,10 @@
         <p id="subtitulo">console do COD · BDGD Light</p>
       </header>
       <section>
+        <h2>Cenário</h2>
+        <div id="cenarios"></div>
+      </section>
+      <section>
         <h2>Base</h2>
         <div id="bases"></div>
       </section>
@@ -36,10 +40,11 @@
       <footer>
         <p id="erro" class="erro" hidden></p>
         <p class="dica">
-          Gere tiles com <code>uv run bdgd-light tiles --gpkg data/feeders/X.gpkg --out
-          console/public/tiles/X.pmtiles</code> e abra <code>?tiles=tiles/X.pmtiles</code>.
+          Cenários: <code>?cenario=tijuca|ipanema|taquara</code> (tiles + estado + vista inicial).
+          Tiles avulsos: <code>uv run bdgd-light tiles --gpkg data/feeders/X.gpkg --out
+          console/public/tiles/X.pmtiles</code> e <code>?tiles=tiles/X.pmtiles</code>.
           Estado do grafo: <code>?estado=URL.geojson</code> (saída de
-          <code>bdgd-light grafo --geojson</code>).
+          <code>bdgd-light grafo --geojson</code>; <code>?estado=none</code> desliga o do cenário).
         </p>
       </footer>
     </aside>

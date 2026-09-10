@@ -43,3 +43,51 @@ alimentador na malha), que exige modelagem diferente (network protectors) e não
 
 **Cluster TQR (Taquara):** continua como rede de regressão/benchmark (já convertida, testada e nos exemplos), mas
 sai da demo.
+
+## v3.1 — o que os dados mostraram ao construir os clusters
+
+Recorte, grafo, gêmeo OpenDSS e tiles dos dois clusters foram gerados (backlog 09, issue #30). Comandos, por
+cluster, em `README.md` ("Clusters da demo"); resultados abaixo (BDGD 2025-12-31, dia útil de janeiro, DU01).
+
+| cluster | CTMT | feições | nós MT / km / chaves (grafo) | ties de campo (TLCD) | clientes | fluxo base DU01 | perdas | V MT (pu) | tempo |
+|---|---|---|---|---|---|---|---|---|---|
+| A Tijuca | ALC9925, ALC9946, URG29983, RCP9882 | 29.331 | 1.662 / 20,4 / 148 | 23 (5) | 16.248 UCBT, 235 trafos (31,6 MVA) | 13.286 kW / 6.256 kvar (4.094 + 2.715 + 3.134 + 3.343) | 839 kW (6,3 %) | 1,036–1,045 | 6 it., 2,5 s |
+| B Ipanema | PTS0001, PTS9088, PTS9924, PTS4022 | 13.249 | 1.838 / 15,5 / 95 | 1 (0) — 74 interligações `EM_SUB` | 4.720 UCBT, 33 trafos (14,0 MVA) | 7.803 kW / 3.832 kvar (2.802 + 2.560 + 1.155 + 1.285) | 537 kW (6,9 %) | 1,041–1,045 | 7 it., 0,6 s |
+
+(OpenDSS: Tijuca 10.029 barras / 32.132 cargas / 283 trafos; Ipanema 6.990 barras / 9.272 cargas / 33 trafos.
+Como em TQR, a BT herda ramais suspeitos da BDGD e tem nós abaixo de 0,5 pu — o veredito é sempre MT.)
+
+**Cenário A (Tijuca) confirmado nos dados.** Falta no trecho `11304252` (tronco de `ALC9925` CABOFRIO) → isolar
+abrindo `10927447` e `11035901` → 315 nós, **4.036 UCBT, 6 UCMT, 63 trafos (8.960 kVA)** ficam restauráveis por
+qualquer uma de **três SEs**. O gêmeo ranqueia as opções:
+
+| restaurar por | fonte que absorve | perdas | V MT mín (ALC9925 / vizinho) | leitura |
+|---|---|---|---|---|
+| `974020904` → ALC9946 RIMARAES (mesma SE) | 6.793 kW | 876 kW (6,6 %) | 1,027 / 1,030 | melhor opção |
+| `746851189` → RCP9882 BOMPASTOR (SE Rio Comprido) | 7.395 kW | 893 kW (6,7 %) | 1,018 / 1,024 | viável |
+| `977361689` → URG29983 AMALIA (SE Uruguai) | 7.177 kW | 902 kW (6,8 %) | 1,014 / 1,021 | viável, pior tensão |
+
+(Estado "falta sem restauração": 9.192 kW, 4.838 nós a 0 pu.) Exemplo no console: `?cenario=tijuca`.
+
+**Cenário B (Ipanema) não é reprodutível literalmente — vira cenário *negativo*.** As 35 chaves NA de `PTS0001` e
+as ties "3–4 por vizinho" da tabela acima são o **pátio de manobra da SE Posto Seis** (PACs `PTSTSL42/43_MT_*`, a
+12–40 m do polígono `SUB`, 492 m²), não interligações de campo: nenhuma delas aparece em `SSDMT` de nenhum CTMT da
+BDGD inteira, e o lado "de fora" coincide geometricamente com a cabeceira dos vizinhos. Consequências:
+
+- `detectar_interligacoes` passou a marcar `EM_SUB` com folga de 50 m ao redor do polígono da SE
+  (`raio_sub_m`, antes era `within` estrito); com isso as 74 interligações de `PTS0001` ficam `EM_SUB=True` e o
+  grafo (que ignora ties na SE por padrão) não tem opção de restauração para nenhuma zona de PTS0001/PTS9088/PTS9924.
+- O cenário B da demo é: falta no trecho `11409068` (tronco de `PTS0001`, 144 m da SE) → abrir `10933610`
+  (disjuntor), `505111870` e `561826961` → zona isolada de 298 nós / 1.251 UCBT; 15 nós / 479 UCBT desligados e
+  **"nenhuma chave NA restaura"** — o agente deve reconhecer a ausência de opção e recomendar despacho de equipe
+  (ou manobra na SE, fora do escopo do MVP). No gêmeo, PTS0001 vai a 0 kW (8.624 nós a 0 pu) e os vizinhos
+  seguem em 1,041–1,045 pu. Exemplo no console: `?cenario=ipanema`.
+- `PTS4022` (0 UCBT, só `CargasMT`: 1.285 kW de UCMT) exigiu que o Master do cluster aceitasse circuito sem
+  `CargasBT`.
+
+**Bugs encontrados e corrigidos no caminho** (detalhes em `docs/review/NOITE-2.md`): (1) ties de anel interno
+com chave NA ambígua (`757513244`, `977464757`) atravessavam a chave aberta no grafo — corrigido em
+`grid/rede.py`; (2) o bdgd2opendss escreve bancos de unidades monofásicas (`TIP_TRAFO=DF`, 24 em Tijuca) como
+trifásicos com barras de 2 nós, o que aterrava um vértice do delta (perdas 64 %, 0,2 pu) — corrigido por
+pós-processamento em `twin/convert.py` (`corrigir_bancos_monofasicos`). TQR não tem nenhum dos dois casos, por
+isso passou despercebido na v2.

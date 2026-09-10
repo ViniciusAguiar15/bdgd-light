@@ -152,12 +152,16 @@ def montar_master_cluster(
                 linhas.append(f'Redirect "{arq}"')
         for prefixo in ("CargasBT", "CargasMT"):
             arq = _arquivo(pasta, prefixo, dia, mes)
-            if arq is None and prefixo == "CargasBT":  # CargasMT só existe se houver UCMT
+            if arq is not None:
+                linhas.append(f'Redirect "{arq}"')
+            elif prefixo == "CargasBT" and _arquivo(pasta, prefixo) is not None:
+                # há CargasBT de outro dia/mês: o pedido está errado (CargasMT só existe com UCMT)
                 raise FileNotFoundError(
                     f"{prefixo}_{dia.upper()}{mes:02d}_*.dss ausente em {pasta}"
                 )
-            if arq is not None:
-                linhas.append(f'Redirect "{arq}"')
+        if _arquivo(pasta, "CargasBT") is None and _arquivo(pasta, "CargasMT") is None:
+            # circuito expresso/reserva (0 UCBT/UCMT): só a fonte e a rede, sem carga
+            linhas.append(f"! {ctmt}: sem CargasBT/CargasMT (circuito sem carga)")
         linhas.append("")
     if comandos:
         linhas.append("! ---- manobras")
