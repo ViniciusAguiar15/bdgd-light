@@ -6,7 +6,9 @@ cliente recebe ``is_error=True`` com a mensagem, e a recusa de ``set_switch`` fi
 ``AuditLog`` pela própria sessão. ``approve``/``reject`` **não** são ferramentas: ficam na CLI
 (``bdgd-light aprovar``) e, no transporte HTTP, nas rotas ``/propostas`` para o console.
 
-Requer o extra ``agent`` (``uv sync --extra agent``); SDK ``mcp`` >= 2 (``MCPServer``).
+Requer o extra ``agent`` (``uv sync --extra agent``). Funciona com o SDK ``mcp`` 1.10+ (``FastMCP``)
+e 2.x (``MCPServer``): em Python < 3.13 o ``bdgd2opendss`` fixa ``typing-extensions==4.12.2``, o
+que trava o ``mcp`` em 1.x — daí a camada de compatibilidade ``_compat``.
 """
 
 from __future__ import annotations
@@ -24,8 +26,16 @@ from bdgd_light.mcp_server.sessao import (
 )
 
 try:
-    from mcp.server.mcpserver import MCPServer
-    from mcp.server.mcpserver.exceptions import ToolError
+    try:  # mcp >= 2
+        from mcp.server.mcpserver import MCPServer
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        MCP_V2 = True
+    except ImportError:  # mcp 1.10+
+        from mcp.server.fastmcp import FastMCP as MCPServer
+        from mcp.server.fastmcp.exceptions import ToolError
+
+        MCP_V2 = False
 except ImportError as exc:  # pragma: no cover - depende do extra
     raise ImportError(f"{exc} — instale o extra: uv sync --extra agent") from exc
 
@@ -172,19 +182,44 @@ def descritores(srv: MCPServer | None = None) -> list[dict[str, Any]]:
     srv = srv or criar_servidor(SessaoCOD(estado_dir=None))
     ferramentas = asyncio.run(srv.list_tools())
     return [
-        {"name": f.name, "description": f.description or "", "parameters": f.input_schema}
+        {"name": f.name, "description": f.description or "", "parameters": campo(f, "input_schema")}
         for f in ferramentas
     ]
+
+
+def campo(obj: Any, nome: str) -> Any:
+    """Atributo de um modelo do SDK nos dois dialetos: ``input_schema`` (2.x) ou ``inputSchema``
+    (1.x); idem ``is_error``/``isError`` e ``structured_content``/``structuredContent``."""
+    if hasattr(obj, nome):
+        return getattr(obj, nome)
+    partes = nome.split("_")
+    camelo = partes[0] + "".join(p.capitalize() for p in partes[1:])
+    return getattr(obj, camelo)
+
+
+def cliente_em_memoria(srv: MCPServer):
+    """Gerenciador de contexto assíncrono com um cliente MCP ligado ao servidor em memória
+    (testes e uso em processo): ``async with cliente_em_memoria(srv) as c: ...``."""
+    if MCP_V2:
+        from mcp.client.client import Client
+
+        return Client(srv)
+    from mcp.shared.memory import create_connected_server_and_client_session
+
+    return create_connected_server_and_client_session(srv._mcp_server)
 
 
 def servir(
     sessao: SessaoCOD, transporte: str = "stdio", *, host: str = "127.0.0.1", port: int = 8765
 ) -> None:
     """Sobe o servidor (bloqueante): ``stdio`` para clientes locais ou ``http`` (streamable)."""
+    if transporte not in ("stdio", "http", "streamable-http"):
+        raise ValueError(f"transporte {transporte!r} inválido; use stdio ou http")
     srv = criar_servidor(sessao)
     if transporte == "stdio":
         srv.run("stdio")
-    elif transporte in ("http", "streamable-http"):
+    elif MCP_V2:
         srv.run("streamable-http", host=host, port=port)
-    else:
-        raise ValueError(f"transporte {transporte!r} inválido; use stdio ou http")
+    else:  # 1.x: host/porta são configurações do servidor
+        srv.settings.host, srv.settings.port = host, port
+        srv.run("streamable-http")

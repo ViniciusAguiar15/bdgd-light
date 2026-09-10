@@ -30,6 +30,8 @@ from bdgd_light.mcp_server import (  # noqa: E402
 )
 from bdgd_light.mcp_server.servidor import (  # noqa: E402
     ERROS_DOMINIO,
+    campo,
+    cliente_em_memoria,
     criar_servidor,
     descritores,
 )
@@ -263,27 +265,29 @@ def test_descritores_e_ferramentas():
 
 @pytest.mark.anyio
 async def test_servidor_mcp_em_memoria(sessao: SessaoCOD):
-    from mcp.client.client import Client
-
+    """Camada MCP de ponta a ponta (cliente em memória; mcp 1.x e 2.x): schema, structured
+    content e recusa como ``is_error``."""
     srv = criar_servidor(sessao)
-    async with Client(srv) as cliente:
+    async with cliente_em_memoria(srv) as cliente:
         tools = await cliente.list_tools()
         assert len(tools.tools) == len(ferramentas_da_sessao())
         r = await cliente.call_tool("inject_fault", {"trecho": "SEG001"})
-        assert r.is_error is False and r.structured_content["religador"] == "CH008"
+        assert campo(r, "is_error") is False
+        assert campo(r, "structured_content")["religador"] == "CH008"
         r = await cliente.call_tool("restore_options", {"score": False})
-        assert [o["chave"] for o in r.structured_content["opcoes"]] == ["CH003", "CH005"]
+        opcoes = campo(r, "structured_content")["opcoes"]
+        assert [o["chave"] for o in opcoes] == ["CH003", "CH005"]
         r = await cliente.call_tool("propose_plan", {"chave": "CH003"})
-        pid = r.structured_content["id"]
+        pid = campo(r, "structured_content")["id"]
         recusa = await cliente.call_tool(
             "set_switch", {"chave": "CH001", "estado": "aberta", "approval_token": "x"}
         )
-        assert recusa.is_error is True and "recusada" in recusa.content[0].text
+        assert campo(recusa, "is_error") is True and "recusada" in recusa.content[0].text
         token = sessao.approve(pid)["token"]
         ok = await cliente.call_tool(
             "set_switch", {"chave": "CH001", "estado": "aberta", "approval_token": token}
         )
-        assert ok.is_error is False and ok.structured_content["passo"] == 1
+        assert campo(ok, "is_error") is False and campo(ok, "structured_content")["passo"] == 1
     assert "mcp.recusa" in [r["tipo"] for r in registros(sessao)]
 
 

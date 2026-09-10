@@ -189,9 +189,12 @@ proposta e o operador). `bdgd-light audit ARQUIVO` verifica qualquer uma das dua
   pergunta pela proposta e, se aprovada, o token vem na resposta — tudo auditado (mascarado).
 - **Fila em arquivo** (`propostas.json`): permite a aprovação em outro processo (CLI hoje, console F3
   depois) sem o servidor MCP precisar de banco.
-- SDK `mcp` 2.x: `MCPServer` (ex-`FastMCP`), `structured_content` a partir do retorno `dict`,
-  `ToolError` → `is_error=true` no cliente; rotas humanas via `custom_route` no app Starlette do
-  transporte HTTP.
+- SDK `mcp` **1.10+ e 2.x**: `servidor.py` importa `MCPServer` (2.x) ou `FastMCP` (1.x) — em
+  Python < 3.13 o `bdgd2opendss` fixa `typing-extensions==4.12.2` e trava o `mcp` em 1.x, que é o que
+  o CI (3.11/3.12) instala. Retorno `dict` vira `structured_content`/`structuredContent`; `ToolError`
+  → `is_error=true` no cliente; rotas humanas via `custom_route` no app Starlette do transporte HTTP
+  (no 1.x o endpoint MCP redireciona `/mcp` → `/mcp/`). `cliente_em_memoria(srv)` e `campo(obj,
+  "is_error")` escondem a diferença nos testes.
 
 ## Pendências
 
