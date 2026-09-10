@@ -667,24 +667,35 @@ def llm(
     pergunta: Annotated[
         str, typer.Argument(help="Pergunta para o modelo, ex.: 'Quanto é 2 + 3?'.")
     ],
+    provider: Annotated[
+        str | None,
+        typer.Option(
+            "--provider",
+            help="Perfil de provedor (ADR-003): openai (padrão; OPENAI_API_KEY), gemini "
+            "(GEMINI_API_KEY), ollama (local) ou fake (sem rede). Padrão: env "
+            "BDGD_LLM_PROVIDER; sem ela, a primeira chave presente no ambiente.",
+        ),
+    ] = None,
     fake: Annotated[
         bool,
         typer.Option(
             "--fake",
-            help="Usa o cliente fake determinístico (sem rede) que imita um modelo chamando "
-            "a ferramenta soma(a, b).",
+            help="Atalho de --provider fake: cliente determinístico (sem rede) que imita um "
+            "modelo chamando a ferramenta soma(a, b).",
         ),
     ] = False,
     modelo: Annotated[
         str | None,
-        typer.Option("--modelo", help="Id do modelo (padrão: env BDGD_LLM_MODEL)."),
+        typer.Option(
+            "--modelo", help="Id do modelo (padrão: env BDGD_LLM_MODEL, depois o do perfil)."
+        ),
     ] = None,
     endpoint: Annotated[
         str | None,
         typer.Option(
             "--endpoint",
-            help="URL …/chat/completions compatível com a OpenAI (padrão: env BDGD_LLM_ENDPOINT; "
-            "sem ela, GITHUB_TOKEN → GitHub Models, aposentado em 30/07/2026).",
+            help="URL …/chat/completions de outro provedor compatível com a OpenAI, com token em "
+            "BDGD_LLM_TOKEN (padrão: env BDGD_LLM_ENDPOINT). Ignora --provider.",
         ),
     ] = None,
     sistema: Annotated[
@@ -707,9 +718,10 @@ def llm(
         bool, typer.Option("--sem-audit", help="Não grava o log de auditoria.")
     ] = False,
 ) -> None:
-    """Exemplo mínimo de *tool calling* do spike GitHub Models (issue #7): envia a pergunta ao
-    modelo com a ferramenta soma(a, b) disponível, executa as chamadas pedidas e imprime a
-    resposta. Segredos só por variável de ambiente (BDGD_LLM_TOKEN ou GITHUB_TOKEN)."""
+    """Exemplo mínimo de *tool calling* (spike da issue #7, perfis da ADR-003): envia a pergunta
+    ao modelo com a ferramenta soma(a, b) disponível, executa as chamadas pedidas e imprime a
+    resposta, o uso de tokens e a latência. Segredos só por variável de ambiente
+    (OPENAI_API_KEY, GEMINI_API_KEY ou BDGD_LLM_TOKEN)."""
     import json
 
     try:
@@ -738,11 +750,11 @@ def llm(
         elif endpoint:
             cliente = OpenAICompatClient(endpoint, modelo=modelo)
         else:
-            cliente = cliente_do_ambiente(modelo)
+            cliente = cliente_do_ambiente(modelo, provider=provider)
         conversa = conversar(
             cliente, [Message.system(sistema), Message.user(pergunta)], [SOMA], audit=log
         )
-    except LLMError as erro:
+    except (LLMError, ValueError) as erro:
         _erro(str(erro))
         return
     for chamada, resultado in conversa.execucoes:
@@ -752,7 +764,9 @@ def llm(
     rotulo = conversa.resposta.modelo or getattr(cliente, "modelo", "?")
     uso = conversa.uso_total
     tokens = f", {uso.total_tokens} tokens" if uso else ""
-    console.print(f"[dim]{rotulo} · {conversa.rodadas} rodada(s){tokens}[/]")
+    console.print(
+        f"[dim]{rotulo} · {conversa.rodadas} rodada(s){tokens}, {conversa.segundos:.1f} s[/]"
+    )
     if json_saida is not None:
         json_saida.write_text(
             json.dumps(conversa.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
