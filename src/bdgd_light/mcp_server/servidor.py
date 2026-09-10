@@ -106,9 +106,14 @@ def criar_servidor(sessao: SessaoCOD) -> MCPServer:
 
     @srv.tool(name="run_powerflow", description=DESCRICOES["run_powerflow"])
     def run_powerflow(
-        manobras: Sequence[dict[str, str]] = (), vmin: float = 0.93, vmax: float = 1.05
+        manobras: Sequence[dict[str, str]] = (),
+        vmin: float = 0.93,
+        vmax: float = 1.05,
+        loadmult: float = 1.0,
     ) -> dict[str, Any]:
-        return _executar(sessao.run_powerflow, manobras=list(manobras), vmin=vmin, vmax=vmax)
+        return _executar(
+            sessao.run_powerflow, manobras=list(manobras), vmin=vmin, vmax=vmax, loadmult=loadmult
+        )
 
     @srv.tool(name="propose_plan", description=DESCRICOES["propose_plan"])
     def propose_plan(chave: str | None = None, justificativa: str = "") -> dict[str, Any]:

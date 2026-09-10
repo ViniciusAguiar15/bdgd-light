@@ -744,24 +744,34 @@ class SessaoCOD:
 
     @ferramenta(
         "Fluxo de potência no gêmeo OpenDSS do cluster: estado atual das chaves mais as manobras "
-        "informadas ([{acao: abrir|fechar, chave}]). Devolve convergência, Vmin/Vmax (pu), "
+        "informadas ([{acao: abrir|fechar, chave}]) e, opcionalmente, um multiplicador de carga "
+        "(loadmult, 1.0 = caso base; 1.3 = pico de +30 %). Devolve convergência, Vmin/Vmax (pu), "
         "violações, sobrecargas (%), perdas e potência (kW) e corrente (A) por fonte."
     )
     def run_powerflow(
-        self, manobras: Sequence[Mapping[str, str]] = (), vmin: float = 0.93, vmax: float = 1.05
+        self,
+        manobras: Sequence[Mapping[str, str]] = (),
+        vmin: float = 0.93,
+        vmax: float = 1.05,
+        loadmult: float = 1.0,
     ) -> dict[str, Any]:
         rede = self._rede()
         try:
             from bdgd_light.twin import comandos_manobras, run_powerflow
         except ImportError as exc:
             raise SessaoError(f"{exc} — instale o extra: uv sync --extra twin") from exc
+        if not 0 < float(loadmult) <= 5:
+            raise SessaoError(f"loadmult fora da faixa (0, 5]: {loadmult}")
         passos = self._manobras_estado(rede) + [manobra(m["acao"], m["chave"]) for m in manobras]
         comandos = comandos_manobras(rede, passos)
+        if float(loadmult) != 1.0:
+            comandos = [*comandos, f"set loadmult={float(loadmult):g}"]
         r = run_powerflow(self.master_base(), vmin=vmin, vmax=vmax, comandos_extra=comandos)
         resumo = r.resumo()
         resumo["master"] = Path(resumo["master"]).name
         return {
             "manobras_aplicadas": passos,
+            "loadmult": float(loadmult),
             "comandos_dss": comandos,
             **resumo,
             "piores_barras": r.piores_barras(5).to_dict(orient="records"),
