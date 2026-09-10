@@ -26,7 +26,7 @@ from __future__ import annotations
 import copy
 from collections import deque
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import geopandas as gpd
@@ -95,6 +95,35 @@ class Clientes:
     def total(self) -> int:
         return self.ucbt + self.ucmt
 
+    def to_dict(self) -> dict:
+        return {
+            "ucbt": self.ucbt,
+            "ucmt": self.ucmt,
+            "trafos": self.trafos,
+            "kva": self.kva,
+            "total": self.total,
+        }
+
+    @classmethod
+    def from_dict(cls, dados: Mapping) -> Clientes:
+        return cls(
+            int(dados.get("ucbt", 0)),
+            int(dados.get("ucmt", 0)),
+            int(dados.get("trafos", 0)),
+            float(dados.get("kva", 0.0)),
+        )
+
+
+ABRIR = "abrir"
+FECHAR = "fechar"
+
+
+def manobra(acao: str, chave: str) -> dict:
+    """Um passo de manobra, no formato que o agente propõe e o operador aprova."""
+    if acao not in (ABRIR, FECHAR):
+        raise ValueError(f"ação deve ser {ABRIR!r} ou {FECHAR!r}, não {acao!r}")
+    return {"acao": acao, "chave": chave}
+
 
 @dataclass
 class Isolamento:
@@ -106,6 +135,23 @@ class Isolamento:
     desligados: set[str]  # nós sãos que perdem alimentação e podem ser restaurados
     clientes_zona: Clientes
     clientes_desligados: Clientes
+
+    @property
+    def manobras(self) -> list[dict]:
+        """Sequência de passos para isolar o trecho: abrir cada chave da fronteira."""
+        return [manobra(ABRIR, c) for c in self.chaves]
+
+    def to_dict(self) -> dict:
+        """Versão serializável em JSON (conjuntos → listas ordenadas, ``Clientes`` → dict)."""
+        return {
+            "trecho": self.trecho,
+            "chaves": list(self.chaves),
+            "zona": sorted(self.zona),
+            "desligados": sorted(self.desligados),
+            "clientes_zona": self.clientes_zona.to_dict(),
+            "clientes_desligados": self.clientes_desligados.to_dict(),
+            "manobras": self.manobras,
+        }
 
 
 @dataclass
@@ -121,6 +167,22 @@ class OpcaoRestauracao:
     nos: set[str]
     clientes: Clientes  # recuperados ao fechar a chave
     clientes_fonte: Clientes  # já atendidos pela fonte antes da transferência (0 se externa)
+    manobras: list[dict] = field(default_factory=list)  # abrir chaves do isolamento, fechar a NA
+
+    def to_dict(self) -> dict:
+        """Versão serializável em JSON (conjuntos → listas ordenadas, ``Clientes`` → dict)."""
+        return {
+            "chave": self.chave,
+            "ctmt_chave": self.ctmt_chave,
+            "fonte": self.fonte,
+            "tlcd": self.tlcd,
+            "tip_unid": self.tip_unid,
+            "externa": self.externa,
+            "nos": sorted(self.nos),
+            "clientes": self.clientes.to_dict(),
+            "clientes_fonte": self.clientes_fonte.to_dict(),
+            "manobras": [dict(m) for m in self.manobras],
+        }
 
 
 @dataclass
@@ -671,6 +733,7 @@ class Rede:
                             nos=nos,
                             clientes=self.customers(nos),
                             clientes_fonte=por_fonte.get(energizados[lado_com], Clientes()),
+                            manobras=isolamento.manobras + [manobra(FECHAR, chave)],
                         )
                     )
                     break
@@ -685,6 +748,7 @@ class Rede:
         return novo
 
     def resumo(self) -> dict:
+        """Números da rede, serializáveis em JSON (``clientes`` como dict)."""
         energizados = self.energized_nodes()
         chaves = [d for _, _, d in self.grafo.edges(data=True) if d["tipo"] == CHAVE]
         return {
@@ -700,7 +764,7 @@ class Rede:
             "ties_externas": sum(1 for t in self._ties if t["externa"]),
             "externos": self.externos,
             "trafos": len(self.trafos),
-            "clientes": self.customers(self.nos()),
+            "clientes": self.customers(self.nos()).to_dict(),
             "energizados": len(energizados),
             "avisos": len(self.avisos),
         }

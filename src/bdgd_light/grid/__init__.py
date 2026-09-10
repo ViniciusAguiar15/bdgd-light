@@ -2,7 +2,9 @@
 
 from bdgd_light.grid.geojson import estado_geojson
 from bdgd_light.grid.rede import (
+    ABRIR,
     CHAVE,
+    FECHAR,
     TIE,
     TRECHO,
     Camadas,
@@ -15,10 +17,13 @@ from bdgd_light.grid.rede import (
     Rede,
     TrechoInexistenteError,
     ler_camadas,
+    manobra,
 )
 
 __all__ = [
+    "ABRIR",
     "CHAVE",
+    "FECHAR",
     "TIE",
     "TRECHO",
     "Camadas",
@@ -32,4 +37,5 @@ __all__ = [
     "TrechoInexistenteError",
     "estado_geojson",
     "ler_camadas",
+    "manobra",
 ]

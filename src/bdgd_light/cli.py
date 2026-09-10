@@ -428,7 +428,7 @@ def _imprimir_resumo(rede: Rede) -> None:
         ("Ties", f"{r['ties']} ({r['ties_externas']} de chaves de outros CTMT)"),
         ("CTMT externos", ", ".join(r["externos"]) or "nenhum"),
         ("Transformadores", _fmt_int(r["trafos"])),
-        ("Clientes", _fmt_clientes(r["clientes"])),
+        ("Clientes", _fmt_clientes(Clientes.from_dict(r["clientes"]))),
         ("Nós energizados", f"{_fmt_int(r['energizados'])} de {_fmt_int(r['nos'])}"),
     ]
     for campo, valor in linhas:
