@@ -53,6 +53,7 @@ class PowerFlowResult:
     n_cargas: int
     tensoes: pd.DataFrame  # barra, no, fase, kv_base, v_pu
     correntes: pd.DataFrame  # elemento, tipo, i_max_a, i_nominal_a, carregamento_pct
+    fontes: pd.DataFrame  # fonte (Vsource), barra, kw, kvar fornecidos
     perdas_kw: float
     perdas_kvar: float
     potencia_kw: float
@@ -126,8 +127,16 @@ class PowerFlowResult:
             "perdas_kvar": self.perdas_kvar,
             "potencia_kw": self.potencia_kw,
             "potencia_kvar": self.potencia_kvar,
+            "fontes": {f.fonte: round(f.kw, 1) for f in self.fontes.itertuples(index=False)},
             "tempo_s": self.tempo_s,
         }
+
+    def tensoes_mt(self, kv_min: float = 1.0) -> pd.DataFrame:
+        """Nós de fase com base acima de ``kv_min`` kV (MT), com o CTMT pelo prefixo da barra."""
+        f = self.fases
+        mt = f[f["kv_base"] > kv_min].copy()
+        mt["ctmt"] = mt["barra"].str.split("_mt_", n=1).str[0].str.upper()
+        return mt
 
 
 def _dss():
@@ -157,6 +166,23 @@ def _tensoes(dss) -> pd.DataFrame:
         for no, v in zip(dss.Bus.Nodes(), mags, strict=False):
             linhas.append((barra, f"{barra}.{int(no)}", int(no), kv, float(v)))
     return pd.DataFrame(linhas, columns=["barra", "no", "fase", "kv_base", "v_pu"])
+
+
+def _fontes(dss) -> pd.DataFrame:
+    linhas = []
+    i = dss.Vsources.First()
+    while i:
+        p = dss.CktElement.TotalPowers()
+        linhas.append(
+            (
+                dss.Vsources.Name(),
+                dss.CktElement.BusNames()[0].split(".")[0],
+                -float(p[0]),
+                -float(p[1]),
+            )
+        )
+        i = dss.Vsources.Next()
+    return pd.DataFrame(linhas, columns=["fonte", "barra", "kw", "kvar"])
 
 
 def _correntes(dss) -> pd.DataFrame:
@@ -247,6 +273,7 @@ def run_powerflow(
         n_cargas=int(dss.Loads.Count()),
         tensoes=tensoes,
         correntes=_correntes(dss),
+        fontes=_fontes(dss),
         perdas_kw=float(perdas[0]) / 1000.0,
         perdas_kvar=float(perdas[1]) / 1000.0,
         potencia_kw=-float(potencia[0]),

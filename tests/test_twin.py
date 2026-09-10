@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 
 import pytest
@@ -13,20 +14,34 @@ from typer.testing import CliRunner
 
 pytest.importorskip("opendssdirect")
 
+from rich.console import Console  # noqa: E402
+
 from bdgd_light.cli import app  # noqa: E402
+from bdgd_light.grid import (  # noqa: E402
+    ABRIR,
+    FECHAR,
+    ChaveInexistenteError,
+    Cluster,
+    Feeder,
+    manobra,
+)
+from bdgd_light.ingest.recorte import recortar  # noqa: E402
 from bdgd_light.twin import (  # noqa: E402
     ESTABILIZADORES,
     PowerFlowResult,
+    comandos_manobras,
     converter,
     escolher_master,
     listar_masters,
     localizar_pasta,
+    montar_master_cluster,
     run_powerflow,
 )
 
 runner = CliRunner()
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 IEEE13 = Path("tests/fixtures/dss/ieee13/IEEE13_Master.dss")
+CLUSTER_MINI = Path("tests/fixtures/dss/cluster_mini")
 TQR0007 = Path("data/dss/sub__10385871/TQR0007/Master_DU01_202608382_TQR0007_------1-----.dss")
 
 
@@ -214,11 +229,12 @@ def test_cli_dss_nao_convergiu_sai_com_2():
     assert "NÃO" in saida(r)
 
 
-def test_cli_dss_sem_argumentos():
+def test_cli_dss_sem_argumentos(tmp_path):
     r = runner.invoke(app, ["dss"])
     assert r.exit_code == 1
     assert "--ctmt" in saida(r) and "--master" in saida(r)
-    r = runner.invoke(app, ["dss", "--ctmt", "TQR0007"])
+    # sem --gdb e sem modelo convertido em --out (vazio, para não depender de data/dss local)
+    r = runner.invoke(app, ["dss", "--ctmt", "TQR0007", "--out", str(tmp_path)])
     assert r.exit_code == 1
     assert "--gdb" in saida(r)
 
@@ -232,6 +248,167 @@ def test_cli_dss_sem_fluxo_reaproveita_conversao(tmp_path):
     assert r.exit_code == 0, r.output
     assert "já existia" in saida(r)
     assert "Master_DU01_x.dss" in saida(r)
+
+
+# --- cluster + manobras do grafo -----------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def grafos(parquet_mini, tmp_path_factory) -> dict[str, Path]:
+    out = tmp_path_factory.mktemp("twin_grid")
+    resultado = recortar(parquet_mini, ["RJO001", "RJO002"], out, console=Console(quiet=True))
+    return {r.nome: r.gpkg for r in resultado.recortes} | {"cluster": resultado.cluster.gpkg}
+
+
+@pytest.fixture
+def cluster_mini(grafos) -> Cluster:
+    return Cluster.from_gpkg(grafos["cluster"])
+
+
+def _nos_zerados(r: PowerFlowResult) -> set[str]:
+    t = r.tensoes
+    return set(t.loc[(t["fase"] < 4) & (t["v_pu"] == 0), "barra"].str.upper())
+
+
+def test_comandos_manobras(cluster_mini: Cluster, grafos):
+    opcao = next(o for o in cluster_mini.restore_options("SEG001") if o.chave == "CH003")
+    cmds = comandos_manobras(cluster_mini, opcao.manobras)
+    assert cmds[:2] == ["open line.cmt_CH001 term=1", "open line.cmt_CH008 term=1"]
+    # NA sai comentada do bdgd2opendss: fechar = criar a Line da chave + jumper até o PAC_VIZ da tie
+    assert cmds[2].startswith('New "Line.CMT_CH003" phases=3 bus1="RJO001_MT_')
+    assert 'bus1="RJO001_MT_5.1.2.3" bus2="RJO001_MT_7.1.2.3"' in cmds[2] or (
+        'bus1="RJO001_MT_7.1.2.3" bus2="RJO001_MT_5.1.2.3"' in cmds[2]
+    )
+    assert "switch=T" in cmds[2]
+    assert cmds[3].startswith('New "Line.TIE_CH003_1" phases=3 bus1="RJO001_MT_7.1.2.3" ')
+    assert 'bus2="RJO002_MT_5.1.2.3"' in cmds[3]
+    assert len(cmds) == 4
+    # NF fechada explicitamente → close; abrir uma NA não gera nada (já está fora do modelo)
+    assert comandos_manobras(cluster_mini, [manobra(FECHAR, "CH001")]) == [
+        "close line.cmt_CH001 term=1"
+    ]
+    assert comandos_manobras(cluster_mini, [manobra(ABRIR, "CH003")]) == []
+    with pytest.raises(ChaveInexistenteError):
+        comandos_manobras(cluster_mini, [manobra(ABRIR, "CH999")])
+    with pytest.raises(ValueError, match="religar"):
+        comandos_manobras(cluster_mini, [{"acao": "religar", "chave": "CH001"}])
+    # num Feeder isolado o vizinho é um nó EXT: → sem jumper (não existe no modelo do CTMT)
+    feeder = Feeder.from_gpkg(grafos["RJO001"])
+    so_chave = comandos_manobras(feeder, [manobra(FECHAR, "CH003")])
+    assert len(so_chave) == 1 and so_chave[0].startswith('New "Line.CMT_CH003"')
+
+
+def test_montar_master_cluster_texto(tmp_path):
+    pastas = [CLUSTER_MINI / "RJO001", CLUSTER_MINI / "RJO002"]
+    out = montar_master_cluster(pastas, tmp_path / "m.dss", comandos=["open line.cmt_CH001 term=1"])
+    texto = out.read_text()
+    linhas = texto.splitlines()
+    assert linhas[0] == "clear"
+    assert 'New "Circuit.cluster_RJO001-RJO002" basekv=13.2' in texto
+    assert 'bus1="RJO001_MT_0"' in texto and 'New "Vsource.RJO002" basekv=13.2' in texto
+    assert 'bus1="RJO002_MT_0"' in texto
+    assert texto.index("Set AllowDuplicates=yes") > texto.index('New "Circuit.')
+    redirects = [ln for ln in linhas if ln.startswith("Redirect")]
+    assert len(redirects) == 13  # 7 de RJO001 (com CargasMT) + 6 de RJO002 (sem UCMT)
+    assert sum("CargasMT_DU01" in ln for ln in redirects) == 1
+    assert not any("GD_BT" in ln for ln in redirects)
+    assert not any("Master_" in ln or "CircuitoMT" in ln for ln in redirects)
+    assert texto.index("open line.cmt_CH001 term=1") < texto.index("Calcvoltagebases")
+    assert "Set Voltagebases=[0.22 13.2]" in texto and linhas[-1] == "Set mode=snapshot"
+
+    com_gd = montar_master_cluster(pastas, tmp_path / "gd.dss", gd=True, nome="teste").read_text()
+    assert 'New "Circuit.teste"' in com_gd and com_gd.count("GD_BT") == 2
+    with pytest.raises(FileNotFoundError, match="CargasBT_SA02"):
+        montar_master_cluster(pastas, tmp_path / "x.dss", dia="SA", mes=2)
+    with pytest.raises(ValueError):
+        montar_master_cluster([], tmp_path / "x.dss")
+    with pytest.raises(FileNotFoundError, match="CircuitoMT"):
+        montar_master_cluster([tmp_path], tmp_path / "x.dss")
+
+
+def test_flisr_no_gemeo(cluster_mini: Cluster, tmp_path):
+    pastas = [CLUSTER_MINI / "RJO001", CLUSTER_MINI / "RJO002"]
+    base = run_powerflow(montar_master_cluster(pastas, tmp_path / "base.dss"))
+    assert base.convergiu and base.ajustes == []
+    assert base.n_desenergizados == 0 and base.n_trafos == 3 and base.n_cargas == 4
+    fontes = base.fontes.set_index("fonte")["kw"]
+    assert set(fontes.index) == {"source", "rjo002"}
+    assert fontes["source"] == pytest.approx(302, abs=2)  # RJO001: 30 + 50 kW BT + 200 kW UCMT
+    assert fontes["rjo002"] == pytest.approx(83, abs=2)
+    mt = base.tensoes_mt()
+    assert set(mt["ctmt"]) == {"RJO001", "RJO002"} and mt["v_pu"].min() > 1.04
+    # o GD_BT com `generator. ` (nome em branco) repetido só compila com AllowDuplicates
+    com_gd = run_powerflow(montar_master_cluster(pastas, tmp_path / "gd.dss", gd=True))
+    assert com_gd.convergiu and com_gd.potencia_kw < base.potencia_kw
+
+    opcao = next(o for o in cluster_mini.restore_options("SEG001") if o.chave == "CH003")
+    isolamento = comandos_manobras(cluster_mini, opcao.manobras[:-1])
+    iso_master = montar_master_cluster(pastas, tmp_path / "iso.dss", comandos=isolamento)
+    isolado = run_powerflow(iso_master)
+    assert isolado.convergiu
+    zerados = _nos_zerados(isolado)
+    assert {f"RJO001_MT_{i}" for i in (1, 2, 3, 4, 5, 6)} <= zerados
+    assert "RJO001_MT_0" not in zerados and not any(b.startswith("RJO002") for b in zerados)
+    assert isolado.fontes.set_index("fonte")["kw"]["source"] == pytest.approx(0, abs=0.01)
+
+    restauracao = comandos_manobras(cluster_mini, opcao.manobras)
+    rest = run_powerflow(montar_master_cluster(pastas, tmp_path / "rest.dss", comandos=restauracao))
+    assert rest.convergiu
+    zerados = _nos_zerados(rest)
+    assert zerados == {"RJO001_MT_1", "RJO001_MT_2", "TR003_BT_1"}  # só a zona da falta (SEG001)
+    fontes = rest.fontes.set_index("fonte")["kw"]
+    assert fontes["source"] == pytest.approx(0, abs=0.01)
+    # RJO002 assume TR001 (50 kW) e a UCMT (200 kW) além dos seus 80 kW; só TR003 fica sem energia
+    assert 83 + 50 + 200 < fontes["rjo002"] < base.potencia_kw - 30
+    assert rest.tensoes_mt().query("ctmt == 'RJO001'")["v_pu"].min() > 1.03
+    assert rest.sobrecargas.empty  # tronco de 200 A: os ~15 A transferidos não sobrecarregam
+    correntes = rest.correntes.set_index("elemento")["i_max_a"]  # nomes em minúsculas (OpenDSS)
+    assert correntes["Line.cmt_ch009"] > correntes["Line.cmt_ch008"] == pytest.approx(0, abs=0.01)
+    assert correntes["Line.tie_ch003_1"] == pytest.approx(correntes["Line.cmt_ch003"], rel=0.01)
+    assert correntes["Line.cmt_ch003"] > 10  # ~250 kW a 13,2 kV
+
+
+def test_cli_dss_cluster_com_falha_e_restauracao(grafos, tmp_path):
+    out = tmp_path / "dss"
+    shutil.copytree(CLUSTER_MINI, out)  # modelos "já convertidos" em <out>/<CTMT>/
+    js = tmp_path / "fluxo.json"
+    r = runner.invoke(
+        app,
+        [
+            "dss", "--ctmt", "RJO001,RJO002", "--out", str(out), "--gpkg", str(grafos["cluster"]),
+            "--falha", "SEG001", "--restaurar", "CH003", "--json", str(js),
+        ],
+    )  # fmt: skip
+    assert r.exit_code == 0, r.output
+    texto = saida(r)
+    assert "já existia" in texto and "Master_DU01_falha_SEG001_via_CH003.dss" in texto
+    assert "abrir CH001, CH008; fechar CH003" in texto
+    assert "open line.cmt_CH001 term=1" in texto and 'New "Line.TIE_CH003_1"' in texto
+    assert "Por fonte" in texto and "rjo002" in texto and "Tensão MT por alimentador" in texto
+    dados = json.loads(js.read_text())
+    assert dados["fontes"]["source"] == pytest.approx(0, abs=0.1)
+    assert dados["fontes"]["rjo002"] > 330
+    assert (out / "cluster_RJO001-RJO002" / "Master_DU01_falha_SEG001_via_CH003.dss").exists()
+
+    # sem --gdb e sem modelo convertido → erro claro; chave que não restaura → erro claro
+    r = runner.invoke(app, ["dss", "--ctmt", "RJO009", "--out", str(out)])
+    assert r.exit_code == 1 and "--gdb" in saida(r)
+    r = runner.invoke(
+        app,
+        ["dss", "--ctmt", "RJO001", "--out", str(out), "--gpkg", str(grafos["cluster"]),
+         "--falha", "SEG001", "--restaurar", "CH002"],
+    )  # fmt: skip
+    assert r.exit_code == 1 and "não restaura" in saida(r)
+    r = runner.invoke(app, ["dss", "--master", str(IEEE13), "--falha", "SEG001"])
+    assert r.exit_code == 1 and "--gpkg" in saida(r)
+    # manobras avulsas num único CTMT: Master próprio com o cenário "manobras"
+    r = runner.invoke(
+        app,
+        ["dss", "--ctmt", "RJO001", "--out", str(out), "--gpkg", str(grafos["RJO001"]),
+         "--abrir", "CH001", "--sem-fluxo"],
+    )  # fmt: skip
+    assert r.exit_code == 0, r.output
+    assert "RJO001/Master_DU01_manobras.dss" in compacto(r)
 
 
 @pytest.mark.skipif(not TQR0007.exists(), reason="Master real de TQR0007 ausente (bdgd-light dss)")

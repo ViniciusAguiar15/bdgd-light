@@ -12,6 +12,8 @@ from rich.table import Table
 
 from bdgd_light import __version__
 from bdgd_light.grid import (
+    ABRIR,
+    FECHAR,
     ChaveInexistenteError,
     Clientes,
     Cluster,
@@ -20,6 +22,7 @@ from bdgd_light.grid import (
     TrechoInexistenteError,
     estado_geojson,
     ler_camadas,
+    manobra,
 )
 from bdgd_light.ingest.export import TAMANHO_LOTE_PADRAO, CamadaInexistenteError, exportar
 from bdgd_light.ingest.interligacoes import (
@@ -408,14 +411,19 @@ def grafo(
 def dss(
     ctmt: Annotated[
         str | None,
-        typer.Option("--ctmt", help="COD_ID do alimentador a converter com o bdgd2opendss."),
+        typer.Option(
+            "--ctmt",
+            help="COD_ID do(s) alimentador(es) a converter com o bdgd2opendss, por vírgula. Com "
+            "mais de um, monta um Master único do cluster (Circuit no primeiro, Vsource nos "
+            "demais) para simular transferência de carga.",
+        ),
     ] = None,
     gdb: Annotated[
         Path | None,
         typer.Option(
             "--gdb",
-            help="Diretório .gdb da BDGD (obrigatório com --ctmt; o bdgd2opendss lê o GDB "
-            "inteiro).",
+            help="Diretório .gdb da BDGD (o bdgd2opendss lê o GDB inteiro). Dispensável se o "
+            "modelo já estiver convertido em --out.",
         ),
     ] = None,
     out: Annotated[
@@ -429,6 +437,37 @@ def dss(
     master: Annotated[
         Path | None,
         typer.Option("--master", help="Roda o fluxo direto neste Master .dss, sem converter."),
+    ] = None,
+    gpkg: Annotated[
+        Path | None,
+        typer.Option(
+            "--gpkg",
+            help="GeoPackage do `bdgd-light recortar` (grafo) para traduzir manobras em comandos "
+            "OpenDSS: exigido por --falha, --restaurar, --abrir e --fechar.",
+        ),
+    ] = None,
+    falha: Annotated[
+        str | None,
+        typer.Option(
+            "--falha",
+            help="COD_ID de um trecho SSDMT em falta: abre no gêmeo as chaves que o isolam.",
+        ),
+    ] = None,
+    restaurar: Annotated[
+        str | None,
+        typer.Option(
+            "--restaurar",
+            help="Chave NA (de `grafo --falha`) a fechar depois do isolamento para transferir os "
+            "nós sãos ao alimentador vizinho.",
+        ),
+    ] = None,
+    abrir: Annotated[
+        str | None,
+        typer.Option("--abrir", help="COD_ID de chaves a abrir antes do Solve (vírgula)."),
+    ] = None,
+    fechar: Annotated[
+        str | None,
+        typer.Option("--fechar", help="COD_ID de chaves a fechar antes do Solve (vírgula)."),
     ] = None,
     dia: Annotated[
         str, typer.Option("--dia", help="Tipo de dia do Master a resolver: DU, SA ou DO.")
@@ -459,28 +498,61 @@ def dss(
     ] = None,
     top: Annotated[int, typer.Option("--top", help="Linhas nas tabelas de piores casos.")] = 10,
 ) -> None:
-    """Converte um alimentador da BDGD para OpenDSS (bdgd2opendss) e/ou resolve o fluxo de
-    potência com OpenDSSDirect, reportando tensões, violações, perdas e sobrecargas."""
+    """Converte alimentadores da BDGD para OpenDSS (bdgd2opendss) e/ou resolve o fluxo de
+    potência com OpenDSSDirect, reportando tensões, violações, perdas e sobrecargas. Com vários
+    --ctmt monta o Master do cluster; com --gpkg aplica manobras do grafo (falta, isolamento e
+    restauração) antes do Solve."""
     try:
-        from bdgd_light.twin import converter, escolher_master, run_powerflow
+        from bdgd_light.twin import (
+            comandos_manobras,
+            converter,
+            escolher_master,
+            localizar_pasta,
+            montar_master_cluster,
+            run_powerflow,
+        )
     except ImportError as erro:
         _erro(f"{erro} — instale o extra: uv sync --extra twin")
         return
-    if master is None and ctmt is None:
-        _erro("informe --ctmt (com --gdb) para converter ou --master para só resolver.")
+    ctmts = _lista(ctmt)
+    if master is None and not ctmts:
+        _erro("informe --ctmt (com --gdb ou modelo já em --out) para converter ou --master.")
+        return
+    if gpkg is None and any(x is not None for x in (falha, restaurar, abrir, fechar)):
+        _erro("--falha, --restaurar, --abrir e --fechar exigem --gpkg com o grafo do recorte.")
         return
     try:
+        comandos_dss = _manobras_dss(gpkg, falha, restaurar, abrir, fechar, comandos_manobras)
         if master is None:
-            if gdb is None:
-                _erro("--ctmt exige --gdb <diretório .gdb>.")
-                return
-            console.print(f"Convertendo [bold]{ctmt}[/] com bdgd2opendss (lê o GDB inteiro)…")
-            pasta, segundos = converter(gdb, ctmt, out)
-            if segundos:
-                console.print(f"[green]✔[/] modelo em [bold]{pasta}[/] ({segundos:.1f} s)")
+            pastas = []
+            for cod in ctmts:
+                pasta = localizar_pasta(out, cod)
+                if pasta is not None and gdb is None:
+                    console.print(f"[green]✔[/] modelo de {cod} já existia em [bold]{pasta}[/]")
+                elif gdb is None:
+                    _erro(f"modelo de {cod} não encontrado em {out}; informe --gdb para converter.")
+                    return
+                else:
+                    console.print(f"Convertendo [bold]{cod}[/] com bdgd2opendss (lê o GDB todo)…")
+                    pasta, segundos = converter(gdb, cod, out)
+                    if segundos:
+                        console.print(f"[green]✔[/] modelo em [bold]{pasta}[/] ({segundos:.1f} s)")
+                    else:
+                        console.print(f"[green]✔[/] modelo já existia em [bold]{pasta}[/]")
+                pastas.append(pasta)
+            if len(pastas) == 1 and not comandos_dss:
+                master = escolher_master(pastas[0], dia, mes)
             else:
-                console.print(f"[green]✔[/] modelo já existia em [bold]{pasta}[/]")
-            master = escolher_master(pasta, dia, mes)
+                nome = ("cluster_" if len(ctmts) > 1 else "") + "-".join(ctmts)
+                cenario = "base" if not comandos_dss else "manobras"
+                if falha is not None:
+                    cenario = f"falha_{falha}" + (f"_via_{restaurar}" if restaurar else "")
+                destino = Path(out) / nome / f"Master_{dia.upper()}{mes:02d}_{cenario}.dss"
+                master = montar_master_cluster(
+                    pastas, destino, dia=dia, mes=mes, comandos=comandos_dss, nome=nome
+                )
+                console.print(f"[green]✔[/] Master do cenário em [bold]{master}[/]")
+                comandos_dss = []  # já estão no Master
         if not fluxo:
             console.print(f"Master: {master}")
             return
@@ -489,9 +561,17 @@ def dss(
             vmin=vmin,
             vmax=vmax,
             estabilizar=estabilizar,
-            comandos_extra=comando or (),
+            comandos_extra=[*(comando or ()), *comandos_dss],
         )
-    except (FileNotFoundError, ValueError, RuntimeError, ImportError) as erro:
+    except (
+        FileNotFoundError,
+        ValueError,
+        RuntimeError,
+        ImportError,
+        DataSourceError,
+        ChaveInexistenteError,
+        TrechoInexistenteError,
+    ) as erro:
         _erro(str(erro))
         return
     _imprimir_fluxo(resultado, top)
@@ -500,6 +580,46 @@ def dss(
         console.print(f"[green]✔[/] resumo gravado em [bold]{json_saida}[/]")
     if not resultado.convergiu:
         raise typer.Exit(code=2)
+
+
+def _manobras_dss(
+    gpkg: Path | None,
+    falha: str | None,
+    restaurar: str | None,
+    abrir: str | None,
+    fechar: str | None,
+    comandos_manobras,
+) -> list[str]:
+    """Carrega o grafo do recorte e traduz --abrir/--fechar/--falha/--restaurar em comandos DSS."""
+    if gpkg is None:
+        return []
+    camadas = ler_camadas(gpkg)
+    rede: Rede = Feeder(camadas) if len(camadas.ctmt) == 1 else Cluster(camadas)
+    manobras = [manobra(ABRIR, cod) for cod in _lista(abrir)]
+    manobras += [manobra(FECHAR, cod) for cod in _lista(fechar)]
+    if falha is not None:
+        isolamento = rede.isolate_segment(falha)
+        if restaurar is None:
+            manobras += isolamento.manobras
+        else:
+            opcao = next((o for o in rede.restore_options(falha) if o.chave == restaurar), None)
+            if opcao is None:
+                raise ValueError(
+                    f"a chave {restaurar} não restaura a falta em {falha}; "
+                    "veja `bdgd-light grafo --falha`"
+                )
+            manobras += opcao.manobras
+            console.print(
+                f"Falta em [bold]{falha}[/]: abrir {', '.join(isolamento.chaves)}; fechar "
+                f"[bold]{restaurar}[/] transfere {_fmt_int(len(opcao.nos))} nós "
+                f"({_fmt_clientes(opcao.clientes)}) para {opcao.fonte}"
+            )
+    elif restaurar is not None:
+        raise ValueError("--restaurar exige --falha.")
+    comandos = comandos_manobras(rede, manobras)
+    for c in comandos:
+        console.print(f"  [dim]{c[:100]}[/]")
+    return comandos
 
 
 def _imprimir_fluxo(r, top: int) -> None:
@@ -533,9 +653,33 @@ def _imprimir_fluxo(r, top: int) -> None:
         ),
         ("Sobrecargas (> 100 %)", _fmt_int(s["n_sobrecargas"])),
     ]
+    if len(r.fontes) > 1:
+        linhas.insert(
+            4,
+            (
+                "Por fonte",
+                "; ".join(
+                    f"{f.fonte} ({f.barra}) {_fmt_int(round(f.kw))} kW"
+                    for f in r.fontes.itertuples(index=False)
+                ),
+            ),
+        )
     for campo, valor in linhas:
         tabela.add_row(campo, valor)
     console.print(tabela)
+    mt = r.tensoes_mt()
+    if mt["ctmt"].nunique() > 1:
+        t = Table(title="Tensão MT por alimentador")
+        for rotulo, alinhamento in [
+            ("CTMT", "left"),
+            ("nós", "right"),
+            ("mín pu", "right"),
+            ("máx pu", "right"),
+        ]:
+            t.add_column(rotulo, justify=alinhamento)
+        for nome, g in mt.groupby("ctmt"):
+            t.add_row(nome, _fmt_int(len(g)), f"{g['v_pu'].min():.3f}", f"{g['v_pu'].max():.3f}")
+        console.print(t)
     piores = r.piores_barras(top)
     if not piores.empty and piores["v_pu"].iloc[0] < r.vmin_ref:
         t = Table(title=f"Piores tensões ({min(top, len(piores))})")
