@@ -338,21 +338,23 @@ def _meta(
     vizinhos: list[dict] = []
     if interligacoes is not None:
         for cod in recorte.ctmts:
-            for _, v in vizinhos_de(interligacoes, cod).iterrows():
-                if (
-                    v["CTMT_VIZ"] in recorte.ctmts
-                    and len(recorte.ctmts) > 1
-                    and cod > v["CTMT_VIZ"]
-                ):
+            todas = vizinhos_de(interligacoes, cod).set_index("CTMT_VIZ")
+            campo = vizinhos_de(interligacoes, cod, sem_se=True).set_index("CTMT_VIZ")
+            for viz, v in todas.iterrows():
+                if viz in recorte.ctmts and len(recorte.ctmts) > 1 and cod > viz:
                     continue  # par interno ao cluster já listado do outro lado
+                c = campo.loc[viz]
                 vizinhos.append(
                     {
                         "ctmt": cod,
-                        "vizinho": v["CTMT_VIZ"],
+                        "vizinho": viz,
                         "ties": int(v["ties"]),
                         "ties_telecomandadas": int(v["ties_telecomandadas"]),
                         "ties_em_SE": int(v["ties_em_SE"]),
+                        "ties_campo": int(c["ties"]),
+                        "ties_campo_telecomandadas": int(c["ties_telecomandadas"]),
                         "chaves": v["chaves"].split(";"),
+                        "chaves_campo": [x for x in c["chaves"].split(";") if x],
                     }
                 )
     return {

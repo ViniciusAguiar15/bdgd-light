@@ -127,6 +127,9 @@ def test_contagens_por_ctmt_sao_simetricas(camadas):
         assert linha["NA_interligacao"] == 3
         assert linha["NA_interligacao_telecomandada"] == 2
         assert linha["NA_interligacao_SE"] == 1
+        # de campo = fora do polígono SUB: CH003 (TLCD) e CH005 (manual); CH007 é disjuntor na SE
+        assert linha["NA_interligacao_campo"] == 2
+        assert linha["NA_interligacao_campo_telecomandada"] == 1
         assert linha["n_vizinhos"] == 1 and linha["vizinhos"] == vizinho
 
 
@@ -148,6 +151,38 @@ def test_vizinhos_de_lista_ties_dos_dois_lados(camadas):
     de_2 = vizinhos_de(ties, "RJO002").iloc[0]
     assert (de_2["ties"], de_2["ties_proprias"], de_2["ties_do_vizinho"]) == (3, 2, 1)
     assert vizinhos_de(ties, "RJO003").empty
+
+
+def test_vizinhos_de_sem_se_desconta_disjuntores_da_subestacao(camadas):
+    ties = detectar_interligacoes(camadas["UNSEMT"], camadas["SSDMT"], sub=camadas["SUB"])
+    campo = vizinhos_de(ties, "RJO001", sem_se=True)
+    assert campo.to_dict("records") == [
+        {
+            "CTMT_VIZ": "RJO002",
+            "ties": 2,
+            "ties_telecomandadas": 1,
+            "ties_manuais": 1,
+            "ties_em_SE": 1,  # CH007 continua visível, mas fora das demais contagens
+            "ties_proprias": 1,
+            "ties_do_vizinho": 1,
+            "chaves": "CH003;CH005",
+        }
+    ]
+    # vizinho ligado só por chave na SE continua listado, com ties = 0
+    so_se = vizinhos_de(ties[ties["COD_ID"] == "CH007"], "RJO001", sem_se=True)
+    assert so_se.to_dict("records") == [
+        {
+            "CTMT_VIZ": "RJO002",
+            "ties": 0,
+            "ties_telecomandadas": 0,
+            "ties_manuais": 0,
+            "ties_em_SE": 1,
+            "ties_proprias": 0,
+            "ties_do_vizinho": 0,
+            "chaves": "",
+        }
+    ]
+    assert vizinhos_de(ties, "RJO003", sem_se=True).empty
 
 
 def test_entradas_vazias_devolvem_tabelas_vazias_com_colunas(camadas):

@@ -29,6 +29,12 @@ def saida(resultado) -> str:
     return _ANSI.sub("", resultado.output)
 
 
+def compacto(resultado) -> str:
+    """Saída sem espaços, quebras e bordas de tabela — o rich dobra células nos 80 colunas do
+    CliRunner, então strings só são comparáveis depois de "compactadas"."""
+    return "".join(c for c in saida(resultado) if not c.isspace() and not "\u2500" <= c <= "\u259f")
+
+
 @pytest.fixture(scope="module")
 def inventario(parquet_mini) -> pd.DataFrame:
     return inventariar(parquet_mini).tabela.set_index("COD_ID")
@@ -39,7 +45,8 @@ def test_uma_linha_por_ctmt_com_todas_as_colunas_e_ordem_por_score(parquet_mini)
     tabela = resultado.tabela
     assert list(tabela.columns) == COLUNAS_INVENTARIO
     assert tabela["COD_ID"].tolist() == ["RJO001", "RJO002", "RJO003"]  # score decrescente
-    assert tabela["score"].tolist() == [15, 6, 0]  # NA_interligacao × (UCBT + UCMT)
+    # score = ties de campo (NA_interligacao_campo, sem os disjuntores da SE) × (UCBT + UCMT)
+    assert tabela["score"].tolist() == [10, 4, 0]
     assert resultado.camadas_ausentes == [] and len(resultado.interligacoes) == 3
 
 
@@ -95,12 +102,14 @@ def test_chaves_e_interligacoes_geometricas(inventario):
         "NA_interligacao",
         "NA_interligacao_telecomandada",
         "NA_interligacao_SE",
+        "NA_interligacao_campo",
+        "NA_interligacao_campo_telecomandada",
         "n_vizinhos",
         "vizinhos",
     ]
-    assert rjo1[ties].tolist() == [3, 2, 1, 1, "RJO002"]
-    assert rjo2[ties].tolist() == [3, 2, 1, 1, "RJO001"]
-    assert rjo3[ties].tolist() == [0, 0, 0, 0, ""]
+    assert rjo1[ties].tolist() == [3, 2, 1, 2, 1, 1, "RJO002"]
+    assert rjo2[ties].tolist() == [3, 2, 1, 2, 1, 1, "RJO001"]
+    assert rjo3[ties].tolist() == [0, 0, 0, 0, 0, 0, ""]
 
 
 def test_bbox_em_epsg4326(inventario):
@@ -206,11 +215,17 @@ def test_cli_inventario_erros_claros(tmp_path, parquet_mini):
 def test_cli_vizinhos(parquet_mini):
     resultado = runner.invoke(app, ["vizinhos", "--ctmt", "RJO001", "--parquet", str(parquet_mini)])
     assert resultado.exit_code == 0, saida(resultado)
-    texto = saida(resultado)
-    titulo = " ".join(texto.split())  # o título quebra linha nos 80 colunas do CliRunner
-    assert "Vizinhos de RJO001: 1 CTMT, 3 chaves NA de interligação" in titulo
-    assert "(2 telecomandadas, 1 na SE), 3 pares chave×vizinho" in titulo
-    assert "RJO002" in texto and "CH003" in texto
+    texto = compacto(resultado)
+    # padrão --sem-se: CH007 (disjuntor dentro da SE001) fica fora das contagens
+    assert "VizinhosdeRJO001:1CTMT,2chavesNAdeinterligaçãodecampo" in texto
+    assert "(1telecomandadas),2pareschave×vizinho;1chavesnaSEdescontadas" in texto
+    assert "RJO002" in texto and "CH003" in texto and "CH007" not in texto
+    com_se = runner.invoke(
+        app, ["vizinhos", "--ctmt", "RJO001", "--parquet", str(parquet_mini), "--com-se"]
+    )
+    texto = compacto(com_se)
+    assert "3chavesNAdeinterligação(2telecomandadas,1naSE),3pares" in texto
+    assert "CH007" in texto
     nenhum = runner.invoke(app, ["vizinhos", "--ctmt", "RJO003", "--parquet", str(parquet_mini)])
     assert nenhum.exit_code == 0 and "nenhuma interligação" in saida(nenhum)
     erro = runner.invoke(app, ["vizinhos", "--ctmt", "XXX", "--parquet", str(parquet_mini)])
