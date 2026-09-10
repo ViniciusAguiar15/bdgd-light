@@ -26,6 +26,7 @@ from bdgd_light.agent import (  # noqa: E402
     Message,
     OpenAICompatClient,
     RespostaInvalidaError,
+    RespostaVaziaError,
     ServicoIndisponivelError,
     Text,
     TokenAusenteError,
@@ -302,6 +303,42 @@ def test_openai_compat_client_429_repete_e_depois_falha():
     with pytest.raises(LimiteDeTaxaError, match="rate: slow") as info:
         unico.chat([Message.user("x")])
     assert info.value.retry_after == 7.0
+
+
+def test_openai_compat_client_repete_resposta_vazia_malformed_function_call():
+    # Gemini: finish_reason MALFORMED_FUNCTION_CALL vem sem content nem tool_calls
+    vazia = {
+        "choices": [
+            {
+                "finish_reason": "function_call_filter: MALFORMED_FUNCTION_CALL",
+                "index": 0,
+                "message": {"role": "assistant"},
+            }
+        ],
+        "model": "gemini-2.5-flash",
+        "usage": {"prompt_tokens": 10, "completion_tokens": 0, "total_tokens": 10},
+    }
+    mock, pedidos = transporte([(200, vazia), (200, payload_texto("ok"))])
+    pausas: list[float] = []
+    cliente = OpenAICompatClient(
+        ENDPOINT, token="t", max_tentativas=3, dormir=pausas.append, transporte=mock
+    )
+    assert cliente.chat([Message.user("x")]).content == "ok"
+    assert len(pedidos) == 2 and pausas == [1.0]
+
+    mock2, pedidos2 = transporte([(200, vazia), (200, vazia)])
+    dois = OpenAICompatClient(
+        ENDPOINT, token="t", max_tentativas=2, dormir=lambda _s: None, transporte=mock2
+    )
+    with pytest.raises(RespostaVaziaError, match="MALFORMED_FUNCTION_CALL"):
+        dois.chat([Message.user("x")])
+    assert len(pedidos2) == 2
+
+
+def test_cliente_por_perfil_repete_por_padrao(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+    assert cliente_por_perfil("gemini").max_tentativas == 3
+    assert cliente_por_perfil("gemini", max_tentativas=1).max_tentativas == 1
 
 
 @pytest.mark.parametrize(

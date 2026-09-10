@@ -200,6 +200,11 @@ class RespostaInvalidaError(LLMError):
     """Payload fora do formato ``chat/completions`` ou argumentos de ferramenta indecodificáveis."""
 
 
+class RespostaVaziaError(RespostaInvalidaError):
+    """Mensagem sem ``content`` nem ``tool_calls`` — o Gemini devolve isso com ``finish_reason``
+    ``MALFORMED_FUNCTION_CALL`` (falha transitória do modelo ao montar a chamada); vale repetir."""
+
+
 # ---------------------------------------------------------------------------------------------
 # Parsing do formato chat/completions
 # ---------------------------------------------------------------------------------------------
@@ -223,7 +228,9 @@ def interpretar_resposta(payload: Mapping[str, Any]) -> Resposta:
         return ToolCalls(chamadas, mensagem.get("content"), uso, modelo, fim)
     conteudo = mensagem.get("content")
     if conteudo is None:
-        raise RespostaInvalidaError(f"mensagem sem 'content' nem 'tool_calls': {_resumo(payload)}")
+        raise RespostaVaziaError(
+            f"mensagem sem 'content' nem 'tool_calls' (finish_reason={fim!r}): {_resumo(payload)}"
+        )
     return Text(str(conteudo), uso, modelo, fim)
 
 
@@ -361,8 +368,9 @@ class OpenAICompatClient:
     Foundry, OpenAI, Ollama ``http://localhost:11434/v1/chat/completions``, LM Studio…).
 
     ``token`` vem por parâmetro ou de ``BDGD_LLM_TOKEN``; ``modelo`` de ``BDGD_LLM_MODEL``. Com
-    ``max_tentativas > 1`` repete em 429 respeitando ``Retry-After`` (``dormir`` é injetável para
-    testes). ``transporte`` aceita um ``httpx.MockTransport`` para exercitar o cliente sem rede.
+    ``max_tentativas > 1`` repete em 429 respeitando ``Retry-After`` e em resposta vazia
+    (``RespostaVaziaError``, ex.: ``MALFORMED_FUNCTION_CALL`` do Gemini); ``dormir`` é injetável
+    para testes. ``transporte`` aceita um ``httpx.MockTransport`` para exercitar o cliente sem rede.
     """
 
     MODELO_PADRAO = "gpt-4.1-mini"
@@ -430,10 +438,19 @@ class OpenAICompatClient:
 
     def chat(self, messages: Sequence[Message], tools: Sequence[ToolSpec] = ()) -> Resposta:
         payload = self.montar_payload(messages, tools)
-        dados = self._post(payload)
-        resposta = interpretar_resposta(dados)
-        self.ultimo_uso = resposta.uso
-        return resposta
+        tentativa = 0
+        while True:
+            tentativa += 1
+            dados = self._post(payload)
+            try:
+                resposta = interpretar_resposta(dados)
+            except RespostaVaziaError:
+                if tentativa >= self.max_tentativas:
+                    raise
+                self._dormir(1.0)
+                continue
+            self.ultimo_uso = resposta.uso
+            return resposta
 
     def listar_modelos(self) -> list[dict[str, Any]]:
         """``GET`` na lista de modelos (``/models`` da OpenAI devolve ``{"data": [...]}``; o
@@ -590,6 +607,8 @@ def cliente_por_perfil(
         cliente: LLMClient = fake_soma()
     else:
         token = os.environ.get(perfil.env_token) or perfil.token_padrao
+        # provedores reais: 3 tentativas em 429 e em resposta vazia (MALFORMED_FUNCTION_CALL)
+        opcoes.setdefault("max_tentativas", 3)
         cliente = OpenAICompatClient(
             perfil.endpoint,
             modelo=modelo or os.environ.get(ENV_MODELO) or perfil.modelo,
