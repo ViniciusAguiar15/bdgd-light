@@ -501,6 +501,7 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
       const aprovar = el("button", { type: "button", id: "cod-aprovar", class: "primario" }, "Aprovar e executar");
       const rejeitar = el("button", { type: "button", id: "cod-rejeitar" }, "Rejeitar");
       aprovar.disabled = bloqueado || !!estado.agente?.ocupado;
+      if (estado.agente?.ocupado) aprovar.title = "aguarde o agente concluir a resposta";
       rejeitar.disabled = bloqueado;
       aprovar.addEventListener("click", () => void cod.aprovar(p.id).catch(() => undefined));
       rejeitar.addEventListener("click", () => {

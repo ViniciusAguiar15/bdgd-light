@@ -639,12 +639,29 @@ Demo ponta a ponta local (Tijuca, operador fake, Chrome headless): rodada 1 — 
 (abrir 11035901, fechar 974020904 → ALC9946, 4.036 UCBT, margem 46 %, Vmin 1,027 pu) em **17,2 s**,
 aprovada e executada com mapa recolorido em **19,6 s** (467 → 72 trechos desenergizados); rodada 2
 (reiniciar e injetar) em **14,7 s**. Auditoria íntegra (18 e 36 registros). Critério "< 30 s"
-atendido; com Gemini soma-se ~20–30 s de LLM (`docs/agent.md`).
+atendido com o operador fake.
+
+Demo com **LLM real** (`serve --cluster tijuca --provider gemini --sem-segredo`, `gemini-2.5-flash`,
+mesmo smoke): três execuções, todas com o mesmo plano do fake (abrir 11035901, fechar 974020904 →
+ALC9946), 5 rodadas / 4 ferramentas, 0 recusas do verificador — P-0001 41,4 s (LLM 23,4 s +
+ferramentas 18,0 s; 53.837 tokens), P-0002 58,2 s (54.359), P-0003 46,8 s (LLM 19,6 s; 54.296). Na
+P-0003, pela auditoria: `agente.inicio` 18:06:10 → `propose_plan` 18:06:53 → `agente.fim` 18:06:57
+→ `hitl.aprovacao` 18:06:58 → mapa recolorido (467 → 72). Auditoria íntegra (49 registros). Dois
+achados corrigidos no caminho (commit `fix(agent)`/`feat(console)` abaixo):
+
+- na 1ª tentativa o Gemini devolveu `finish_reason = "function_call_filter: MALFORMED_FUNCTION_CALL"`
+  com mensagem vazia (10.430 tokens de prompt, após `isolate_fault`) e a execução morria com
+  `RespostaInvalidaError`. Agora `OpenAICompatClient.chat` repete a chamada (`RespostaVaziaError`,
+  pausa de 1 s, até `max_tentativas`; `cliente_por_perfil` passa a usar 3 por padrão nos perfis
+  reais — o fake não passa por HTTP). Testes com `MockTransport` (vazia→ok; vazia×2 → erro).
+- o smoke clicava em **Aprovar e executar** enquanto o agente ainda escrevia a resposta final (botão
+  desabilitado por `agente.ocupado`, ~4 s com o Gemini) e falhava com "proposta não executada";
+  agora espera o agente ficar ocioso (`tAgente_s` no relatório) e o botão ganhou `title` explicando.
 
 ### Pendências
 
 1. Screenshot/GIF da demo no README (o smoke salva `smoke.png`; não versionar imagem pesada — talvez
    um recorte do painel).
 2. SSE/WebSocket no lugar do polling se a fila crescer; várias sessões/operadores.
-3. O `serve --provider gemini` foi só fumaça manual (sobe e responde); a demo com LLM real fica para
-   o benchmark (#36), que passa pela mesma API.
+3. Demo com OpenAI real não feita (`OPENAI_API_KEY` ausente nesta máquina); Gemini validado acima. O
+   benchmark (#36) passa pela mesma API.

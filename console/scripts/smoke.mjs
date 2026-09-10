@@ -12,7 +12,7 @@
  *     injetar falta → esperar a proposta → aprovar e executar → conferir o mapa recolorido.
  *     SMOKE_TOKEN=<BDGD_CONSOLE_TOKEN> se o backend exige segredo; SMOKE_OPERADOR (padrão "smoke").
  * Sai com código 1 se houver erro de estilo/JS, nenhuma feição vetorial renderizada ou, com
- * SMOKE_FLUXO, se a proposta não for executada em até 60 s / o mapa não mudar.
+ * SMOKE_FLUXO, se a proposta não for executada em até 60 s após o agente concluir / o mapa não mudar.
  */
 import { spawn } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
@@ -152,6 +152,9 @@ const FLUXO = `(async () => {
   if (!p) return JSON.stringify({ ...out, erro: cod.ultimoErro ?? "sem proposta pendente em 60 s" });
   out.proposta = { id: p.id, falta: p.falta, chave: p.chave, fonte: p.fonte, manobras: p.manobras.map((m) => m.acao + " " + m.chave), viavel: p.score?.viavel ?? null };
   out.cartao = document.getElementById("cod-proposta")?.textContent.slice(0, 200) ?? null;
+  // o botão fica desabilitado enquanto o agente termina a resposta final (provedores reais levam segundos)
+  for (let i = 0; i < 200 && cod.estado?.agente?.ocupado; i++) { await dormir(300); await cod.atualizar(); }
+  out.tAgente_s = +((performance.now() - t0) / 1000).toFixed(1);
   await dormir(500);
   out.desenergizados.durante = apagados();
   document.getElementById("cod-aprovar").click();

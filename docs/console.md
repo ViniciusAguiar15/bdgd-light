@@ -93,8 +93,29 @@ ou `X-Console-Token` com `compare_digest` (401 se errado; 503 se o servidor não
 
 O tempo é quase todo do gêmeo (`restore_options --score` = um fluxo de potência do cluster por opção
 de restauração + a montagem do `Master` do cluster na primeira rodada; `segundos_ferramentas ≈ segundos_total`); com LLM real soma-se
-a latência do modelo (Gemini Flash: ~20–30 s por falta, `docs/agent.md`). Critério do backlog
-(< 30 s ponta a ponta na demo local) atendido com o operador fake.
+a latência do modelo. Critério do backlog (< 30 s ponta a ponta na demo local) atendido com o
+operador fake.
+
+Com LLM real (`--provider gemini --sem-segredo`, `gemini-2.5-flash`, mesmo fluxo pelo smoke):
+
+| execução | plano | rodadas / ferramentas | LLM | ferramentas | agente (total) | tokens | recusas |
+|---|---|---|---|---|---|---|---|
+| P-0001 (sessão nova) | abrir 11035901, fechar 974020904 → ALC9946 (idem fake) | 5 / 4 | 23,4 s | 18,0 s | 41,4 s | 53.837 | 0 |
+| P-0002 (reiniciar) | idem | 5 / 4 | 25,7 s | 32,5 s | 58,2 s | 54.359 | 0 |
+| P-0003 (reiniciar) | idem | 5 / 4 | 19,6 s | 27,2 s | 46,8 s | 54.296 | 0 |
+
+Na P-0003 a linha do tempo da auditoria foi: `agente.inicio` 18:06:10 → `propose_plan` 18:06:53 →
+`agente.fim` 18:06:57 → `hitl.aprovacao` (operador `vinicius`) 18:06:58 → duas `set_switch` e mapa
+recolorido (467 → 72 trechos) em seguida. O Gemini escolhe a mesma opção do operador fake e justifica
+pela margem do disjuntor (46 % contra 20 % das opções do RCP9882 e sobrecarga de 180 % nas do
+URG29983). Dois cuidados que saíram dessa rodada:
+
+- o Gemini às vezes devolve `finish_reason = MALFORMED_FUNCTION_CALL` com mensagem vazia (sem
+  `content` nem `tool_calls`); `OpenAICompatClient.chat` agora repete a chamada
+  (`RespostaVaziaError`, até `max_tentativas`, padrão 3 nos perfis reais) em vez de encerrar a
+  execução com erro;
+- o botão **Aprovar e executar** fica desabilitado enquanto o agente ainda escreve a resposta final
+  (alguns segundos com LLM real); o smoke espera `agente.ocupado = false` antes de clicar.
 
 ## Decisões
 
@@ -123,4 +144,5 @@ a latência do modelo (Gemini Flash: ~20–30 s por falta, `docs/agent.md`). Cri
 - Vários operadores/sessões simultâneas e persistência do estado do agente entre reinícios.
 - Notificações *push* (SSE/WebSocket) em vez de *polling*, se a fila crescer.
 - Screenshot/vídeo da demo para o README (gerados pelo smoke em `smoke.png`, não versionados).
-- Benchmark (#36) com OpenAI × Gemini × fake pela mesma API.
+- Benchmark (#36) com OpenAI × Gemini × fake pela mesma API; a demo com OpenAI ainda não foi feita
+  (chave ausente nesta máquina na noite 2).
