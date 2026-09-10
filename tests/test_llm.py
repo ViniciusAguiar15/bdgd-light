@@ -362,15 +362,36 @@ def test_tokens_so_por_ambiente(monkeypatch):
 
 def test_cli_llm_fake(tmp_path):
     destino = tmp_path / "conversa.json"
-    r = runner.invoke(app, ["llm", "--fake", "Quanto é 2 + 3?", "--json", str(destino)])
+    audit = tmp_path / "audit" / "llm.jsonl"
+    r = runner.invoke(
+        app,
+        ["llm", "--fake", "Quanto é 2 + 3?", "--json", str(destino), "--audit", str(audit)],
+    )
     assert r.exit_code == 0, r.output
     texto = saida(r)
     assert 'soma({"a": 2.0, "b": 3.0}) → 5.0' in texto
     assert "O resultado é 5." in texto
     assert "fake · 2 rodada(s)" in texto
+    assert "auditoria: 3 registro(s)" in texto
     dados = json.loads(destino.read_text(encoding="utf-8"))
     assert dados["resposta"] == "O resultado é 5."
     assert dados["execucoes"][0]["ferramenta"] == "soma"
+    assert len(dados["hash_auditoria"]) == 64
+    # 2 rodadas + fim; segunda execução continua a cadeia do mesmo arquivo
+    assert len(audit.read_text(encoding="utf-8").splitlines()) == 3
+    r2 = runner.invoke(app, ["llm", "--fake", "Quanto é 1 + 1?", "--audit", str(audit)])
+    assert r2.exit_code == 0, r2.output
+    assert "auditoria: 6 registro(s)" in saida(r2)
+    r3 = runner.invoke(app, ["audit", str(audit), "--mostrar", "2"])
+    assert r3.exit_code == 0, r3.output
+    assert "6 registro(s), cadeia íntegra" in saida(r3)
+    assert "conversa.fim" in saida(r3)
+    # --sem-audit não toca no arquivo
+    r4 = runner.invoke(
+        app, ["llm", "--fake", "Quanto é 1 + 1?", "--audit", str(audit), "--sem-audit"]
+    )
+    assert r4.exit_code == 0 and "auditoria" not in saida(r4)
+    assert len(audit.read_text(encoding="utf-8").splitlines()) == 6
 
 
 def test_cli_llm_sem_token_falha_com_instrucao():

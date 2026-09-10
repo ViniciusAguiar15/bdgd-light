@@ -1,5 +1,6 @@
 """Agente: cliente LLM abstraído (``LLMClient``), fake para testes e laço de *tool calling*."""
 
+from bdgd_light.agent.audit import GENESIS, AuditError, AuditLog, Registro
 from bdgd_light.agent.llm import (
     ENV_ENDPOINT,
     ENV_GITHUB_TOKEN,
@@ -32,6 +33,10 @@ from bdgd_light.agent.llm import (
 )
 
 __all__ = [
+    "GENESIS",
+    "AuditError",
+    "AuditLog",
+    "Registro",
     "ENV_ENDPOINT",
     "ENV_GITHUB_TOKEN",
     "ENV_MODELO",

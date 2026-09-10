@@ -35,6 +35,9 @@ from bdgd_light.ingest.inventario import carregar_bairro, gravar_csv, inventaria
 from bdgd_light.ingest.parquet import CamadaAusenteError, DiretorioParquet
 from bdgd_light.ingest.recorte import CtmtInexistenteError, recortar
 
+AUDIT_PADRAO = Path("data/audit/llm.jsonl")
+CHAVES_RESUMO_AUDIT = ("rodada", "rodadas", "modelo", "resposta", "erro")
+
 app = typer.Typer(
     help="Ferramentas do COD agêntico sobre a BDGD da Light (ANEEL).",
     no_args_is_help=True,
@@ -615,6 +618,17 @@ def llm(
         Path | None,
         typer.Option("--json", help="Grava a conversa completa (mensagens, ferramentas, uso)."),
     ] = None,
+    audit: Annotated[
+        Path,
+        typer.Option(
+            "--audit",
+            help="Log de auditoria só de acréscimo (JSON Lines com hash encadeado, ADR-001 "
+            "decisão 6): cada rodada do modelo, chamadas de ferramenta e uso de tokens.",
+        ),
+    ] = AUDIT_PADRAO,
+    sem_audit: Annotated[
+        bool, typer.Option("--sem-audit", help="Não grava o log de auditoria.")
+    ] = False,
 ) -> None:
     """Exemplo mínimo de *tool calling* do spike GitHub Models (issue #7): envia a pergunta ao
     modelo com a ferramenta soma(a, b) disponível, executa as chamadas pedidas e imprime a
@@ -624,6 +638,8 @@ def llm(
     try:
         from bdgd_light.agent import (
             SOMA,
+            AuditError,
+            AuditLog,
             LLMError,
             Message,
             OpenAICompatClient,
@@ -635,13 +651,20 @@ def llm(
         _erro(f"{erro} — instale o extra: uv sync --extra agent")
         return
     try:
+        log = None if sem_audit else AuditLog(audit)
+    except AuditError as erro:
+        _erro(f"log de auditoria {audit} inválido: {erro}")
+        return
+    try:
         if fake:
             cliente = fake_soma()
         elif endpoint:
             cliente = OpenAICompatClient(endpoint, modelo=modelo)
         else:
             cliente = cliente_do_ambiente(modelo)
-        conversa = conversar(cliente, [Message.system(sistema), Message.user(pergunta)], [SOMA])
+        conversa = conversar(
+            cliente, [Message.system(sistema), Message.user(pergunta)], [SOMA], audit=log
+        )
     except LLMError as erro:
         _erro(str(erro))
         return
@@ -650,7 +673,7 @@ def llm(
         console.print(f"[cyan]⚙ {chamada.name}({args}) → {resultado}[/]")
     console.print(conversa.resposta.content)
     rotulo = conversa.resposta.modelo or getattr(cliente, "modelo", "?")
-    uso = conversa.resposta.uso
+    uso = conversa.uso_total
     tokens = f", {uso.total_tokens} tokens" if uso else ""
     console.print(f"[dim]{rotulo} · {conversa.rodadas} rodada(s){tokens}[/]")
     if json_saida is not None:
@@ -658,6 +681,57 @@ def llm(
             json.dumps(conversa.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
         )
         console.print(f"[green]✔[/] conversa gravada em [bold]{json_saida}[/]")
+    if log is not None:
+        console.print(
+            f"[dim]auditoria: {len(log)} registro(s) em {audit} · "
+            f"hash {conversa.hash_auditoria[:12]}…[/]",
+            soft_wrap=True,
+        )
+
+
+@app.command()
+def audit(
+    caminho: Annotated[
+        Path,
+        typer.Argument(help="Arquivo JSON Lines do log de auditoria (saída de bdgd-light llm)."),
+    ] = AUDIT_PADRAO,
+    mostrar: Annotated[
+        int, typer.Option("--mostrar", help="Imprime os N últimos registros (resumo).")
+    ] = 0,
+) -> None:
+    """Verifica a cadeia de hashes do log de auditoria (ADR-001, decisão 6): qualquer linha
+    alterada, removida ou reordenada é apontada. Sai com código 1 se a cadeia estiver quebrada."""
+    from bdgd_light.agent.audit import AuditError, AuditLog, ler
+
+    if not caminho.exists():
+        _erro(f"{caminho} não existe.")
+        return
+    try:
+        n = AuditLog.verificar_arquivo(caminho)
+    except AuditError as erro:
+        _erro(f"cadeia inválida em {caminho}: {erro}")
+        return
+    console.print(f"[green]✔[/] {caminho}: {n} registro(s), cadeia íntegra", soft_wrap=True)
+    if mostrar > 0:
+        registros = list(ler(caminho))[-mostrar:]
+        tabela = Table("seq", "ts", "tipo", "resumo", "hash")
+        for r in registros:
+            resumo = ", ".join(
+                f"{k}={_resumir(v)}" for k, v in r.dados.items() if k in CHAVES_RESUMO_AUDIT
+            )
+            tabela.add_row(str(r.seq), r.ts, r.tipo, resumo, r.hash[:12] + "…")
+        console.print(tabela)
+
+
+def _resumir(valor, limite: int = 60) -> str:
+    if isinstance(valor, dict) and "tipo" in valor:  # resposta de uma rodada
+        if valor.get("tool_calls"):
+            texto = "→ " + ", ".join(c["ferramenta"] for c in valor["tool_calls"])
+        else:
+            texto = str(valor.get("content"))
+    else:
+        texto = str(valor)
+    return texto if len(texto) <= limite else texto[: limite - 1] + "…"
 
 
 def _manobras_dss(
