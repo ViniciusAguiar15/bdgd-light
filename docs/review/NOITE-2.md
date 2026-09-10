@@ -342,3 +342,78 @@ uv run pytest tests/test_gpkg2dss.py -q -k paridade                    # skip au
 1. Tabela `COR_NOM` do Manual da BDGD → `catalogo.py` e usar como `i_nominal_a` primário.
 2. Todos os fluxos do cluster Tijuca (base inclusive) precisam de `maxiterations=100` + `vminpu=0.9`;
    vale investigar a barra que trava a convergência padrão (provável ramal BT longo).
+
+### Fechamento
+
+PR #42 (`feat(twin): score_eletrico — verificador elétrico das opções de restauração`, Closes #18):
+CI verde (test 3.11/3.12 + llm-smoke), squash → `main` `d983e00`. Commits: `feat(twin)` score +
+`feat(cli)` `--score` + `test(twin)` + `docs` + `docs(review)` PR-10.
+
+## 5. #32 — servidor MCP com as ferramentas de rede (12:45–13:20)
+
+| | |
+|---|---|
+| Branch | `feat/mcp-server` (a partir de `main` `d983e00`, pós-PR #42) |
+| PR | ver "Fechamento" |
+| docs/review | nada novo (PR-01…PR-10 já versionados; PR-09 → #34) |
+| Módulo | `src/bdgd_light/mcp_server/`: `sessao.py` (domínio: `SessaoCOD`, `Proposta`, `FilaPropostas`, `RecusadoError`), `servidor.py` (`MCPServer` + rotas humanas + `descritores`), CLI `mcp` e `aprovar`, `docs/mcp-ferramentas.md` |
+| SDK | `mcp` **2.2.0** instalado (pyproject pede `>=1.0`): `MCPServer` (ex-`FastMCP`), `Client(srv)` em memória para testes, `ToolError` → `is_error`, `custom_route` para as rotas humanas |
+
+### Decisões
+
+- **Domínio independente do SDK.** `SessaoCOD` é Python puro (grafo + gêmeo + fila + auditoria) e
+  as 12 ferramentas são métodos decorados com `@ferramenta(descricao)` — o decorador audita
+  argumentos, resultado (compactado + SHA-256 do completo), latência e erros. `servidor.py` só embrulha
+  cada método em uma função tipada do `MCPServer` (descrições em pt-BR, unidades). O agente da #34
+  pode usar a sessão em processo, sem JSON-RPC; os testes exercitam o domínio direto e a camada MCP
+  com o cliente em memória.
+- **Semântica FLISR do simulador.** `inject_fault(trecho)` abre o **religador** (primeira chave
+  fechada no caminho fonte→trecho) — única mudança de estado fora de `set_switch` — e guarda as
+  chaves com indicação de falta. Com o religador aberto, `isolate_segment` do grafo real não vê "nós a
+  jusante"; então `locate/isolate/restore_options/propose` raciocinam sobre uma **visão de plano**
+  (cópia da rede com o religador fechado) e devolvem só a `sequencia` que falta manobrar (chaves já
+  abertas em `ja_satisfeitas`). Sem isso `restore_options` devolvia `[]` após a falta — foi o primeiro
+  bug do smoke.
+- **Sequência forçada em `set_switch`**: abrir fronteira → fechar religador (se a falta não estiver
+  colada nele) → fechar NA. A ferramenta executa **só o próximo passo** da proposta aprovada; fechar o
+  NA antes da fronteira é recusado (nunca fechar anel sobre a falta). Recusas por token ausente/
+  inválido (`compare_digest`), proposta rejeitada/executada/expirada (validade 30 min) e fora de
+  sequência geram `mcp.recusa` na auditoria.
+- **Aprovação fora do modelo.** `approve`/`reject` não são ferramentas MCP: o humano decide pela CLI
+  `bdgd-light aprovar` (outro processo, via `propostas.json`; `hitl.jsonl` com a própria cadeia) ou
+  por `POST /propostas/{id}/aprovar|rejeitar` no transporte HTTP (console F3). O agente obtém o token
+  com `get_proposal` depois da aprovação. **Tokens nunca em claro** na auditoria: `approval_token`/
+  `token` viram `sha256:<12>` em argumentos e resultados (o teste flagrou o token vazando pelo
+  resultado de `get_proposal`; a máscara agora é recursiva e o hash do resultado é calculado sobre o
+  resultado mascarado, para continuar conferível).
+- **Master do cluster sob demanda.** `twin.preparar_master_cluster(gpkg, ctmts, out)` (extraído de
+  `_score_opcoes` da CLI, que agora o reutiliza) converte do GPKG os CTMT que faltarem e escreve
+  `<dss-out>/cluster_<A>-<B>/Master_DU01_base.dss`. Armadilha: usar a fixture
+  `tests/fixtures/dss/cluster_mini` diretamente como `dss_out` gera arquivos dentro do repositório —
+  os testes copiam a fixture para `tmp_path`.
+- Helpers novos em `Rede` (`caminho_da_fonte`, `chaves_no_caminho`, `downstream_switch`) ficaram no
+  `grid` por serem topologia pura; o CLI `mcp` em stdio manda as mensagens humanas para **stderr**
+  (stdout é o canal do protocolo).
+
+### Validação
+
+```bash
+uv run ruff check . && uv run ruff format . && uv run pytest         # 200 passed (187 + 13 novos)
+uv run pytest tests/test_mcp_server.py -q                             # fluxo completo, recusas, fila, MCP em memória, CLI
+uv run bdgd-light mcp --listar                                        # 12 ferramentas
+uv run bdgd-light mcp --cluster tijuca --transporte http --porta 8765 # em outro terminal:
+curl -s localhost:8765/estado | head -c 300; uv run bdgd-light aprovar
+# smoke feito aqui: stdio via mcp.client.stdio (12 tools, is_error nas recusas, audit verificável),
+# http via curl (/estado 200, /propostas 200, aprovar repetido 409, initialize MCP ok)
+```
+
+### Pendências
+
+1. Sessão única por processo (um cluster, uma falta); multi-operador fica para depois do MVP.
+2. Proteção só no religador do CTMT (sem fusíveis/religadores intermediários) — `chaves_com_indicacao`
+   = chaves fechadas no caminho fonte→falta.
+3. `load_cluster tijuca` com `--score` converte os 4 CTMT na primeira chamada (≈1–2 min); para a demo,
+   rodar antes `bdgd-light grafo --gpkg data/feeders/cluster_tijuca.gpkg --falha … --score` ou manter
+   `data/dss/gpkg/` populado.
+4. #34 consome `SessaoCOD` em processo (ou o servidor via stdio); #35 usa `GET /estado`,
+   `GET /propostas` e `POST /propostas/{id}/aprovar`.

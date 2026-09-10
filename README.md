@@ -34,6 +34,9 @@ src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim
                        OpenAICompatClient (qualquer API chat/completions) com perfis openai/gemini/
                        ollama/fake (ADR-003) e preset GitHubModelsClient (aposentado);
                        agent/audit.py é o log de auditoria encadeado por hash (JSON Lines)
+  mcp_server/          servidor MCP das ferramentas de rede (sessao.py = domínio: cluster carregado,
+                       falta simulada, propostas com aprovação humana e auditoria; servidor.py = camada
+                       MCP stdio/http + rotas de aprovação); docs/mcp-ferramentas.md
 console/               console do operador: Vite + TypeScript + MapLibre GL JS lendo PMTiles
                        (public/tiles/exemplo_{tijuca,ipanema}.pmtiles = clusters da demo; exemplo.pmtiles
                        = TQR, regressão), seletor de cenário, sobreposição do estado do grafo,
@@ -517,6 +520,47 @@ log = AuditLog("data/audit/llm.jsonl")  # continua a cadeia se o arquivo existir
 conversa = conversar(cliente, [Message.user("Quanto é 2 + 3?")], [SOMA], audit=log)
 conversa.hash_auditoria, conversa.uso_total, conversa.segundos  # hash, tokens somados, latência
 AuditLog.verificar_arquivo("data/audit/llm.jsonl")  # nº de registros ou AuditError
+```
+
+### `bdgd-light mcp` / `bdgd-light aprovar` — ferramentas de rede para o agente, com aprovação humana
+
+Servidor [MCP](https://modelcontextprotocol.io) (issue #32) que expõe grafo e gêmeo como ferramentas
+tipadas para um LLM: `load_cluster`, `get_topology`, `get_switch_state`, `inject_fault` (simulador:
+abre o religador e marca o trecho em falta), `locate_fault`, `isolate_fault`, `downstream_customers`,
+`restore_options` (com o veredito elétrico de `twin.score_eletrico`), `run_powerflow`, `propose_plan`
+(cria uma proposta **pendente**) e `set_switch` — que **só executa com o `approval_token` emitido por
+um humano**, e só o próximo passo da sequência aprovada. Toda chamada vai para o log de auditoria
+encadeado (`data/agent/audit.jsonl`), com tokens mascarados. Precisa dos extras `agent` e `twin`.
+
+```bash
+uv run bdgd-light mcp --listar                                  # tabela das 12 ferramentas
+uv run bdgd-light mcp --cluster tijuca                          # stdio, para clientes MCP locais
+uv run bdgd-light mcp --cluster ipanema --transporte http --porta 8765   # + GET /estado, POST /propostas/P-0001/aprovar
+uv run bdgd-light aprovar                                       # fila de propostas do agente
+uv run bdgd-light aprovar P-0001                                # aprova e imprime o approval_token (30 min)
+uv run bdgd-light aprovar P-0002 --rejeitar --motivo "prefiro CH003"
+uv run bdgd-light audit data/agent/audit.jsonl --mostrar 5      # cadeia do servidor; hitl.jsonl = decisões humanas
+```
+
+Fluxo FLISR completo, exemplo de JSON de cada ferramenta, regras de recusa de `set_switch`, rotas
+HTTP e formato da auditoria em [`docs/mcp-ferramentas.md`](docs/mcp-ferramentas.md). Em Python o
+domínio é usável sem MCP:
+
+```python
+from bdgd_light.mcp_server import SessaoCOD
+
+s = SessaoCOD(feeders="data/feeders", dss_out="data/dss/gpkg", estado_dir="data/agent")
+s.load_cluster("tijuca")
+s.inject_fault("<COD_ID de um SSDMT>")  # o religador do CTMT abre
+melhor = s.restore_options(score=True)["opcoes"][0]
+p = s.propose_plan(chave=melhor["chave"])  # pendente
+token = s.approve(p["id"], operador="ana")[
+    "token"
+]  # lado humano (CLI `aprovar` faz o mesmo em outro processo)
+passo = p["proximo_passo"]  # {"acao": "abrir", "chave": "…"}
+s.set_switch(
+    passo["chave"], "aberta" if passo["acao"] == "abrir" else "fechada", approval_token=token
+)
 ```
 
 ## Console (mapa do operador)
