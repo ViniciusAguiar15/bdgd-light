@@ -792,7 +792,7 @@ def llm(
         elif endpoint:
             cliente = OpenAICompatClient(endpoint, modelo=modelo)
         else:
-            cliente = cliente_do_ambiente(modelo, provider=provider)
+            cliente = cliente_do_ambiente(modelo, provider=provider, audit=log)
         conversa = conversar(
             cliente, [Message.system(sistema), Message.user(pergunta)], [SOMA], audit=log
         )

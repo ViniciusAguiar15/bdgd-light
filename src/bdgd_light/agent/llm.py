@@ -576,49 +576,95 @@ PERFIS: dict[str, Perfil] = {
 PROVEDOR_PADRAO = "openai"
 
 
-def cliente_por_perfil(nome: str, modelo: str | None = None, **opcoes) -> LLMClient:
+def cliente_por_perfil(
+    nome: str, modelo: str | None = None, *, audit: AuditLog | None = None, **opcoes
+) -> LLMClient:
     """Cliente de um perfil (``openai``, ``gemini``, ``ollama``, ``fake``). Precedência do modelo:
     argumento → ``BDGD_LLM_MODEL`` → padrão do perfil. Token da variável do perfil (ou
-    ``token_padrao``); ``ValueError`` para perfil desconhecido."""
+    ``token_padrao``); ``ValueError`` para perfil desconhecido. Com ``audit``, grava um registro
+    ``llm.cliente`` com o perfil e o modelo resolvidos (proveniência para o benchmark)."""
     perfil = PERFIS.get(nome.lower().strip()) if nome else None
     if perfil is None:
         raise ValueError(f"perfil LLM desconhecido: {nome!r}; use um de {', '.join(PERFIS)}")
     if perfil.nome == "fake":
-        return fake_soma()
-    token = os.environ.get(perfil.env_token) or perfil.token_padrao
-    return OpenAICompatClient(
-        perfil.endpoint,
-        modelo=modelo or os.environ.get(ENV_MODELO) or perfil.modelo,
-        token=token,
-        env_token=perfil.env_token,
-        url_modelos=perfil.url_modelos,
-        **opcoes,
-    )
+        cliente: LLMClient = fake_soma()
+    else:
+        token = os.environ.get(perfil.env_token) or perfil.token_padrao
+        cliente = OpenAICompatClient(
+            perfil.endpoint,
+            modelo=modelo or os.environ.get(ENV_MODELO) or perfil.modelo,
+            token=token,
+            env_token=perfil.env_token,
+            url_modelos=perfil.url_modelos,
+            **opcoes,
+        )
+    registrar_cliente(audit, cliente, perfil=perfil.nome, origem="perfil")
+    return cliente
 
 
 def cliente_do_ambiente(
-    modelo: str | None = None, provider: str | None = None, **opcoes
+    modelo: str | None = None,
+    provider: str | None = None,
+    *,
+    audit: AuditLog | None = None,
+    **opcoes,
 ) -> LLMClient:
     """Escolhe o cliente pelo ambiente, nesta ordem: ``provider``/``BDGD_LLM_PROVIDER`` (perfil da
     ADR-003) → ``BDGD_LLM_ENDPOINT`` (+ ``BDGD_LLM_TOKEN``, qualquer endpoint compatível) →
     ``OPENAI_API_KEY`` (perfil ``openai``, o padrão) → ``GEMINI_API_KEY`` (``gemini``) →
-    ``GITHUB_TOKEN`` (``GitHubModelsClient``, aposentado) → ``TokenAusenteError``."""
+    ``GITHUB_TOKEN`` (``GitHubModelsClient``, aposentado) → ``TokenAusenteError``.
+
+    Com ``audit``, o cliente resolvido (perfil, modelo, endpoint e de onde veio a escolha) vira um
+    registro ``llm.cliente`` — quem lê o log sabe a proveniência de cada execução."""
     nome = provider or os.environ.get(ENV_PROVIDER)
     if nome:
-        return cliente_por_perfil(nome, modelo, **opcoes)
+        return cliente_por_perfil(
+            nome,
+            modelo,
+            audit=audit,
+            **opcoes,
+        )
     endpoint = os.environ.get(ENV_ENDPOINT)
     if endpoint:
-        return OpenAICompatClient(endpoint, modelo=modelo, **opcoes)
+        cliente: LLMClient = OpenAICompatClient(endpoint, modelo=modelo, **opcoes)
+        registrar_cliente(audit, cliente, perfil=None, origem=ENV_ENDPOINT)
+        return cliente
     for nome_perfil in (PROVEDOR_PADRAO, "gemini"):
         if os.environ.get(PERFIS[nome_perfil].env_token):
-            return cliente_por_perfil(nome_perfil, modelo, **opcoes)
+            cliente = cliente_por_perfil(nome_perfil, modelo, **opcoes)
+            registrar_cliente(
+                audit, cliente, perfil=nome_perfil, origem=PERFIS[nome_perfil].env_token
+            )
+            return cliente
     if os.environ.get(ENV_GITHUB_TOKEN):
-        return GitHubModelsClient(modelo=modelo, **opcoes)
+        cliente = GitHubModelsClient(modelo=modelo, **opcoes)
+        registrar_cliente(audit, cliente, perfil="github-models", origem=ENV_GITHUB_TOKEN)
+        return cliente
     raise TokenAusenteError(
         f"defina {ENV_OPENAI_KEY} (perfil openai, padrão) ou {ENV_GEMINI_KEY} (gemini), ou "
         f"{ENV_PROVIDER}=ollama para um Ollama local, ou {ENV_ENDPOINT} e {ENV_TOKEN} para outro "
         f"provedor compatível com a OpenAI; para testes use {ENV_PROVIDER}=fake (FakeLLMClient)."
     )
+
+
+def descrever_cliente(cliente: LLMClient) -> dict[str, Any]:
+    """Proveniência de um cliente: ``tipo`` (classe), ``modelo`` e ``endpoint`` (sem token)."""
+    return {
+        "tipo": type(cliente).__name__,
+        "modelo": getattr(cliente, "modelo", None),
+        "endpoint": getattr(cliente, "endpoint", None),
+    }
+
+
+def registrar_cliente(
+    audit: AuditLog | None, cliente: LLMClient, *, perfil: str | None, origem: str
+) -> None:
+    """Registro ``llm.cliente`` no log de auditoria: perfil e modelo resolvidos e a ``origem`` da
+    escolha (argumento/perfil, ``BDGD_LLM_ENDPOINT`` ou a variável de chave encontrada). Nunca
+    grava o token."""
+    if audit is None:
+        return
+    audit.registrar("llm.cliente", perfil=perfil, origem=origem, **descrever_cliente(cliente))
 
 
 # ---------------------------------------------------------------------------------------------

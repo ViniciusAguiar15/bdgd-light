@@ -34,8 +34,10 @@ from bdgd_light.agent.llm import (
     cliente_do_ambiente,
     cliente_por_perfil,
     conversar,
+    descrever_cliente,
     fake_soma,
     interpretar_resposta,
+    registrar_cliente,
     soma,
 )
 
@@ -76,7 +78,9 @@ __all__ = [
     "cliente_do_ambiente",
     "cliente_por_perfil",
     "conversar",
+    "descrever_cliente",
     "fake_soma",
     "interpretar_resposta",
+    "registrar_cliente",
     "soma",
 ]
