@@ -18,7 +18,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - name: Instalar
-        run: uv sync --extra dev
+        run: uv sync --extra dev --extra twin
       - name: Lint (ruff)
         run: uv run ruff check . && uv run ruff format --check .
       - name: Testes

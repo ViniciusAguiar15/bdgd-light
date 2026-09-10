@@ -404,6 +404,173 @@ def grafo(
         console.print(f"[green]✔[/] estado gravado em [bold]{geojson}[/]")
 
 
+@app.command()
+def dss(
+    ctmt: Annotated[
+        str | None,
+        typer.Option("--ctmt", help="COD_ID do alimentador a converter com o bdgd2opendss."),
+    ] = None,
+    gdb: Annotated[
+        Path | None,
+        typer.Option(
+            "--gdb",
+            help="Diretório .gdb da BDGD (obrigatório com --ctmt; o bdgd2opendss lê o GDB "
+            "inteiro).",
+        ),
+    ] = None,
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            help="Raiz de saída; o modelo fica em <out>/sub_<SUB>/<CTMT>/ com 36 Masters "
+            "(tipo de dia DU/SA/DO × mês). Se já existir, não reconverte.",
+        ),
+    ] = Path("data/dss"),
+    master: Annotated[
+        Path | None,
+        typer.Option("--master", help="Roda o fluxo direto neste Master .dss, sem converter."),
+    ] = None,
+    dia: Annotated[
+        str, typer.Option("--dia", help="Tipo de dia do Master a resolver: DU, SA ou DO.")
+    ] = "DU",
+    mes: Annotated[int, typer.Option("--mes", min=1, max=12, help="Mês do Master (1–12).")] = 1,
+    fluxo: Annotated[
+        bool, typer.Option("--fluxo/--sem-fluxo", help="Resolve o fluxo de potência snapshot.")
+    ] = True,
+    vmin: Annotated[float, typer.Option("--vmin", help="Limite inferior de tensão (pu).")] = 0.93,
+    vmax: Annotated[float, typer.Option("--vmax", help="Limite superior de tensão (pu).")] = 1.05,
+    estabilizar: Annotated[
+        bool,
+        typer.Option(
+            "--estabilizar/--sem-estabilizar",
+            help="Se não convergir, aplica em cascata: maxiterations=100, vminpu=0.9 e model=2.",
+        ),
+    ] = True,
+    comando: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--comando",
+            help="Comando OpenDSS extra antes do Solve (repetível), ex.: 'set loadmult=0.6'.",
+        ),
+    ] = None,
+    json_saida: Annotated[
+        Path | None,
+        typer.Option("--json", help="Grava o resumo, piores barras e sobrecargas em JSON."),
+    ] = None,
+    top: Annotated[int, typer.Option("--top", help="Linhas nas tabelas de piores casos.")] = 10,
+) -> None:
+    """Converte um alimentador da BDGD para OpenDSS (bdgd2opendss) e/ou resolve o fluxo de
+    potência com OpenDSSDirect, reportando tensões, violações, perdas e sobrecargas."""
+    try:
+        from bdgd_light.twin import converter, escolher_master, run_powerflow
+    except ImportError as erro:
+        _erro(f"{erro} — instale o extra: uv sync --extra twin")
+        return
+    if master is None and ctmt is None:
+        _erro("informe --ctmt (com --gdb) para converter ou --master para só resolver.")
+        return
+    try:
+        if master is None:
+            if gdb is None:
+                _erro("--ctmt exige --gdb <diretório .gdb>.")
+                return
+            console.print(f"Convertendo [bold]{ctmt}[/] com bdgd2opendss (lê o GDB inteiro)…")
+            pasta, segundos = converter(gdb, ctmt, out)
+            if segundos:
+                console.print(f"[green]✔[/] modelo em [bold]{pasta}[/] ({segundos:.1f} s)")
+            else:
+                console.print(f"[green]✔[/] modelo já existia em [bold]{pasta}[/]")
+            master = escolher_master(pasta, dia, mes)
+        if not fluxo:
+            console.print(f"Master: {master}")
+            return
+        resultado = run_powerflow(
+            master,
+            vmin=vmin,
+            vmax=vmax,
+            estabilizar=estabilizar,
+            comandos_extra=comando or (),
+        )
+    except (FileNotFoundError, ValueError, RuntimeError, ImportError) as erro:
+        _erro(str(erro))
+        return
+    _imprimir_fluxo(resultado, top)
+    if json_saida is not None:
+        _gravar_fluxo_json(resultado, json_saida, top)
+        console.print(f"[green]✔[/] resumo gravado em [bold]{json_saida}[/]")
+    if not resultado.convergiu:
+        raise typer.Exit(code=2)
+
+
+def _imprimir_fluxo(r, top: int) -> None:
+    s = r.resumo()
+    tabela = Table(title=f"Fluxo de potência — {r.circuito} ({r.master.name})", show_header=False)
+    tabela.add_column("campo", style="bold")
+    tabela.add_column("valor")
+    convergiu = "[green]sim[/]" if r.convergiu else "[red]NÃO[/]"
+    linhas = [
+        ("Convergiu", f"{convergiu} ({r.iteracoes} iterações, {r.tempo_s:.2f} s)"),
+        ("Estabilizadores", ", ".join(r.ajustes) or "nenhum"),
+        (
+            "Elementos",
+            f"{_fmt_int(r.n_barras)} barras, {_fmt_int(r.n_nos)} nós, {_fmt_int(r.n_linhas)} "
+            f"linhas, {_fmt_int(r.n_trafos)} trafos, {_fmt_int(r.n_cargas)} cargas",
+        ),
+        (
+            "Potência na fonte",
+            f"{_fmt_int(round(r.potencia_kw))} kW / {_fmt_int(round(r.potencia_kvar))} kvar",
+        ),
+        (
+            "Perdas",
+            f"{_fmt_int(round(r.perdas_kw))} kW"
+            + (f" ({100 * r.perdas_kw / r.potencia_kw:.1f} %)" if r.potencia_kw else ""),
+        ),
+        ("Tensão (nós de fase)", f"mín {r.v_min_pu:.3f} pu, máx {r.v_max_pu:.3f} pu"),
+        (
+            f"Fora de [{r.vmin_ref}, {r.vmax_ref}] pu",
+            f"{_fmt_int(s['n_subtensao'])} sub, {_fmt_int(s['n_sobretensao'])} sobre "
+            f"(de {_fmt_int(s['n_nos_fase'])} nós; {_fmt_int(s['n_desenergizados'])} a 0 pu)",
+        ),
+        ("Sobrecargas (> 100 %)", _fmt_int(s["n_sobrecargas"])),
+    ]
+    for campo, valor in linhas:
+        tabela.add_row(campo, valor)
+    console.print(tabela)
+    piores = r.piores_barras(top)
+    if not piores.empty and piores["v_pu"].iloc[0] < r.vmin_ref:
+        t = Table(title=f"Piores tensões ({min(top, len(piores))})")
+        for rotulo, alinhamento in [("Nó", "left"), ("kV base", "right"), ("V pu", "right")]:
+            t.add_column(rotulo, justify=alinhamento)
+        for p in piores.itertuples(index=False):
+            t.add_row(p.no, f"{p.kv_base:.3f}", f"{p.v_pu:.3f}")
+        console.print(t)
+    sobre = r.sobrecargas.head(top)
+    if not sobre.empty:
+        t = Table(title=f"Sobrecargas ({min(top, len(sobre))} de {len(r.sobrecargas)})")
+        for rotulo, alinhamento in [
+            ("Elemento", "left"),
+            ("I máx A", "right"),
+            ("I nominal A", "right"),
+            ("Carga %", "right"),
+        ]:
+            t.add_column(rotulo, justify=alinhamento)
+        for e in sobre.itertuples(index=False):
+            t.add_row(
+                e.elemento, f"{e.i_max_a:.1f}", f"{e.i_nominal_a:.1f}", f"{e.carregamento_pct:.0f}"
+            )
+        console.print(t)
+
+
+def _gravar_fluxo_json(r, caminho: Path, top: int) -> None:
+    import json
+
+    dados = r.resumo()
+    dados["piores_barras"] = r.piores_barras(top).to_dict(orient="records")
+    dados["sobrecargas"] = r.sobrecargas.head(top).to_dict(orient="records")
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    caminho.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def _lista(valor: str | None) -> list[str]:
     return [c.strip() for c in (valor or "").split(",") if c.strip()]
 
