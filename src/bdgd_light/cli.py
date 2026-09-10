@@ -895,6 +895,14 @@ def mcp(
     ] = Path("data/agent"),
     dia: Annotated[str, typer.Option("--dia", help="Tipo de dia das cargas: DU, SA ou DO.")] = "DU",
     mes: Annotated[int, typer.Option("--mes", min=1, max=12, help="Mês das cargas.")] = 1,
+    sem_segredo: Annotated[
+        bool,
+        typer.Option(
+            "--sem-segredo",
+            help="Aceita aprovações HTTP só com X-Operador, sem o segredo BDGD_CONSOLE_TOKEN "
+            "(demo local). Sem a flag e sem a variável, as rotas de decisão respondem 503.",
+        ),
+    ] = False,
 ) -> None:
     """Sobe o servidor MCP com as ferramentas de rede (grafo + gêmeo OpenDSS) para um agente:
     load_cluster, get_topology, inject_fault, locate/isolate_fault, restore_options (com score
@@ -902,6 +910,7 @@ def mcp(
     aprovação humana (`bdgd-light aprovar`). Toda chamada vai para o log de auditoria."""
     try:
         from bdgd_light.mcp_server import SessaoCOD
+        from bdgd_light.mcp_server.humano import Autorizador
         from bdgd_light.mcp_server.servidor import descritores, servir
     except ImportError as erro:
         _erro(f"{erro} — instale o extra: uv sync --extra agent")
@@ -931,16 +940,30 @@ def mcp(
             f"{r['resumo']['chaves']} chaves, {r['resumo']['ties']} ties; religadores "
             f"{', '.join(f'{k}={v}' for k, v in r['religadores'].items())}"
         )
+    autorizador = Autorizador.do_ambiente(exigir_segredo=not sem_segredo)
     endereco = f" em http://{host}:{porta}/mcp · aprovação: POST /propostas/<id>/aprovar"
     saida.print(
         f"[dim]MCP ({transporte}{endereco if transporte == 'http' else ''}) · propostas: "
         f"{estado / 'propostas.json'} · auditoria: {estado / 'audit.jsonl'}[/]"
     )
+    if transporte != "stdio":
+        saida.print(_aviso_segredo(autorizador))
     try:
-        servir(sessao, transporte, host=host, port=porta)
+        servir(sessao, transporte, host=host, port=porta, autorizador=autorizador)
     except ValueError as erro:
         saida.print(f"[red]Erro:[/] {erro}")
         raise typer.Exit(code=1) from None
+
+
+def _aviso_segredo(autorizador) -> str:
+    if autorizador.modo == "segredo":
+        return "[dim]decisões HTTP: X-Operador + segredo BDGD_CONSOLE_TOKEN[/]"
+    if autorizador.modo == "sem-segredo":
+        return "[yellow]decisões HTTP só com X-Operador (--sem-segredo): só para demo local[/]"
+    return (
+        "[yellow]decisões HTTP bloqueadas (503): defina BDGD_CONSOLE_TOKEN no ambiente ou use "
+        "--sem-segredo[/]"
+    )
 
 
 @app.command()

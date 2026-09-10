@@ -918,18 +918,29 @@ class SessaoCOD:
         return p.to_dict()
 
     def estado(self) -> dict[str, Any]:
-        """Foto da sessão (console/CLI): cluster, falta, religador, propostas, sem tensão."""
+        """Foto da sessão (console/CLI): cluster, falta, religador, propostas, sem tensão e o
+        ``hash`` da última entrada da auditoria (o console mostra "trilha íntegra")."""
         rede = self.rede
         audit = None if self.audit is None or self.audit.caminho is None else self.audit.caminho
         return {
             "cluster": self.nome,
+            "cluster_demo": self.cluster_demo,
             "gpkg": None if self.gpkg is None else str(self.gpkg),
             "falta": self.falta,
             "religador": self.religador,
             "sem_tensao": None if rede is None else self._sem_tensao(rede),
             "propostas": [p.to_dict(com_token=False) for p in self.propostas.listar()],
             "audit": None if audit is None else str(audit),
+            "audit_n": None if self.audit is None else len(self.audit),
+            "hash": None if self.audit is None or not len(self.audit) else self.audit.ultimo_hash,
         }
+
+    @property
+    def cluster_demo(self) -> str | None:
+        """Nome da demo (``tijuca``/``ipanema``/``taquara``) do cluster carregado, se for um."""
+        if self.gpkg is None:
+            return None
+        return next((n for n, arq in CLUSTERS.items() if self.gpkg.name == arq), None)
 
 
 def ferramentas_da_sessao() -> list[tuple[str, str]]:
