@@ -4,6 +4,7 @@ proposta com o token emitido e ``hash`` da auditoria em ``GET /estado``."""
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import shutil
 from pathlib import Path
@@ -12,7 +13,8 @@ import pytest
 from rich.console import Console
 
 pytest.importorskip("mcp")
-pytest.importorskip("opendssdirect")
+if importlib.util.find_spec("opendssdirect") is None:  # não importar: ver twin.powerflow.no_motor
+    pytest.skip("opendssdirect não instalado (uv sync --extra twin)", allow_module_level=True)
 
 from starlette.testclient import TestClient  # noqa: E402
 

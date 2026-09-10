@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -21,6 +22,17 @@ def carregar_gerador() -> ModuleType:
     modulo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modulo)
     return modulo
+
+
+def pytest_collection_finish(session: pytest.Session) -> None:
+    """O DSS C-API só aceita chamadas da thread que o importou (SIGILL nas demais); o gêmeo o
+    importa na thread própria (``twin.powerflow.no_motor``). Importar ``opendssdirect`` na coleta
+    (thread principal) quebraria toda a suíte — use ``importlib.util.find_spec`` para pular."""
+    if "opendssdirect" in sys.modules:
+        raise pytest.UsageError(
+            "opendssdirect importado na thread principal durante a coleta; "
+            "troque pytest.importorskip por importlib.util.find_spec (ver tests/conftest.py)."
+        )
 
 
 @pytest.fixture(scope="session")

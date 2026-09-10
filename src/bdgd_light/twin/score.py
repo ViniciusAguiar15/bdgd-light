@@ -31,7 +31,7 @@ from typing import Any
 
 from bdgd_light.grid.rede import CHAVE, TRECHO, OpcaoRestauracao, Rede
 from bdgd_light.twin.cluster import comandos_manobras
-from bdgd_light.twin.powerflow import PowerFlowResult, _dss, run_powerflow
+from bdgd_light.twin.powerflow import PowerFlowResult, _dss, no_motor, run_powerflow
 
 _NAN = float("nan")
 
@@ -113,10 +113,14 @@ def ampacidade_tronco(rede: Rede, fonte: str) -> float:
 
     NaN se nenhum trecho existir no modelo (ex.: fonte fora do cluster).
     """
+    return no_motor(_ampacidade_tronco, trechos_tronco(rede, fonte))
+
+
+def _ampacidade_tronco(cods: list[str]) -> float:
     dss = _dss()
     ampacidades = [
         a
-        for a in (_normamps(dss, f"Line.SMT_{cod}") for cod in trechos_tronco(rede, fonte))
+        for a in (_normamps(dss, f"Line.SMT_{cod}") for cod in cods)
         if not math.isnan(a) and a > 0
     ]
     return sum(ampacidades) if ampacidades else _NAN
