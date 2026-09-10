@@ -28,7 +28,8 @@ src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim
                        twin/convert.py BDGD → OpenDSS via bdgd2opendss (36 Masters por CTMT);
                        twin/powerflow.py resolve o fluxo com OpenDSSDirect (tensões, violações,
                        perdas, sobrecargas); twin/cluster.py monta o Master do cluster e traduz
-                       manobras do grafo em DSS
+                       manobras do grafo em DSS; twin/score.py é o verificador elétrico das opções
+                       de restauração (I no disjuntor, V MT, sobrecargas MT → viável)
   agent/llm.py         interface LLMClient (chat com tool calling), FakeLLMClient para testes,
                        OpenAICompatClient (qualquer API chat/completions) com perfis openai/gemini/
                        ollama/fake (ADR-003) e preset GitHubModelsClient (aposentado);
@@ -246,6 +247,8 @@ uv run bdgd-light grafo --gpkg data/feeders/cluster_TQR0007-TQR33859-TQR33862.gp
     --falha 11798327 --geojson data/feeders/estado_tqr.geojson
 # manobras manuais antes da análise
 uv run bdgd-light grafo --gpkg data/feeders/TQR0007.gpkg --abrir 310744064 --fechar 752622332
+# cenário A da demo (Tijuca): cada opção de restauração validada no gêmeo OpenDSS (--score)
+uv run bdgd-light grafo --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 --score
 ```
 
 | opção | padrão | descrição |
@@ -255,6 +258,17 @@ uv run bdgd-light grafo --gpkg data/feeders/TQR0007.gpkg --abrir 310744064 --fec
 | `--abrir` / `--fechar` | — | `COD_ID` de chaves `UNSEMT` a manobrar antes da análise, por vírgula |
 | `--geojson` | — | grava o estado (energizado/fonte por trecho, chaves, trafos) em EPSG:4326; com `--falha`, depois do isolamento |
 | `--ties-na-se` | desligado | inclui como ties as chaves NA dentro do polígono da SE |
+| `--score` | desligado | com `--falha`: roda o fluxo de potência de cada opção no gêmeo (`twin.score_eletrico`, extra `twin`) e acrescenta à tabela corrente no disjuntor da fonte, corrente nominal de referência, margem, Vmin MT, trechos MT sobrecarregados, perdas e o veredito **viável**; ordena por viável → margem → UCBT |
+| `--dss-out`, `--dia`, `--mes` | `data/dss/gpkg`, `DU`, `1` | modelos OpenDSS por CTMT usados pelo `--score` (convertidos do GPKG se faltarem) e patamar de carga |
+| `--vmin` / `--vmax` | 0,93 / 1,05 | faixa de tensão MT (pu) do veredito |
+
+O veredito elétrico é **só MT**: `viavel` = convergiu ∧ `vmin ≤ V_MT ≤ vmax` nos nós da fonte e da
+zona transferida ∧ `I_disjuntor ≤ I_nominal` ∧ nenhum trecho MT acima de 100 %. Como `UNSEMT.COR_NOM`
+é um código de domínio sem tradução para ampères, `I_nominal` é a ampacidade (`normamps`) do
+trecho-tronco logo após o disjuntor — `score_eletrico(..., nominais={"ALC9946": 630})` sobrepõe.
+Na Tijuca (falta `11304252`, 4.036 UCBT desligados): ALC9946 viável com 320 A / 592 A (margem 46 %),
+RCP9882 viável com 351 A / 438 A (20 %), URG29983 **inviável** por um trecho de 20 m a 180 % da
+ampacidade (condutor de 132 A no caminho da tie); 7 fluxos em ≈10 s.
 
 Em Python:
 
@@ -269,6 +283,13 @@ for op in f.restore_options("310743928"):  # chaves NA que devolvem tensão, por
     print(op.chave, op.fonte, op.tlcd, op.clientes)
 c = Cluster.from_gpkg("data/feeders/cluster_TQR0007-TQR33859-TQR33862.gpkg")
 estado_geojson(c, "estado.geojson")
+
+# veredito elétrico das opções no gêmeo (extra `twin`; Master base do cluster sem manobras)
+from bdgd_light.twin import montar_master_cluster, score_eletrico
+
+master = montar_master_cluster(pastas_dos_ctmts, "data/dss/gpkg/cluster_x/Master_DU01_base.dss")
+for sc in score_eletrico(c.restore_options("310743928"), c, master):  # já ordenados
+    print(sc.chave, sc.viavel, sc.i_disjuntor_a, sc.margem_disjuntor, sc.motivos)
 ```
 
 Cluster TQR na Light 2025: 2.069 nós, 46,65 km, 162 chaves, 35 ties, 16.504 UCBT, 0,1 s para montar.

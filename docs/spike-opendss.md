@@ -201,6 +201,49 @@ opções de restauração, todas com 287 nós / 1.984 UCBT / 51 trafos (5.317 kV
   isolar SEG001 zera RJO001_MT_1..6 e a fonte de RJO001; fechar CH003 (+ jumper até RJO002_MT_5)
   devolve tensão a tudo menos SEG001/TR003 e RJO002 passa a suprir ~354 kW.
 
+## Score elétrico das opções de restauração (issue #18)
+
+`twin.score_eletrico(opcoes, rede, master_cluster)` (`src/bdgd_light/twin/score.py`) é o verificador
+determinístico da ADR-001 (decisão 6): para cada `OpcaoRestauracao` do grafo compila o Master **base**
+do cluster, aplica as manobras da opção (`comandos_manobras`) antes do `Solve` e devolve um
+`ScoreEletrico` — `convergiu`, `i_disjuntor_a` (corrente máxima de fase na `Vsource` da fonte que
+recebe a carga), `i_nominal_a`, `margem_disjuntor`, `vmin_mt_pu`/`vmax_mt_pu` (nós MT da fonte e da
+zona transferida), `sobrecargas_mt` (trechos `SMT_*` da fonte/zona acima de 100 %), `perdas_kw`,
+`viavel` e `motivos`. A lista já sai ordenada por viável → margem (0,1 %) → UCBT; a BT fica fora do
+veredito. `bdgd-light grafo --falha X --score` imprime tudo na tabela de opções.
+
+**Corrente nominal do disjuntor.** `UNSEMT.COR_NOM` é um código de domínio do Manual da BDGD
+(a Light usa 26 códigos; os disjuntores das SE saem como `40`, `39`, `46`, `35`) e o GDB entregue
+**não embute** as tabelas de domínio (`GDB_Items` só tem as 45 feature classes/tabelas). Sem a
+tabela oficial, e como o modelo OpenDSS da chave sai sem ampacidade (`normamps` padrão de 400 A,
+fictício), a referência é a ampacidade `normamps` do(s) trecho(s) SSDMT imediatamente a jusante do
+disjuntor (`twin.trechos_tronco`/`ampacidade_tronco`; nos 4 alimentadores da Tijuca há exatamente um
+trecho-tronco cada). `nominais={"CTMT": A}` sobrepõe quando a corrente nominal real for conhecida.
+Pendência: obter a tabela `COR_NOM` do Manual (Módulo 10) e colocá-la em `catalogo.py`.
+
+**Tijuca, cenário A** (`cluster_tijuca.gpkg`, falta em `11304252`, Masters do GPKG, DU01):
+
+| fechar | fonte | TLCD | I disj. (A) | I nom. (A) | margem | Vmin MT (pu) | sobrec. MT | perdas (kW) | viável |
+|---|---|---|---|---|---|---|---|---|---|
+| `974020904` / `529355823` | ALC9946 | sim / não | 320 | 592 | 46 % | 1,027 | 0 | 804 | **sim** |
+| `746851189` / `23313112` | RCP9882 | sim / não | 351 | 438 | 20 % | 1,018 | 0 | 821 | **sim** |
+| `977361689` / `11006808` / `11006815` | URG29983 | sim / não / não | 346 | 592 | 42 % | 1,014 | 1 | 830 | não |
+| `1009901594` / `11035887` | URG29706 (externa) | — | — | — | — | — | — | — | não (sem modelo) |
+| `494303815` | ALC740 (externa) | — | — | — | — | — | — | — | não (sem modelo) |
+
+- A opção de referência do escopo (`974020904` → ALC9946) é a melhor pelo critério: 46 % de margem
+  no disjuntor e Vmin 1,027 pu nos 4.036 UCBT transferidos. RCP9882 também fecha, com menos folga.
+- URG29983 é **inviável**: o trecho `11051956` (20 m, condutor `456027629_43_3`, CNOM 132 A) no
+  caminho até a tie vai a **180 %** da ampacidade — um gargalo que o score topológico do grafo não
+  vê. Fica como pergunta ao mantenedor se é cadastro (condutor fino num tronco) ou real.
+- Fontes fora do cluster (URG29706, ALC740) não são simuladas: saem inviáveis com o motivo
+  registrado — o recorte precisa incluir o CTMT para pontuá-las.
+- Tempo: 7 fluxos (compile + solve do cluster de 4 alimentadores, 32 mil cargas) em ≈10 s; todos
+  precisaram de `maxiterations=100` + `vminpu=0.9`, como o Master base do cluster.
+- Na fixture sintética (`tests/test_twin.py::test_score_eletrico_*`): CH003/CH005 viáveis com 16 A num
+  tronco de 200 A (margem 92 %); `set loadmult=25` leva a 312 A, 3–5 trechos acima de 100 % e
+  margem negativa; `nominais={"RJO002": 10}` e `vmin=1.045` derrubam pelo disjuntor e pela tensão.
+
 ## Como reproduzir (mantenedor)
 
 ```bash
@@ -224,15 +267,16 @@ uv run bdgd-light dss --ctmt TQR0007,TQR33859,TQR33862 --out data/dss --gpkg $G 
 # sem GDB: Master direto do GPKG do recorte (≈1 s por CTMT, em data/dss/gpkg/<CTMT>/)
 uv run bdgd-light dss --gpkg data/feeders/TQR0007.gpkg --json data/dss/gpkg/TQR0007_DU01.json
 uv run bdgd-light dss --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 --restaurar 974020904
+# score elétrico de todas as opções de restauração (Masters do GPKG em data/dss/gpkg)
+uv run bdgd-light grafo --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 --score
 uv run python tests/fixtures/dss/gerar_cluster_mini.py   # regenera a fixture sintética do cluster
 uv run pytest tests/test_twin.py tests/test_gpkg2dss.py -q   # a paridade/fumaça usam data/ se existir
 ```
 
 ## Próximos passos sugeridos
 
-- Score elétrico das opções de `restore_options`: rodar o gêmeo para cada opção e devolver I no
-  disjuntor da fonte, MT mínima nos nós transferidos e carregamento máximo do tronco (a tabela acima
-  feita à mão), combinando com o score topológico do grafo.
+- ~~Score elétrico das opções de `restore_options`~~ — feito (`twin.score_eletrico`, issue #18);
+  falta a tabela `COR_NOM` do Manual para a corrente nominal real do disjuntor.
 - Filtro de qualidade de dado antes do fluxo: ramais `COMP > 100 m` e trafos com kVA incompatível
   com a carga reportados (e opcionalmente truncados) — hoje ficam visíveis em
   `piores_barras`/`sobrecargas`.

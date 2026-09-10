@@ -280,3 +280,62 @@ uv run pytest tests/test_gpkg2dss.py -q   # 8 testes; o de paridade usa data/fee
 2. Reguladores (`UNREMT`) e `GD_BT` não entram no gpkg2dss (não há nos clusters da demo; o Master
    do bdgd2opendss também não inclui GD).
 3. PR-09: `AuditLog` com perfil/modelo em `cliente_do_ambiente` → na #34.
+
+## 4. #18 — `twin.score_eletrico`: verificador elétrico das opções de restauração (12:20–12:45)
+
+| | |
+|---|---|
+| Branch | `feat/twin-score-eletrico` (a partir de `main` `f63a09a`, pós-PR #41) |
+| PR | ver "Fechamento" |
+| docs/review | sem arquivos novos (PR-08/09 já tratados na §3) |
+| Módulo | `src/bdgd_light/twin/score.py`: `score_eletrico`, `ScoreEletrico`, `ordenar_scores`, `trechos_tronco`, `ampacidade_tronco`; `PowerFlowResult.fontes` ganhou `i_a` (corrente máx. de fase da `Vsource`) |
+
+### Decisões
+
+- **Uma compilação por opção.** As manobras de `fechar` criam `New Line` (chave NA + jumper da tie),
+  que não se desfaz sem recompilar; então cada opção roda `run_powerflow(master_base,
+  comandos_extra=comandos_base + comandos_manobras(...))`. Custo real: 7 fluxos do cluster Tijuca
+  (4 CTMT, 32 mil cargas) em ≈10 s. A função é pura sobre o Master base (o único I/O) e devolve a
+  lista **já ordenada** (viável → margem do disjuntor arredondada a 0,1 % → UCBT; empates mantêm a
+  ordem do grafo).
+- **Corrente nominal do disjuntor: não há tabela.** `UNSEMT.COR_NOM` é um código de domínio (Light
+  usa 26 códigos; disjuntores de SE = `40`/`39`/`46`/`35`). Procurei a tabela no Manual da BDGD
+  (gov.br/ANEEL, buscas web e GitHub) e dentro do GDB (`GDB_Items` via `LIST_ALL_TABLES=YES`: só as
+  45 tabelas, nenhum `CodedValueDomain`) — nada, e não vou chutar uma tabela. Referência adotada:
+  ampacidade `normamps` do(s) trecho(s) SSDMT logo após o disjuntor (BFS do PAC da fonte só por
+  chaves fechadas; os 4 alimentadores da Tijuca têm exatamente um trecho-tronco), com
+  `nominais={CTMT: A}` para sobrepor. A chave em si sai do conversor sem ampacidade (400 A padrão do
+  OpenDSS, fictício) e não serve. Registrado no módulo, no README e no spike.
+- **Perímetro do veredito** = nós/trechos MT da fonte que recebe a carga **+** os nós/trechos
+  transferidos (`opcao.nos`), não o cluster inteiro — senão um problema pré-existente em outro
+  alimentador derrubaria todas as opções igualmente. Perdas são do cluster todo (comparáveis entre
+  opções). BT fora, como pede a issue.
+- Fontes fora do recorte (`externa`/CTMT sem modelo) não são simuladas: `convergiu=False`,
+  `viavel=False`, motivo "fonte X fora do cluster (sem modelo)". `motivos` sempre explica o "não"
+  (tensão, disjuntor, trechos com os 3 piores percentuais, convergência).
+- CLI: `grafo --falha X --score [--dss-out data/dss/gpkg --dia DU --mes 1 --vmin --vmax]` monta o
+  Master base do cluster (convertendo do GPKG os CTMT que faltarem) e troca a tabela de opções por
+  uma versão com as colunas elétricas (colunas de rede reduzidas para caber no terminal; a 80 colunas
+  o Rich ainda dobra os cabeçalhos — o teste do CLI só confere título/rodapé/motivos).
+
+### Achado — URG29983 é inviável por um gargalo de 20 m
+
+Na Tijuca (falta `11304252`, 4.036 UCBT): ALC9946 viável (320 A / 592 A, margem 46 %, Vmin 1,027),
+RCP9882 viável (351 A / 438 A, 20 %, Vmin 1,018) e **URG29983 inviável**: o trecho `11051956`
+(20 m, condutor `456027629_43_3`, CNOM 132 A) no caminho até a tie vai a **180 %**. O score
+topológico não vê isso; o elétrico vê. Pergunta para o mantenedor: cadastro (condutor fino no tronco)
+ou restrição real? Em ambos os casos é um bom momento da demo.
+
+### Validação
+
+```bash
+uv run ruff check . && uv run ruff format . && uv run pytest         # 187 passed
+uv run bdgd-light grafo --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 --score   # 10 opções, 10 s
+uv run pytest tests/test_twin.py -q -k "score or tronco"              # 5 testes (cluster_mini)
+```
+
+### Pendências
+
+1. Tabela `COR_NOM` do Manual da BDGD → `catalogo.py` e usar como `i_nominal_a` primário.
+2. Todos os fluxos do cluster Tijuca (base inclusive) precisam de `maxiterations=100` + `vminpu=0.9`;
+   vale investigar a barra que trava a convergência padrão (provável ramal BT longo).
