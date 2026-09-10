@@ -74,6 +74,21 @@ qualquer uma de **três SEs**. O gêmeo ranqueia as opções:
 
 (Estado "falta sem restauração": 9.192 kW, 4.838 nós a 0 pu.) Exemplo no console: `?cenario=tijuca`.
 
+**Ranking elétrico do verificador (`twin.score_eletrico`, PR #42)** — o fluxo por opção, com corrente no
+disjuntor da fonte receptora e carregamento dos condutores MT no perímetro transferido, muda a leitura acima:
+
+| opção | I disjuntor / nominal | margem | V MT mín | veredito |
+|---|---|---|---|---|
+| ALC9946 RIMARAES | 320 A / 592 A | **46 %** | 1,027 | viável — melhor |
+| RCP9882 BOMPASTOR | 351 A / 438 A | **20 %** | 1,018 | viável |
+| URG29983 AMALIA | — | — | 1,014 | **inviável**: o trecho `11051956` (20 m, condutor `456027629_43_3`, CNOM 132 A) no caminho até a tie vai a **180 %** de carregamento |
+
+O score topológico (clientes/perdas/tensão de barra) não enxerga o gargalo; o elétrico enxerga — é o argumento
+"verificador determinístico por cima do LLM" da demo. **Pergunta aberta:** o condutor fino em `11051956` é
+cadastro (erro na BDGD) ou restrição real? Se for real, AMALIA só serve com transferência parcial; se for
+cadastro, é exatamente o tipo de inconsistência que o gêmeo ajuda a apontar. Reprodução:
+`uv run bdgd-light grafo --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 --score`.
+
 **Cenário B (Ipanema) não é reprodutível literalmente — vira cenário *negativo*.** As 35 chaves NA de `PTS0001` e
 as ties "3–4 por vizinho" da tabela acima são o **pátio de manobra da SE Posto Seis** (PACs `PTSTSL42/43_MT_*`, a
 12–40 m do polígono `SUB`, 492 m²), não interligações de campo: nenhuma delas aparece em `SSDMT` de nenhum CTMT da

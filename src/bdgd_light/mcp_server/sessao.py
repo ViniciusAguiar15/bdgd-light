@@ -322,6 +322,27 @@ class FilaPropostas:
 # ---------------------------------------------------------------------------------------------
 
 
+def resolver_cluster(cluster: str, feeders: Path | str = FEEDERS_PADRAO) -> Path:
+    """GeoPackage de um cluster: caminho direto, nome da demo (``CLUSTERS``) ou
+    ``<feeders>/cluster_<nome>.gpkg`` / ``<feeders>/<nome>.gpkg``."""
+    feeders = Path(feeders)
+    direto = Path(cluster)
+    if direto.is_file():
+        return direto
+    candidatos = [
+        feeders / CLUSTERS.get(cluster.lower(), ""),
+        feeders / f"cluster_{cluster}.gpkg",
+        feeders / f"{cluster}.gpkg",
+    ]
+    for c in candidatos:
+        if c.name and c.is_file():
+            return c
+    raise FileNotFoundError(
+        f"cluster {cluster!r} não encontrado em {feeders} (nomes conhecidos: "
+        f"{', '.join(CLUSTERS)}; ou informe o caminho de um .gpkg do recorte)"
+    )
+
+
 class SessaoCOD:
     """Um cluster carregado + falta simulada + propostas; toda ferramenta é auditada."""
 
@@ -467,21 +488,7 @@ class SessaoCOD:
         return self._master_base
 
     def _resolver_cluster(self, cluster: str) -> Path:
-        direto = Path(cluster)
-        if direto.is_file():
-            return direto
-        candidatos = [
-            self.feeders / CLUSTERS.get(cluster.lower(), ""),
-            self.feeders / f"cluster_{cluster}.gpkg",
-            self.feeders / f"{cluster}.gpkg",
-        ]
-        for c in candidatos:
-            if c.name and c.is_file():
-                return c
-        raise FileNotFoundError(
-            f"cluster {cluster!r} não encontrado em {self.feeders} (nomes conhecidos: "
-            f"{', '.join(CLUSTERS)}; ou informe o caminho de um .gpkg do recorte)"
-        )
+        return resolver_cluster(cluster, self.feeders)
 
     # -- ferramentas ---------------------------------------------------------------------------
 
