@@ -216,3 +216,67 @@ e anotar a linha `openai` da tabela em `docs/spike-llm.md` §6; `gh secret set O
 CLI `--provider fake|gemini|azure`, `listar_modelos --provider gemini` com ids `models/…`. A fixture
 `sem_segredos` também apaga `OPENAI_API_KEY`/`GEMINI_API_KEY`/`OLLAMA_API_KEY`/`BDGD_LLM_PROVIDER`;
 a varredura de segredos passou a cobrir o prefixo `AIza` (chaves Google). Suite: **174 passed**.
+
+## 3. #17 — Master do gêmeo a partir do GPKG do recorte (11:15–12:20)
+
+| | |
+|---|---|
+| Branch | `feat/twin-master-gpkg` (a partir de `main` `a9bc733`, pós-PR #38) |
+| PR | ver "Fechamento" |
+| docs/review | **PR-08.md** (PR #37) e **PR-09.md** (PR #38) apareceram no working tree, não versionados. Pedidos da PR-08 aplicados em commit próprio (`850d4b3`: issue upstream [bdgd2opendss#35](https://github.com/PauloRadatz/bdgd2opendss/issues/35), aviso de tabela desatualizada em `escopo-cidade.md`, issues #39 e #40). PR-09 (registrar perfil/modelo no `AuditLog` em `cliente_do_ambiente`) fica para a #34, que é a próxima a tocar `agent/`. Os dois arquivos entraram no git em `docs(review)`. |
+| Módulo | `src/bdgd_light/twin/gpkg2dss.py` (~830 linhas): `converter_ctmt`, `converter_gpkg`, `listar_ctmts`, `dias_por_tipo`, `ConversaoGpkg`, `GpkgInvalidoError` |
+
+### Decisões
+
+- **Conversor próprio, não FileGDB.** A alternativa de gravar o recorte como `.gdb` (`OpenFileGDB`)
+  ainda obrigaria o bdgd2opendss a carregar 18 tabelas e não removeria a dependência do pacote nem
+  o bug dos bancos. O `gpkg2dss` reproduz a modelagem do bdgd2opendss 1.2.5 (li `Case.py`,
+  `Load.py`, `Transformer.py`, `Line.py`, `Count_days.py`, `Converter.py` e o `bdgd2dss.json`) e usa
+  o bdgd2opendss como **oráculo de paridade**: mesmos nomes de elemento e arquivo, mesmas tabelas de
+  códigos (tensão, kVA, fases/nós, conexão, condutores), mesma fórmula de kW (energia do mês /
+  dias do tipo / 24 / Σmult, `trunc` a 6 casas, dividida em `_M1` model=2 e `_M2` model=3), mesmo
+  calendário (feriados `holidays` + Carnaval + Corpus Christi), `Set mode=daily` e `Voltagebases`.
+- **Paridade exata em TQR0007**: `SegmentosMT`, `ChavesMT`, `SegmentosBT`, `ChavesBT`, `RamaisBT`,
+  `TransformadorMTMTMTBT`, `CargasBT_DU01` (6.152 cargas) e `CargasMT_DU01` idênticos linha a linha
+  (ordem à parte); fluxo com as mesmas 6.334 barras / 12.312 cargas, 3.076,76 kW e **perdas
+  264,335 kW nos dois**, |ΔV| máx = 0 pu em 14.695 nós. Só diferem `CodCondutor`/`CurvaCarga` (só
+  códigos usados), o nome do `Energymeter` e o `pu` do `Circuit` (float32).
+- **PIP faltava no recorte** — 1.235 das 6.152 cargas BT de TQR0007 são iluminação pública, que o
+  bdgd2opendss escreve como `Load.BT_IP<COD_ID>`. Exportei a camada (`bdgd-light export --layers
+  PIP`, 835.142 linhas, 3 s), incluí no catálogo/recorte/CRVCRG e **regerei todos os recortes**
+  (`TQR0007`, cluster TQR, `cluster_tijuca`, `cluster_ipanema` e os GPKG por CTMT).
+- **Bancos DF/DA**: o bdgd2opendss usa o kVA da unidade (`EQTRMT.POT_NOM`, código TPOTAPRT) mas as
+  perdas do conjunto (`UNTRMT.PER_*`) em cada unidade → 3× as perdas do banco. Abri
+  [bdgd2opendss#36](https://github.com/PauloRadatz/bdgd2opendss/issues/36); o gpkg2dss divide as
+  perdas pelas unidades e já escreve `phases=1` (#35). Tijuca cenário A: 876 → 804 kW de perdas
+  (6,6 % → 6,1 %), tensões MT idênticas, 32.132 cargas nos dois.
+- **Fixture corrigida**: `bdgd_mini.gpkg` gravava `EQTRMT.POT_NOM` como kVA (75) em vez do código
+  (`"16"`) — lido como código dava 12 MVA. `gerar_fixture.py` passa a usar `CODIGO_KVA` e perdas
+  ≈ NBR 5440; só `UNTRMT.PER_*` e `EQTRMT.POT_NOM/PER_*` mudaram (diff camada a camada).
+- **CLI**: `dss --gpkg X` sem `--gdb`/`--master` converte do recorte (todos os CTMT se não houver
+  `--ctmt`), reaproveita `data/dss/gpkg/<CTMT>/` se já tiver o Master, `--reconverter` regenera. O
+  padrão de `--out` passou a depender do modo (`data/dss/gpkg` × `data/dss`) para não misturar as
+  árvores; para rodar manobras sobre modelos do bdgd2opendss basta `--out data/dss`.
+- Elementos sem caminho até o `PAC_INI` saem **comentados** e contados (`isolados_<tabela>`), não
+  omitidos; CTMT cujo `PAC_INI` não está em nenhum elemento (RJO003 da fixture) vira aviso.
+
+### Validação
+
+```bash
+uv run ruff check . && uv run ruff format . && uv run pytest         # 182 passed
+uv run bdgd-light dss --gpkg data/feeders/TQR0007.gpkg --json /tmp/tqr.json   # 1,0 s; 264,3 kW perdas
+uv run bdgd-light dss --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 --restaurar 974020904 \
+    --json /tmp/tijuca_gpkg.json   # 4 CTMT em 3,6 s; 13.233 kW, perdas 804 kW, MT 1,027–1,045 pu
+uv run bdgd-light dss --gdb data/Light_382_2025-12-31_V11_20260824-0926.gdb --out data/dss \
+    --ctmt ALC9925,RCP9882,ALC9946,URG29983 --gpkg data/feeders/cluster_tijuca.gpkg \
+    --falha 11304252 --restaurar 974020904 --json /tmp/tijuca_ref.json   # 13.270 kW, perdas 876 kW
+uv run pytest tests/test_gpkg2dss.py -q   # 8 testes; o de paridade usa data/feeders + data/dss
+```
+
+### Pendências
+
+1. **Mantenedor**: os recortes em `data/feeders/` foram regerados aqui com `PIP`; em outra máquina,
+   `uv run bdgd-light export --gdb … --layers PIP` + `recortar` antes de usar `dss --gpkg`.
+2. Reguladores (`UNREMT`) e `GD_BT` não entram no gpkg2dss (não há nos clusters da demo; o Master
+   do bdgd2opendss também não inclui GD).
+3. PR-09: `AuditLog` com perfil/modelo em `cliente_do_ambiente` → na #34.

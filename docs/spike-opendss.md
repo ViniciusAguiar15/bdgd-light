@@ -94,12 +94,54 @@ bdgd2opendss arrasta customtkinter, plotly, xlsxwriter e holidays, ~40 MB).
      de Tijuca). `twin.corrigir_bancos_monofasicos` reescreve como `phases=1 kvs=[13.2 0.127]`; caso
      mínimo em `tests/fixtures/dss/bancos_monofasicos.dss`; reportado em
      [PauloRadatz/bdgd2opendss#35](https://github.com/PauloRadatz/bdgd2opendss/issues/35).
-9. **Master a partir do GPKG do recorte** (observação da PR-03): o bdgd2opendss só lê o `.gdb`
-   inteiro (`os.listdir` + 18 tabelas, sem filtro espacial), então o gêmeo ainda parte do GDB e não
-   do `data/feeders/<CTMT>.gpkg`. Para o spike está ok (a conversão é idempotente e o CLI reaproveita
-   `data/dss`). Caminho futuro: gravar o recorte como FileGDB (driver `OpenFileGDB` do GDAL ≥ 3.6
-   escreve) com as 18 tabelas que o conversor exige, ou o conversor mínimo próprio a partir do
-   GeoPackage — só vale se aparecer necessidade de rodar sem o GDB.
+9. **Master a partir do GPKG do recorte** (observação da PR-03; **implementado na #17**): o
+   bdgd2opendss só lê o `.gdb` inteiro (`os.listdir` + 18 tabelas, sem filtro espacial). O módulo
+   `twin.gpkg2dss` reproduz a modelagem dele direto do `data/feeders/<CTMT>.gpkg` (ou do GPKG do
+   cluster) — ver "Master a partir do GPKG" abaixo. `bdgd-light dss --gpkg X` sem `--gdb` usa esse
+   caminho e grava em `data/dss/gpkg/<CTMT>/`; o bdgd2opendss continua disponível com `--gdb` e é a
+   referência de paridade.
+
+## Master a partir do GPKG (issue #17)
+
+`bdgd_light.twin.gpkg2dss` (`converter_ctmt`, `converter_gpkg`, `listar_ctmts`, `dias_por_tipo`)
+lê só as camadas do recorte (SSDMT, UNSEMT, UNTRMT, EQTRMT, SSDBT, UNSEBT, RAMLIG, UCBT_tab,
+UCMT_tab, PIP, SEGCON, CRVCRG) e escreve `<out>/<CTMT>/<Prefixo>_gpkg_<CTMT>.dss` +
+`Master_<DIA><MM>_gpkg_<CTMT>.dss`, com os mesmos nomes de elemento do bdgd2opendss (as barras são
+os PAC), então `montar_master_cluster`/`comandos_manobras` funcionam sem tradução. Leva ≈1 s por
+alimentador (o bdgd2opendss leva ≈3 min porque carrega o GDB inteiro).
+
+**Paridade em TQR0007** (`tests/test_gpkg2dss.py::test_paridade_tqr0007_real`, roda quando
+`data/feeders/TQR0007.gpkg` e `data/dss/sub__10385871/TQR0007` existem):
+
+| Arquivo | bdgd2opendss 1.2.5 | gpkg2dss | Diferença |
+|---|---|---|---|
+| SegmentosMT / ChavesMT / SegmentosBT / ChavesBT / RamaisBT | 675 / 50 / 1.708 / 7 / 3.821 | idem | **nenhuma** (linha a linha) |
+| TransformadorMTMTMTBT | 82 unidades | 82 | **nenhuma** |
+| CargasBT_DU01 (UCBT + PIP) | 6.152 cargas × M1/M2 | 6.152 | **nenhuma** (nomes, barras, kW) |
+| CargasMT_DU01 | 4 | 4 | nenhuma |
+| CodCondutor / CurvaCarga | catálogo inteiro (6.115 / 132) | só os usados (428 / 42) | cosmética |
+| Medidores | `Energymeter.BusA4-_…_CHVMT_358368825` | `Energymeter.M_TQR0007` | nome (mesmo elemento) |
+| Circuit | `pu=1.0449999570846558` | `pu=1.045` | float32 → texto |
+| Fluxo DU01 | 6.334 barras, 12.312 cargas, 3.076,76 kW, perdas 264,335 kW | idem | **\|ΔV\| máx = 0 pu** em 14.695 nós |
+
+Achados durante a paridade (todos corrigidos no conversor e/ou no recorte):
+
+- **PIP (iluminação pública) faltava no recorte.** O bdgd2opendss escreve cada PIP como
+  `Load.BT_IP<COD_ID>` no mesmo `CargasBT` — em TQR0007 são 1.235 das 6.152 cargas BT (≈4 % da
+  energia). A camada entrou no catálogo, no recorte (por `UNI_TR_MT`) e no `CRVCRG`; os GPKG antigos
+  precisam de `bdgd-light export --layers PIP` + novo `recortar`.
+- **Ordem e duplicatas de UCBT**: o bdgd2opendss agrupa por `COD_ID` (somando energias) antes de
+  numerar ramais repetidos (`BT_<RAMAL>_1`, `_2`…); reproduzido para os nomes baterem.
+- **Bancos DF/DA** (`EQTRMT` com 2–3 unidades por UNTRMT): o bdgd2opendss usa o kVA da **unidade**
+  (`EQTRMT.POT_NOM`, código TPOTAPRT) mas as perdas do **conjunto** (`UNTRMT.PER_TOT/PER_FER`), o
+  que triplica as perdas do banco — reportado em
+  [PauloRadatz/bdgd2opendss#36](https://github.com/PauloRadatz/bdgd2opendss/issues/36). O gpkg2dss
+  divide as perdas pelas unidades (bate com `EQTRMT.PER_*`) e já escreve `phases=1` (#35). No
+  cluster Tijuca (24 bancos DF, 72 unidades) isso muda as perdas de 876 kW para 804 kW (6,6 % →
+  6,1 %) no cenário A; tensões MT idênticas, 32.132 cargas nos dois.
+- Comprimento de linha é `COMP/1000` sem piso (só `COMP ≤ 0` vira 1 mm), como o bdgd2opendss.
+- Elementos sem caminho até o `PAC_INI` (mesmo critério de grafo) saem **comentados** (`!New …`) com
+  contagem em `contagem["isolados_<tabela>"]`, em vez de omitidos — auditável no arquivo.
 
 ## Resultado em TQR0007 (Master DU01, snapshot de pico)
 
@@ -179,8 +221,11 @@ uv run bdgd-light dss --ctmt TQR0007,TQR33859,TQR33862 --out data/dss --gpkg $G 
 uv run bdgd-light dss --ctmt TQR0007,TQR33859,TQR33862 --out data/dss --gpkg $G --falha 11798327 \
     --restaurar 789941518                                                                             # via CURUMAU
 # para converter os vizinhos de uma vez (≈5 min), passe --gdb junto com os três --ctmt
+# sem GDB: Master direto do GPKG do recorte (≈1 s por CTMT, em data/dss/gpkg/<CTMT>/)
+uv run bdgd-light dss --gpkg data/feeders/TQR0007.gpkg --json data/dss/gpkg/TQR0007_DU01.json
+uv run bdgd-light dss --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 --restaurar 974020904
 uv run python tests/fixtures/dss/gerar_cluster_mini.py   # regenera a fixture sintética do cluster
-uv run pytest tests/test_twin.py -q      # 23 testes; a fumaça usa data/dss se existir
+uv run pytest tests/test_twin.py tests/test_gpkg2dss.py -q   # a paridade/fumaça usam data/ se existir
 ```
 
 ## Próximos passos sugeridos
@@ -193,4 +238,4 @@ uv run pytest tests/test_twin.py -q      # 23 testes; a fumaça usa data/dss se 
   `piores_barras`/`sobrecargas`.
 - Rodar o `mode=daily` completo (24 h × DU/SA/DO) para curvas de tensão por trafo e para saber a hora
   crítica da transferência (o snapshot usa o pico das curvas).
-- Master a partir do recorte GPKG (decisão 9), se a dependência do GDB inteiro incomodar.
+- ~~Master a partir do recorte GPKG (decisão 9)~~ — feito (#17, `twin.gpkg2dss`).
