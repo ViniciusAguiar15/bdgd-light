@@ -1,0 +1,79 @@
+name: Pages (console)
+
+# Constrói o console (console/) a cada push em main e publica no GitHub Pages quando o Pages estiver
+# habilitado no repositório. Em repositório privado sem plano com Pages, o job `build` continua
+# rodando (garante que o console compila) e o artefato `console-dist` fica disponível na execução.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "console/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      pages: ${{ steps.pages.outputs.habilitado }}
+    defaults:
+      run:
+        working-directory: console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+      - name: Instalar
+        run: npm ci
+      - name: Build (base = /<repo>/ para o Pages)
+        run: npm run build
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/
+      - name: Pages habilitado?
+        id: pages
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/pages" --silent 2>/dev/null; then
+            echo "habilitado=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "habilitado=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::GitHub Pages não está habilitado neste repositório; só o build foi feito."
+          fi
+      - name: Artefato para o Pages
+        if: steps.pages.outputs.habilitado == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: console/dist
+      - name: Artefato (Pages desabilitado)
+        if: steps.pages.outputs.habilitado != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-dist
+          path: console/dist
+          retention-days: 7
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.pages == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -420,3 +420,75 @@ uv run bdgd-light audit data/audit/llm.jsonl --mostrar 3  # ✔ 6 registro(s), c
 sed -i '' '2s/"a":2.0/"a":9.0/' data/audit/llm.jsonl && uv run bdgd-light audit   # exit 1: seq=2: hash não bate
 uv run pytest tests/test_audit.py tests/test_llm.py -q  # 41 passed
 ```
+
+## 6. Issue #4 — console MapLibre GL JS + PMTiles + Pages (22:58–23:03, 23:45–00:05)
+
+| | |
+|---|---|
+| Branch | `feat/console` |
+| PR | #20 |
+| Origem | `docs/backlog/04-console-maplibre-pmtiles.md`; ADR-001 decisão 8; regra de ADRs da PR-05 |
+
+Interrompida às 23:03 pelos arquivos de revisão PR-04/05/06 (item 6a acima) e retomada a partir de
+`main` `aee5247`.
+
+Entregue:
+
+1. **`bdgd-light tiles`** (`ingest/tiles.py`): GPKG do recorte → um `.geojsonl` por camada em
+   EPSG:4326 (com `tippecanoe.minzoom` por camada: SSDMT 9, INTERLIGACOES 10, UNSEMT 11,
+   UNTRMT/UNCRMT 12, SSDBT 13, UNSEBT/UCBT 14, PONNOT 15) → `tippecanoe` → PMTiles com 11
+   *source-layers*. Atributos derivados para o estilo, calculados no Python e não no navegador:
+   SSDMT `TEN_KV`/`NOME_CTMT` (de CTMT), UNSEMT `TIPO`/`TIE`/`CTMT_VIZ`/`EM_SUB` (de INTERLIGACOES),
+   UNTRMT `N_UCBT` (de UCBT_tab) e camada derivada **UCBT** (UCBT_tab agregada por `PN_CON` sobre
+   PONNOT, `N_UC` + classe predominante). `TippecanoeAusenteError` com a instrução de instalação;
+   `--geojson-only` como *fallback*. Cluster TQR: **1,43 MB, 1,4 s**.
+2. **`console/`** (Vite + TypeScript + maplibre-gl 6.9 + pmtiles 4.5): painel com camadas do PMTiles
+   (`vector_layers` + `tilestats`), fundo Esri World Imagery / OSM / escuro, popup de atributos,
+   simbologia do operador (MT por tensão via `step` em `TEN_KV`; chaves NA/NF com ícones canvas,
+   telecomandadas em destaque, ties como losango rotulado com o CTMT vizinho; trafos por kVA; UCBT
+   por poste; SE). `?tiles=` para outro PMTiles, `?estado=` sobrepõe o GeoJSON de
+   `bdgd-light grafo --geojson` (trechos desenergizados/energizados por outra fonte, chaves abertas,
+   trafos sem tensão, com resumo no painel). Amostras versionadas: `public/tiles/exemplo.pmtiles`
+   (cluster TQR) e `public/exemplos/estado_TQR0007_falta.geojson` (falta em 254862954).
+3. **Smoke test headless** `console/scripts/smoke.mjs` (Chrome via DevTools Protocol, sem
+   dependências): espera o mapa, conta feições renderizadas, captura erros, salva PNG. Resultado no
+   dev server e no `vite preview` com `VITE_BASE=/bdgd-light/`: `pronto: true`, **8 817 feições**, 0
+   erros; com `?estado=`: 409 trechos desenergizados, 266 energizados, 25 chaves abertas, 59 trafos.
+4. **`.github/workflows/pages.yml`** com guarda: `npm ci` + `npm run build` (`tsc --noEmit` +
+   `vite build`) a cada push em `main` que toque `console/`; publica no Pages **se**
+   `gh api repos/<repo>/pages` responder 200, senão anexa `console-dist` como artefato.
+5. `console/README.md`, seção do README raiz, **`docs/adr/ADR-002-console-maplibre-pmtiles.md`**
+   (5 decisões + alternativas; a ADR-001 não foi editada), `tests/test_tiles.py` (16 testes; os 2 que
+   chamam o tippecanoe de verdade fazem `skipif` sem ele — o CI do GitHub não o tem).
+
+Decisões tomadas:
+- **Pages não pôde ser habilitado**: `gh api -X POST repos/ViniciusAguiar15/bdgd-light/pages
+  -f build_type=workflow` → **HTTP 422 "Your current plan does not support GitHub Pages for this
+  repository"** (repositório privado). O critério "Pages publicado a partir de main" fica **parcial**:
+  o workflow está pronto e compila em todo push; publica sozinho assim que o repo ficar público (ou
+  o plano mudar) e *Settings › Pages › Source: GitHub Actions* for marcado.
+- Dois bugs só visíveis no navegador, achados pelo smoke: (a) maplibre-gl v6 resolve o *worker* por
+  `import.meta.url`, que o Vite não empacota → tiles vetoriais nunca apareciam; corrigido com
+  `setWorkerUrl(import "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url")`; (b) `match` não
+  aceita rótulos numéricos não inteiros (13.2) → cor por `step`.
+- `exemplo.pmtiles` (1,4 MB) e o GeoJSON de estado (265 kB) entram no git (exceção em `.gitignore`;
+  backlog permite < 5 MB); os GeoJSON intermediários de `tiles` (`*_geojson/`) ficam ignorados.
+- Sem Playwright: smoke por CDP com o Chrome local (comando do mantenedor, não roda no CI).
+- `index.html` legado (Leaflet) fica no lugar porque `scripts/converter.py` ainda o referencia; o
+  README aponta para `console/`.
+
+Pendente: habilitar o Pages quando o plano permitir; ícones das chaves BT (UNSEBT começa desligada);
+legenda flutuante; *fetch* periódico do estado (F2). Para validar:
+
+```bash
+brew install tippecanoe
+uv run bdgd-light tiles --gpkg data/feeders/cluster_TQR0007-TQR33859-TQR33862.gpkg \
+    --out console/public/tiles/exemplo.pmtiles --geojson /tmp/exemplo_geojson   # 11 camadas, 1,43 MB
+uv run bdgd-light grafo --gpkg data/feeders/TQR0007.gpkg --falha 254862954 \
+    --geojson console/public/exemplos/estado_TQR0007_falta.geojson
+cd console && npm ci && npm run dev &                        # http://localhost:5173
+open "http://localhost:5173/?estado=exemplos/estado_TQR0007_falta.geojson#14/-22.9144/-43.4005"
+npm run smoke                                                # pronto: true, feicoes ≈ 8 800, errosJS []
+VITE_BASE=/bdgd-light/ npm run build && VITE_BASE=/bdgd-light/ npx vite preview --port 4173
+gh workflow run pages.yml && gh run watch                     # build verde; deploy pulado (Pages off)
+```

@@ -1,0 +1,218 @@
+/* Console bdgd-light — layout: mapa em tela cheia + painel lateral. */
+:root {
+  --bg: #12161c;
+  --bg-2: #1b212b;
+  --fg: #e6e9ef;
+  --fg-2: #a3adbd;
+  --acento: #ff9f1c;
+  --erro: #ff5c5c;
+  --borda: #2b3340;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--fg);
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+}
+
+#mapa {
+  position: absolute;
+  inset: 0 0 0 300px;
+}
+
+#painel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 300px;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  overflow-y: auto;
+  background: var(--bg);
+  border-right: 1px solid var(--borda);
+}
+
+#painel header h1 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 0.5px;
+}
+
+#painel header p {
+  margin: 2px 0 12px;
+  color: var(--fg-2);
+}
+
+#painel section {
+  margin-bottom: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--borda);
+}
+
+#painel h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--fg-2);
+}
+
+label.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+
+label.item .amostra {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex: none;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+label.item .amostra.linha {
+  height: 4px;
+  border-radius: 2px;
+}
+
+label.item .amostra.ponto {
+  border-radius: 50%;
+}
+
+label.item .n {
+  margin-left: auto;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+
+label.item small {
+  color: var(--fg-2);
+}
+
+#form-tiles {
+  display: flex;
+  gap: 6px;
+}
+
+#form-tiles input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--borda);
+  border-radius: 4px;
+  background: var(--bg-2);
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+#form-tiles button {
+  padding: 6px 10px;
+  border: 1px solid var(--acento);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--acento);
+  cursor: pointer;
+}
+
+.dica {
+  color: var(--fg-2);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.dica code {
+  font-size: 11px;
+  background: var(--bg-2);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.erro {
+  color: var(--erro);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+/* popup */
+.maplibregl-popup-content {
+  background: var(--bg-2);
+  color: var(--fg);
+  border: 1px solid var(--borda);
+  border-radius: 6px;
+  padding: 10px 12px;
+  max-height: 60vh;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  border-top-color: var(--bg-2);
+}
+
+.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: var(--bg-2);
+}
+
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--bg-2);
+}
+
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--bg-2);
+}
+
+.maplibregl-popup-close-button {
+  color: var(--fg-2);
+  font-size: 16px;
+}
+
+.popup h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--acento);
+}
+
+.popup table {
+  border-collapse: collapse;
+}
+
+.popup td {
+  padding: 1px 8px 1px 0;
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
+
+.popup td:first-child {
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
+.popup + .popup {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--borda);
+}
+
+@media (max-width: 720px) {
+  #mapa {
+    inset: 0 0 45% 0;
+  }
+
+  #painel {
+    top: auto;
+    width: 100%;
+    height: 45%;
+    border-right: 0;
+    border-top: 1px solid var(--borda);
+  }
+}

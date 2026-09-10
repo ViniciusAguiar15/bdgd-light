@@ -34,6 +34,13 @@ from bdgd_light.ingest.interligacoes import (
 from bdgd_light.ingest.inventario import carregar_bairro, gravar_csv, inventariar, tabela_top
 from bdgd_light.ingest.parquet import CamadaAusenteError, DiretorioParquet
 from bdgd_light.ingest.recorte import CtmtInexistenteError, recortar
+from bdgd_light.ingest.tiles import (
+    ZOOM_MAX_PADRAO,
+    ZOOM_MIN_PADRAO,
+    TippecanoeAusenteError,
+    TippecanoeError,
+    gerar_tiles,
+)
 
 AUDIT_PADRAO = Path("data/audit/llm.jsonl")
 CHAVES_RESUMO_AUDIT = ("rodada", "rodadas", "modelo", "resposta", "erro")
@@ -583,6 +590,76 @@ def dss(
         console.print(f"[green]✔[/] resumo gravado em [bold]{json_saida}[/]")
     if not resultado.convergiu:
         raise typer.Exit(code=2)
+
+
+@app.command()
+def tiles(
+    gpkg: Annotated[
+        Path,
+        typer.Option("--gpkg", help="GeoPackage de um recorte (`bdgd-light recortar`)."),
+    ],
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            help="Arquivo .pmtiles de saída, ex.: console/public/tiles/TQR0007.pmtiles.",
+        ),
+    ],
+    geojson: Annotated[
+        Path | None,
+        typer.Option(
+            "--geojson",
+            help="Pasta dos GeoJSON intermediários (EPSG:4326, um por camada). Padrão: "
+            "<out sem extensão>_geojson/ ao lado do .pmtiles.",
+        ),
+    ] = None,
+    apenas_geojson: Annotated[
+        bool,
+        typer.Option(
+            "--geojson-only",
+            help="Só escreve os GeoJSON (fallback quando o tippecanoe não está instalado).",
+        ),
+    ] = False,
+    zoom_min: Annotated[int, typer.Option("--zoom-min", min=0, max=22)] = ZOOM_MIN_PADRAO,
+    zoom_max: Annotated[int, typer.Option("--zoom-max", min=0, max=22)] = ZOOM_MAX_PADRAO,
+) -> None:
+    """Gera tiles vetoriais (PMTiles) de um recorte para o console MapLibre: exporta cada camada
+    geográfica para GeoJSON em EPSG:4326 (com atributos derivados para o estilo: TEN_KV, TIE,
+    N_UCBT, UCBT agregada por poste) e chama o tippecanoe."""
+    try:
+        r = gerar_tiles(
+            gpkg,
+            out,
+            pasta_geojson=geojson,
+            zoom_min=zoom_min,
+            zoom_max=zoom_max,
+            apenas_geojson=apenas_geojson,
+        )
+    except TippecanoeAusenteError as erro:
+        _erro(str(erro))
+        return
+    except (TippecanoeError, DataSourceError, ValueError) as erro:
+        _erro(str(erro))
+        return
+    tabela = Table(title=f"Tiles de {gpkg.name}", show_lines=False)
+    tabela.add_column("camada")
+    tabela.add_column("feições", justify="right")
+    tabela.add_column("GeoJSON")
+    for camada, caminho in r.geojson.items():
+        tabela.add_row(camada, _fmt_int(r.feicoes[camada]), str(caminho))
+    console.print(tabela)
+    for aviso in r.avisos:
+        console.print(f"[yellow]⚠ {aviso}[/]")
+    if r.bounds:
+        console.print("bbox 4326: " + ", ".join(f"{v:.5f}" for v in r.bounds))
+    if r.pmtiles is not None:
+        console.print(
+            f"[green]✔[/] [bold]{r.pmtiles}[/] ({r.bytes / 1e6:.2f} MB, "
+            f"zoom {zoom_min}–{zoom_max}, {r.segundos:.1f} s)",
+            soft_wrap=True,
+        )
+    else:
+        console.print(f"[green]✔[/] GeoJSON em [bold]{next(iter(r.geojson.values())).parent}[/]")
 
 
 @app.command()

@@ -7,6 +7,9 @@ data/
 *.gpkg
 !tests/fixtures/*.gpkg
 *.pmtiles
+# amostra do console (cluster TQR, 1,4 MB); os GeoJSON intermediários do `tiles` não
+!console/public/tiles/exemplo.pmtiles
+console/public/tiles/*_geojson/
 out/
 
 # Python
@@ -18,6 +21,10 @@ __pycache__/
 .ruff_cache/
 build/
 dist/
+
+# Node (console)
+node_modules/
+.vite/
 
 # SO / IDE
 .DS_Store

@@ -13,26 +13,35 @@ arquitetura (e alternativas descartadas) em [`docs/adr/ADR-001-stack.md`](docs/a
 ```
 src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim)
   catalogo.py          IDs da BDGD por distribuidora/ano, camadas-chave, domínios TEN_NOM e TIP_UNID
-  cli.py               CLI `bdgd-light` (typer): export, inventario, vizinhos, recortar, grafo, dss, llm
+  cli.py               CLI `bdgd-light` (typer): export, inventario, vizinhos, recortar, grafo, dss,
+                       tiles, llm, audit
   ingest/export.py     exportação de camadas para GeoParquet/Parquet/GeoPackage, em lotes
   ingest/parquet.py    leitura das camadas exportadas com filtros empurrados ao pyarrow
   ingest/interligacoes.py  detecção geométrica de chaves NA de interligação entre CTMT
   ingest/inventario.py inventário de alimentadores (CSV + tabela)
   ingest/recorte.py    recorte de todas as camadas por CTMT → GeoPackage + meta.json
+  ingest/tiles.py      recorte GPKG → GeoJSONSeq 4326 (atributos derivados para o estilo) → tippecanoe
+                       → PMTiles para o console
   grid/rede.py         grafo MT (networkx) do alimentador/cluster: fonte, chaves, ties, isolamento,
                        restauração; grid/geojson.py exporta o estado em GeoJSON 4326
   twin/convert.py      BDGD → OpenDSS via bdgd2opendss (36 Masters por CTMT); twin/powerflow.py
                        resolve o fluxo com OpenDSSDirect (tensões, violações, perdas, sobrecargas);
                        twin/cluster.py monta o Master do cluster e traduz manobras do grafo em DSS
   agent/llm.py         interface LLMClient (chat com tool calling), FakeLLMClient para testes,
-                       OpenAICompatClient (qualquer API chat/completions) e preset GitHubModelsClient
+                       OpenAICompatClient (qualquer API chat/completions) e preset GitHubModelsClient;
+                       agent/audit.py é o log de auditoria encadeado por hash (JSON Lines)
+console/               console do operador: Vite + TypeScript + MapLibre GL JS lendo PMTiles
+                       (public/tiles/exemplo.pmtiles = cluster TQR), sobreposição do estado do grafo,
+                       smoke test headless (scripts/smoke.mjs); publicado no Pages por Actions
 scripts/
   baixar_bdgd.py       baixa e extrai a BDGD (Light 2025 por padrão)
   listar_camadas.py    lista as camadas do .gdb
   converter.py         camada → GeoJSON (EPSG:4326) com recorte por bbox
   listar_modelos.py    lista os modelos do provedor LLM configurado (destaca tool calling)
-index.html             visor Leaflet legado (será substituído pelo console MapLibre)
-docs/                  plano, ADRs (adr/ADR-001-stack.md), notas da BDGD Light 2025 (bdgd-light-2025.md),
+index.html             visor Leaflet legado (arrastar o GeoJSON de scripts/converter.py); o console
+                       novo é console/
+docs/                  plano, ADRs (adr/ADR-001-stack.md, ADR-002-console-maplibre-pmtiles.md), notas da
+                       BDGD Light 2025 (bdgd-light-2025.md),
                        regras de junção entre camadas (bdgd-relacoes.md), escolha dos alimentadores
                        (escopo-alimentadores.md), mapeamento BDGD → grafo (grid-modelo.md),
                        spikes OpenDSS (spike-opendss.md) e LLM (spike-llm.md)
@@ -339,6 +348,42 @@ barras, 33.340 cargas): 9 iterações, 1,2 s; a restauração de BOCARI via PARN
 > sobrecargas reportadas; o veredito de uma manobra usa **tensão MT** (0,93–1,05 pu) e **corrente no
 > disjuntor/tronco**, nunca a BT (`docs/spike-opendss.md`, revisão `docs/review/PR-04.md`).
 
+### `bdgd-light tiles` — recorte → PMTiles para o console
+
+Exporta cada camada geográfica de um GeoPackage de `recortar` para GeoJSONSeq em EPSG:4326 e chama o
+[tippecanoe](https://github.com/felt/tippecanoe) para gerar **um arquivo `.pmtiles`** com uma
+*source-layer* por camada, que o console lê direto (sem servidor de tiles). O tippecanoe é externo:
+`brew install tippecanoe` (macOS) ou `sudo apt install tippecanoe`; sem ele o comando falha com essa
+instrução ou, com `--geojson-only`, deixa só os GeoJSON.
+
+```bash
+uv run bdgd-light tiles --gpkg data/feeders/cluster_TQR0007-TQR33859-TQR33862.gpkg \
+    --out console/public/tiles/exemplo.pmtiles
+#   camada          feições   GeoJSON
+#   SSDMT             1.924   console/public/tiles/exemplo_geojson/SSDMT.geojsonl
+#   INTERLIGACOES        36   …
+#   UNSEMT              162
+#   UNTRMT              263
+#   SSDBT             4.713   UCBT 1.759   PONNOT 2.664   (11 camadas)
+#   bbox 4326: -43.49307, -23.01403, -43.17526, -22.90352
+#   ✔ console/public/tiles/exemplo.pmtiles (1.43 MB, zoom 9–16, 1.4 s)
+```
+
+| opção | padrão | descrição |
+|---|---|---|
+| `--gpkg` | — | GeoPackage de um recorte (`bdgd-light recortar`) |
+| `--out` | — | `.pmtiles` de saída, ex.: `console/public/tiles/TQR0007.pmtiles` |
+| `--geojson` | `<out>_geojson/` | pasta dos GeoJSON intermediários (um `.geojsonl` por camada) |
+| `--geojson-only` | off | não chama o tippecanoe |
+| `--zoom-min` / `--zoom-max` | 9 / 16 | faixa de zoom do PMTiles |
+
+Além das colunas da BDGD, o tile leva os atributos que o estilo usa e que vêm de outras camadas do
+recorte: `TEN_KV`/`NOME_CTMT` no SSDMT (de `CTMT.TEN_NOM` e `NOME`), `TIE`/`CTMT_VIZ`/`EM_SUB` nas
+chaves (da camada `INTERLIGACOES`), `N_UCBT` por trafo (de `UCBT_tab.UNI_TR_MT`) e a camada derivada
+**`UCBT`** (unidades de `UCBT_tab` agregadas por poste `PN_CON` → `PONNOT`, com `N_UC`). Cada camada
+tem um zoom mínimo (`tippecanoe.minzoom`): tronco MT a partir do 9, chaves 11, trafos 12, BT 13,
+UC/postes 14–15. Em Python: `from bdgd_light.ingest.tiles import gerar_tiles`.
+
 ### `bdgd-light llm` — cliente LLM com *tool calling* (spike da issue #7)
 
 Exemplo mínimo do agente: manda a pergunta ao modelo com a ferramenta `soma(a, b)` disponível,
@@ -392,6 +437,27 @@ conversa = conversar(cliente, [Message.user("Quanto é 2 + 3?")], [SOMA], audit=
 conversa.hash_auditoria, conversa.uso_total  # hash do último registro, tokens somados
 AuditLog.verificar_arquivo("data/audit/llm.jsonl")  # nº de registros ou AuditError
 ```
+
+## Console (mapa do operador)
+
+`console/` é o front-end estático (Vite + TypeScript + [MapLibre GL JS](https://maplibre.org/) +
+[PMTiles](https://protomaps.com/docs/pmtiles)) que abre o `.pmtiles` de um recorte com a simbologia
+do COD — tronco MT por tensão, chaves NA/NF e telecomandadas, ties com o CTMT vizinho, trafos, BT,
+postes e UC por poste — e sobrepõe o estado do grafo (`bdgd-light grafo --geojson`).
+
+```bash
+cd console && npm ci
+npm run dev        # http://localhost:5173 → cluster TQR de exemplo (public/tiles/exemplo.pmtiles)
+#   ?tiles=tiles/OUTRO.pmtiles          outro recorte gerado por `bdgd-light tiles`
+#   ?estado=exemplos/estado_TQR0007_falta.geojson   falta simulada por cima dos tiles
+npm run build && npm run smoke          # build (tsc + vite) e smoke test no Chrome headless
+```
+
+O workflow [`pages.yml`](.github/workflows/pages.yml) compila o console a cada push em `main` e o
+publica no GitHub Pages (`https://viniciusaguiar15.github.io/bdgd-light/`) **quando o Pages estiver
+habilitado** — em repositório privado sem plano com Pages ele só compila e anexa o artefato. Detalhes
+e armadilhas em [`console/README.md`](console/README.md); decisões em
+[`docs/adr/ADR-002-console-maplibre-pmtiles.md`](docs/adr/ADR-002-console-maplibre-pmtiles.md).
 
 ## Fluxo de trabalho
 
