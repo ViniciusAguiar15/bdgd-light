@@ -81,10 +81,12 @@ levantadas em 2026-09-09 ao implementar o `bdgd-light export` (issue #1). Comple
    `CTMT` e **nenhum `PAC` de `SSDMT` aparece em dois CTMT**. Consequência: a interligação entre
    alimentadores (chave NA de *tie*) **não** aparece como PAC compartilhado — só geometricamente (ponto da
    `UNSEMT` a ≤ 2 m de uma extremidade de `SSDMT` de outro CTMT), ver
-   [`escopo-alimentadores.md`](escopo-alimentadores.md). Nas NA, 177 de 12.754 têm `PAC_1`/`PAC_2` com
-   prefixo de outro CTMT (a chave está cadastrada num alimentador e seus PAC no vizinho).
+   [`escopo-alimentadores.md`](escopo-alimentadores.md) e [`bdgd-relacoes.md`](bdgd-relacoes.md). Nas
+   NA, 177 de 12.754 têm `PAC_1`/`PAC_2` com prefixo de outro CTMT (a chave está cadastrada num
+   alimentador e seus PAC no vizinho).
 7. `UCBT_tab` traz **`CTMT` e `UNI_TR_MT`**; em 4.444 linhas (0,09 %) o `CTMT` da UC difere do `CTMT` do
    transformador. O projeto segue o transformador (`UNI_TR_MT` → `UNTRMT.CTMT`), que é a ligação física.
+   `RAMLIG` tem `PN_CON_2 = " "` (espaço) em algumas linhas — referência em branco, não a um poste.
 8. `CTMT.TEN_OPE` está em **pu** (1,000–1,045); `ATIP = 1` em 561 alimentadores e `RECONFIG = 1` em 290.
 
 ## Domínios usados no projeto
@@ -126,10 +128,15 @@ interligação de barra, `31` lâmina desligadora, `34` seccionadora unipolar de
 `36` seccionalizador monofásico, `38` transformador de distribuição MT/BT (`UNTRMT`),
 `41` transformador de força AT/MT (`UNTRAT`), `46` fusível (`UNSEBT`).
 
-Totais: 64.745 chaves MT, 12.754 NA (`P_N_OPE = "A"`), 7.726 telecomandadas. Das NA, 5.031 são
-interligação entre alimentadores e 875 dessas são telecomandadas (critério geométrico de 2 m,
-[`escopo-alimentadores.md`](escopo-alimentadores.md)). Quase todo o telecomando está em religadores,
-disjuntores e chaves a gás.
+Totais: 64.745 chaves MT, 12.754 NA (`P_N_OPE = "A"`), 7.726 telecomandadas. Das NA, **5.144** são
+interligação entre alimentadores pelo critério geométrico de 2 m implementado em
+`ingest/interligacoes.py` (5.833 pares chave × CTMT vizinho; 896 telecomandadas; 393 dentro do polígono
+de uma `SUB`, quase todas disjuntores `29` de saída de alimentadores da mesma SE; 296 chaves tocam 2
+CTMT e 139 tocam ≥ 3 — barramentos). 1.403 dos 1.802 CTMT têm ao menos uma interligação. Os números da
+análise preliminar em [`escopo-alimentadores.md`](escopo-alimentadores.md) (5.031 / 875) vieram de um
+script anterior; os de referência são os do comando `inventario`. Quase todo o telecomando está em
+religadores, disjuntores e chaves a gás. Regras de junção e ressalvas em
+[`bdgd-relacoes.md`](bdgd-relacoes.md).
 
 ### Outros
 
