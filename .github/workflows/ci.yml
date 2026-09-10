@@ -23,3 +23,21 @@ jobs:
         run: uv run ruff check . && uv run ruff format --check .
       - name: Testes
         run: uv run pytest
+
+  console:
+    # o console só é publicado pelo pages.yml após o merge; aqui garantimos que compila no PR
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+      - name: Instalar
+        run: npm ci
+      - name: Build (tsc --noEmit + vite build)
+        run: npm run build

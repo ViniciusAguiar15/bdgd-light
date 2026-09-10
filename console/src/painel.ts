@@ -3,6 +3,7 @@
  */
 import type { Map as MapaLibre } from "maplibre-gl";
 import { GRUPOS, type Grupo } from "./camadas";
+import type { Cenario } from "./cenarios";
 
 export interface Base {
   id: string;
@@ -18,6 +19,28 @@ function el<K extends keyof HTMLElementTagNameMap>(
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
   e.append(...filhos);
   return e;
+}
+
+/** Seletor de cenário (tiles + estado + vista inicial); `ativo` null = tiles avulsos via ?tiles=. */
+export function montarCenarios(
+  cenarios: Cenario[],
+  ativo: string | null,
+  aoEscolher: (id: string) => void,
+) {
+  const raiz = document.getElementById("cenarios")!;
+  raiz.replaceChildren();
+  for (const c of cenarios) {
+    const input = el("input", { type: "radio", name: "cenario", value: c.id });
+    input.checked = c.id === ativo;
+    input.addEventListener("change", () => aoEscolher(c.id));
+    const lbl = el("label", { class: "item" }, input, c.titulo);
+    lbl.title = c.descricao;
+    raiz.append(lbl);
+  }
+  const atual = cenarios.find((c) => c.id === ativo);
+  raiz.append(
+    el("p", { class: "dica", id: "cenario-descricao" }, atual?.descricao ?? "tiles avulsos (?tiles=)"),
+  );
 }
 
 export function montarBases(mapa: MapaLibre, bases: Base[], ativa: string) {

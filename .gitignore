@@ -7,8 +7,11 @@ data/
 *.gpkg
 !tests/fixtures/*.gpkg
 *.pmtiles
-# amostra do console (cluster TQR, 1,4 MB); os GeoJSON intermediários do `tiles` não
+# amostras do console (< 1,5 MB cada: cluster TQR e os clusters Tijuca/Ipanema do escopo v3); os
+# GeoJSON intermediários do `tiles` não
 !console/public/tiles/exemplo.pmtiles
+!console/public/tiles/exemplo_tijuca.pmtiles
+!console/public/tiles/exemplo_ipanema.pmtiles
 console/public/tiles/*_geojson/
 out/
 

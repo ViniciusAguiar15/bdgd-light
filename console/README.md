@@ -16,11 +16,26 @@ hospedagem estática (GitHub Pages inclusive). Decisões de projeto em
 ```bash
 cd console
 npm ci                # Node ≥ 20 (testado com 22)
-npm run dev           # http://localhost:5173 — abre o cluster TQR de exemplo (public/tiles/exemplo.pmtiles)
+npm run dev           # http://localhost:5173 — abre o cenário Tijuca (public/tiles/exemplo_tijuca.pmtiles)
 npm run build         # tsc --noEmit + vite build → dist/
 npm run preview       # serve dist/ (use o mesmo VITE_BASE do build)
-npm run smoke         # abre o Chrome headless, espera o mapa, conta feições e salva smoke.png
+npm run smoke         # abre o Chrome headless (?cenario=tijuca), espera o mapa, conta feições e salva smoke.png
 ```
+
+## Cenários da demo
+
+O painel tem um seletor **Cenário** (`src/cenarios.ts`) que troca tiles, estado sobreposto e
+enquadramento de uma vez (`?cenario=<id>`):
+
+| id | cluster | tiles / estado | o que mostra |
+|---|---|---|---|
+| `tijuca` (padrão) | ALC9925, ALC9946, URG29983, RCP9882 — SEs Aldeia Campista, Uruguai e Rio Comprido | `exemplo_tijuca.pmtiles` (0,98 MB) / `estado_tijuca_falta.geojson` | falta no tronco de CABOFRIO (`11304252`): 4.036 UCBT desligados e três ties telecomandadas de restauração, uma por SE |
+| `ipanema` | PTS0001, PTS9088, PTS9924, PTS4022 — SE Posto Seis (subterrâneo) | `exemplo_ipanema.pmtiles` (0,78 MB) / `estado_ipanema_falta.geojson` | falta no tronco de PTS0001 (`11409068`): cenário *negativo*, nenhuma chave NA de campo restaura |
+| `taquara` | TQR0007, TQR33859, TQR33862 (regressão) | `exemplo.pmtiles` (1,4 MB) / `estado_TQR0007_falta.geojson` | falta em PARNAIBA (`254862954`), cenário da v2 |
+
+Os arquivos vêm de `bdgd-light recortar` → `bdgd-light tiles` e `bdgd-light grafo --falha … --geojson`
+(clusters em [`docs/escopo-cidade.md`](../docs/escopo-cidade.md)); `?tiles=` sem `?cenario=` abre
+qualquer PMTiles sem estado, e `?estado=none` desliga o estado do cenário.
 
 O `exemplo.pmtiles` (1,4 MB, versionado) é o cluster **TQR0007 + TQR33859 + TQR33862** de
 `docs/escopo-alimentadores.md`; `public/exemplos/estado_TQR0007_falta.geojson` é a saída de
@@ -47,9 +62,10 @@ a camada `UCBT` agregada por poste) e chama o [tippecanoe](https://github.com/fe
 
 | Parâmetro | Exemplo | Efeito |
 |---|---|---|
-| `?tiles=` | `?tiles=tiles/TQR.pmtiles` ou uma URL absoluta | PMTiles a abrir (padrão `tiles/exemplo.pmtiles`); relativo à base do site |
-| `?estado=` | `?estado=exemplos/estado_TQR0007_falta.geojson` | GeoJSON de `bdgd-light grafo --geojson` sobreposto (trechos vermelhos = desenergizados) |
-| `#z/lat/lon` | `#14/-22.9144/-43.4005` | posição do mapa (MapLibre `hash: true`); sem hash, enquadra o bbox do PMTiles |
+| `?cenario=` | `?cenario=ipanema` | cenário da demo (`tijuca` padrão, `ipanema`, `taquara`): tiles + estado + centro/zoom |
+| `?tiles=` | `?tiles=tiles/TQR.pmtiles` ou uma URL absoluta | PMTiles a abrir (sem `?cenario=`, desliga o cenário padrão e enquadra o bbox); relativo à base do site |
+| `?estado=` | `?estado=exemplos/estado_TQR0007_falta.geojson`, `?estado=none` | GeoJSON de `bdgd-light grafo --geojson` sobreposto (trechos vermelhos = desenergizados); `none` desliga o do cenário |
+| `#z/lat/lon` | `#14/-22.9144/-43.4005` | posição do mapa (MapLibre `hash: true`); sem hash, usa o centro do cenário ou enquadra o bbox do PMTiles |
 
 O painel lateral lista as camadas do PMTiles (`vector_layers` + contagens de `tilestats`) com
 liga/desliga, troca o fundo (satélite Esri, OpenStreetMap ou fundo escuro sem base) e mostra os atributos da
@@ -57,12 +73,11 @@ feição clicada. Ties aparecem como losangos rotulados com o CTMT vizinho.
 
 ## Publicação (GitHub Pages)
 
-`.github/workflows/pages.yml` roda a cada push em `main` que toque `console/`: `npm ci`,
-`npm run build` com `VITE_BASE=/bdgd-light/` e, **se o Pages estiver habilitado no repositório**,
-publica `dist/` em `https://viniciusaguiar15.github.io/bdgd-light/`. Enquanto o repositório for
-privado num plano sem Pages (a API devolve `422 Your current plan does not support GitHub Pages`),
-o workflow só compila e anexa o artefato `console-dist` à execução. Para habilitar: tornar o repo
-público (ou mudar de plano) → Settings › Pages › Source: *GitHub Actions* → reexecutar o workflow.
+`.github/workflows/pages.yml` roda a cada push em `main` que toque `console/` (e por
+`workflow_dispatch`): `npm ci`, `npm run build` com `VITE_BASE=/bdgd-light/` e publica `dist/` em
+**<https://viniciusaguiar15.github.io/bdgd-light/>** (Settings › Pages › Source: *GitHub Actions*,
+habilitado em 2026-09-10). Se o Pages for desabilitado, o workflow só compila e anexa o artefato
+`console-dist` à execução.
 
 ## Estrutura
 
@@ -70,12 +85,14 @@ público (ou mudar de plano) → Settings › Pages › Source: *GitHub Actions*
 console/
 ├── index.html            mapa + painel lateral
 ├── src/main.ts           protocolo pmtiles, estilo, popups, parâmetros da URL
+├── src/cenarios.ts       cenários da demo (tiles + estado + centro/zoom por id)
 ├── src/camadas.ts        simbologia por camada da BDGD (cores por TEN_KV, chaves, ties, BT, UCBT)
 ├── src/icones.ts         ícones desenhados em canvas (chave NA/NF, telecomandada, tie, SE)
-├── src/painel.ts         painel: camadas, fundo, atributos, resumo do estado
+├── src/painel.ts         painel: cenários, camadas, fundo, atributos, resumo do estado
 ├── src/estado.ts         sobreposição do GeoJSON de `bdgd-light grafo`
 ├── scripts/smoke.mjs     smoke test via Chrome DevTools Protocol (sem dependências)
-└── public/tiles/exemplo.pmtiles, public/exemplos/estado_TQR0007_falta.geojson
+└── public/tiles/exemplo_{tijuca,ipanema}.pmtiles, exemplo.pmtiles (TQR);
+    public/exemplos/estado_{tijuca,ipanema,TQR0007}_falta.geojson
 ```
 
 ## Armadilhas conhecidas

@@ -4,8 +4,10 @@
  * do grafo (`?estado=`).
  *
  * Parâmetros de URL:
+ *   ?cenario=tijuca|ipanema|taquara  cenário da demo (tiles + estado + vista inicial; ver cenarios.ts)
  *   ?tiles=tiles/X.pmtiles   caminho (relativo à base do site) ou URL absoluta do PMTiles
  *   ?estado=URL.geojson      GeoJSON de `bdgd-light grafo --geojson`
+ *   ?estado=none             não carrega o estado do cenário
  */
 import {
   addProtocol,
@@ -26,6 +28,7 @@ import { PMTiles, Protocol } from "pmtiles";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
 import { FONTE, GRUPOS, INTERATIVAS } from "./camadas";
+import { CENARIO_PADRAO, CENARIOS, cenarioPorId } from "./cenarios";
 import { carregarEstado } from "./estado";
 import { registrarIcones } from "./icones";
 import {
@@ -33,12 +36,12 @@ import {
   infoTiles,
   montarBases,
   montarCamadas,
+  montarCenarios,
   mostrarErro,
   subtitulo,
   type Base,
 } from "./painel";
 
-const TILES_PADRAO = "tiles/exemplo.pmtiles";
 const GLIFOS = "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
 const FONTE_TEXTO = ["Open Sans Semibold"];
 
@@ -61,13 +64,26 @@ interface Metadata {
 
 const params = new URLSearchParams(location.search);
 const base = new URL(import.meta.env.BASE_URL, location.href);
-const tilesParam = params.get("tiles") ?? TILES_PADRAO;
+// sem ?cenario= nem ?tiles=, abre o cenário padrão; ?tiles=/?estado= explícitos prevalecem
+const cenario = cenarioPorId(params.get("cenario")) ?? (params.has("tiles") ? undefined : cenarioPorId(CENARIO_PADRAO));
+const tilesParam = params.get("tiles") ?? cenario?.tiles ?? CENARIOS[CENARIOS.length - 1].tiles;
 const tilesUrl = new URL(tilesParam, base).href;
-const estadoParam = params.get("estado");
+const estadoBruto = params.get("estado") ?? cenario?.estado ?? null;
+const estadoParam = estadoBruto === "none" ? null : estadoBruto;
+
+montarCenarios(CENARIOS, cenario?.id ?? null, (id) => {
+  const u = new URL(location.href);
+  u.search = "";
+  u.searchParams.set("cenario", id);
+  u.hash = "";
+  location.href = u.href;
+});
 
 formTiles(tilesParam, (novo) => {
   const u = new URL(location.href);
-  u.searchParams.set("tiles", novo || TILES_PADRAO);
+  u.searchParams.delete("cenario");
+  u.searchParams.delete("estado");
+  u.searchParams.set("tiles", novo || CENARIOS[CENARIOS.length - 1].tiles);
   u.hash = "";
   location.href = u.href;
 });
@@ -82,8 +98,8 @@ protocolo.add(pm);
 const mapa = new MapaLibre({
   container: "mapa",
   hash: true,
-  center: [-43.33, -22.95],
-  zoom: 10,
+  center: cenario?.centro ?? [-43.33, -22.95],
+  zoom: cenario?.zoom ?? 10,
   minZoom: 8,
   maxZoom: 19,
   attributionControl: { compact: false },
@@ -162,7 +178,7 @@ function dicaErroTiles(motivo: string): string {
   return (
     `Não foi possível abrir ${tilesUrl}\n${motivo}\n\n` +
     "Gere o arquivo com:\n  uv run bdgd-light tiles --gpkg data/feeders/<cluster>.gpkg " +
-    "--out console/public/tiles/exemplo.pmtiles\nou aponte ?tiles= para outro PMTiles."
+    `--out console/public/${tilesParam}\nou escolha outro cenário / aponte ?tiles= para outro PMTiles.`
   );
 }
 
@@ -177,7 +193,8 @@ async function carregarTiles() {
       `zoom ${cab.minZoom}–${cab.maxZoom} · bbox ${cab.minLon.toFixed(4)}, ${cab.minLat.toFixed(4)}, ` +
         `${cab.maxLon.toFixed(4)}, ${cab.maxLat.toFixed(4)}`,
     );
-    if (!location.hash)
+    // sem hash na URL: cenário → vista inicial no bairro; senão enquadra o bbox do PMTiles
+    if (!location.hash && !cenario)
       mapa.fitBounds(
         [
           [cab.minLon, cab.minLat],
