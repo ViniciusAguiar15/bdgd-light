@@ -1013,6 +1013,157 @@ def aprovar(
         _erro(str(erro))
 
 
+@app.command()
+def sim(
+    cluster: Annotated[
+        str | None,
+        typer.Option(
+            "--cluster",
+            help="Cluster alvo: nome da demo (tijuca, ipanema, taquara) ou caminho de um "
+            "GeoPackage do recorte. Com --cenario, é deduzido do cenário.",
+        ),
+    ] = None,
+    cenario: Annotated[
+        str | None,
+        typer.Option(
+            "--cenario",
+            help="Cenário nomeado: tijuca_cabofrio_tronco, ipanema_9210, taquara_bocari "
+            "ou aleatorio.",
+        ),
+    ] = None,
+    emitir: Annotated[int, typer.Option("--emitir", min=1, help="Quantos eventos gerar.")] = 1,
+    tipo: Annotated[
+        str | None,
+        typer.Option(
+            "--tipo",
+            help="falta (permanente), transitoria, pico (de carga) ou chave (indisponível); "
+            "sem ele, sorteia com os pesos do cenário aleatório.",
+        ),
+    ] = None,
+    trecho: Annotated[
+        str | None,
+        typer.Option("--trecho", help="COD_ID do trecho SSDMT em falta (senão sorteia por km)."),
+    ] = None,
+    ctmt: Annotated[
+        str | None, typer.Option("--ctmt", help="CTMT do pico de carga (senão sorteia).")
+    ] = None,
+    chave: Annotated[
+        str | None,
+        typer.Option("--chave", help="Chave telecomandada indisponível (senão sorteia)."),
+    ] = None,
+    seed: Annotated[
+        int | None, typer.Option("--seed", help="Semente: mesma semente, mesmos eventos.")
+    ] = None,
+    fila: Annotated[
+        Path, typer.Option("--fila", help="Arquivo JSONL da fila de eventos (só acréscimo).")
+    ] = Path("data/eventos/eventos.jsonl"),
+    feeders: Annotated[
+        Path, typer.Option("--feeders", help="Pasta dos recortes (GeoPackages).")
+    ] = Path("data/feeders"),
+    listar: Annotated[
+        bool, typer.Option("--listar", help="Só lista os cenários nomeados.")
+    ] = False,
+    mostrar: Annotated[
+        int | None, typer.Option("--mostrar", help="Só mostra os últimos N eventos da fila.")
+    ] = None,
+    sem_publicar: Annotated[
+        bool, typer.Option("--sem-publicar", help="Gera e imprime sem anexar à fila.")
+    ] = False,
+    json_: Annotated[
+        bool, typer.Option("--json", help="Imprime os eventos como JSON Lines (para o agente).")
+    ] = False,
+) -> None:
+    """Simulador de eventos sobre um cluster: falta permanente/transitória em trecho MT (sorteada
+    ponderando por km), pico de carga (loadmult) e chave telecomandada indisponível. Cada evento vai
+    para a fila JSONL que o agente consome e o console mostra. Reprodutível por --seed."""
+    from bdgd_light.mcp_server import resolver_cluster
+    from bdgd_light.sim import CENARIOS, Evento, FilaEventos, Simulador, normalizar_tipo
+
+    fila_eventos = FilaEventos(fila)
+    if listar:
+        tabela = Table("cenário", "cluster", "tipo", "alvo", "descrição", title="Cenários nomeados")
+        for c in CENARIOS.values():
+            tabela.add_row(
+                c.nome, c.cluster or "—", c.tipo or "sorteado", c.trecho or "—", c.descricao
+            )
+        console.print(tabela)
+        return
+    if mostrar is not None:
+        eventos = fila_eventos.listar()[-mostrar:] if mostrar else []
+        if not eventos:
+            console.print(f"[yellow]fila vazia: {fila}[/]")
+            return
+        _imprimir_eventos(eventos, json_, titulo=f"últimos {len(eventos)} de {len(fila_eventos)}")
+        return
+    if cenario is not None and cenario not in CENARIOS:
+        _erro(f"cenário {cenario!r} desconhecido; use {', '.join(CENARIOS)}")
+        return
+    if tipo is not None:
+        try:
+            tipo = normalizar_tipo(tipo)
+        except ValueError as erro:
+            _erro(str(erro))
+            return
+    alvo = cluster or (CENARIOS[cenario].cluster if cenario else None)
+    if alvo is None:
+        _erro("informe --cluster (ou um --cenario que o defina)")
+        return
+    rede = None
+    try:
+        gpkg = resolver_cluster(alvo, feeders)
+        rede = Cluster.from_gpkg(gpkg)
+        nome = gpkg.stem
+    except FileNotFoundError as erro:
+        if cenario is None or cenario == "aleatorio":
+            _erro(str(erro))
+            return
+        nome = alvo
+        console.print(f"[yellow]aviso:[/] {erro}; evento do cenário sem enriquecimento da rede")
+    except DataSourceError as erro:
+        _erro(str(erro))
+        return
+    simulador = Simulador(rede, nome, seed=seed)
+    eventos: list[Evento] = []
+    try:
+        for _ in range(emitir):
+            if cenario is not None:
+                ev = simulador.cenario(cenario)
+            else:
+                ev = simulador.gerar(tipo, trecho=trecho, ctmt=ctmt, chave=chave)
+            eventos.append(ev if sem_publicar else fila_eventos.publicar(ev))
+    except (ValueError, TrechoInexistenteError) as erro:
+        _erro(str(erro))
+        return
+    _imprimir_eventos(eventos, json_, titulo=None if sem_publicar else f"publicados em {fila}")
+
+
+def _imprimir_eventos(eventos, como_json: bool, titulo: str | None) -> None:
+    if como_json:
+        import json
+
+        for ev in eventos:
+            print(json.dumps(ev.to_dict(), ensure_ascii=False, sort_keys=True))
+        return
+    tabela = Table("id", "hora", "tipo", "alvo", "ctmt", "detalhes", title=titulo)
+    for ev in eventos:
+        d = ev.detalhes
+        if ev.tipo.startswith("falta"):
+            sem = d.get("sem_tensao_se_religador_abrir", {}).get("clientes", {})
+            resumo = f"religador {d.get('religador') or '?'}"
+            if sem:
+                resumo += f" · {sem.get('total', 0)} clientes sem tensão"
+            if d.get("religou"):
+                resumo += f" · religou em {d.get('tempo_morto_s')} s"
+        elif ev.tipo == "pico_carga":
+            resumo = f"loadmult {d.get('loadmult')} por {d.get('duracao_min')} min"
+        else:
+            resumo = f"{d.get('motivo', '')} ({d.get('normal') or '?'}, {d.get('estado') or '?'})"
+        if ev.cenario:
+            resumo = f"[{ev.cenario}] " + resumo
+        tabela.add_row(ev.id or "—", ev.hora[11:19], ev.tipo, ev.alvo, ev.ctmt or "—", resumo)
+    console.print(tabela)
+
+
 def _resumir(valor, limite: int = 60) -> str:
     if isinstance(valor, dict) and "tipo" in valor:  # resposta de uma rodada
         if valor.get("tool_calls"):
