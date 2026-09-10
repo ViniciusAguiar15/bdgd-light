@@ -104,6 +104,25 @@ existe opção viável. A recusa vira `{"erro", "problemas", "avisos"}` para o m
 `hash_auditoria` (hash do registro `agente.fim`), `exemplos`, `erro`. `bdgd-light agente --json`
 imprime isso; `--saida arquivo.json` grava.
 
+### Compactação dos retornos para o modelo (`agent/compactar.py`)
+
+Pedido da revisão PR-14: a `SessaoCOD`/MCP continua devolvendo os dados completos (console,
+verificador e clientes MCP precisam deles), mas a mensagem `tool` que vai ao LLM é reduzida —
+listas de nós viram contagens (`n_desligados`, `zona.n_nos`), manobras viram `"abrir 11035901"`,
+`restore_options` traz as 5 primeiras opções detalhadas (`top_n_opcoes`) e as demais em uma linha
+(`outras_opcoes`: chave, fonte, clientes, viável, margem, primeiro motivo), `get_topology` troca a
+lista de chaves por contagens (`chaves_resumo`; `get_switch_state` para uma chave), `run_powerflow`
+perde `comandos_dss`/`master`/`ajustes`, e todo float é arredondado a 4 casas. Medido no
+`tijuca_cabofrio_tronco` com o operador fake (`chars_ferramentas` em `Execucao.to_dict()`):
+
+| | locate_fault | isolate_fault | restore_options | propose_plan | total |
+|---|---|---|---|---|---|
+| íntegro (`--sem-compactar`) | 1.546 | 7.876 | 9.529 | 1.578 | **20.529** chars |
+| compactado (padrão) | 814 | 437 | 3.850 | 1.566 | **6.667** chars (−68 %) |
+
+`get_topology(com_chaves=True)` do cluster inteiro cai de 39,4 k para ≈ 1 k chars. `Execucao.compactado`
+registra o modo; o benchmark (#36) compara tokens e acerto com e sem compactação.
+
 ### Operador fake (`fake_operador()`)
 
 `FakeLLMClient` com regra que lê o histórico e segue o fluxo do prompt: falta permanente →
@@ -125,7 +144,7 @@ uv run bdgd-light agente --cenario taquara_bocari --provider fake --json --saida
 
 Opções: `--provider openai|gemini|ollama|fake`, `--modelo`, `--max-rodadas 8`,
 `--replanejar 2`, `--top-k 3`, `--exemplos outro.yaml`, `--sem-score` (só topologia; o verificador
-não checa tensão/corrente), `--vmin/--vmax`, `--feeders`, `--dss-out`, `--estado data/agent`
+não checa tensão/corrente), `--sem-compactar` (retornos íntegros ao modelo), `--vmin/--vmax`, `--feeders`, `--dss-out`, `--estado data/agent`
 (mesma pasta do `mcp` e do `aprovar`: a proposta aparece em `bdgd-light aprovar`), `--dia/--mes`,
 `--seed`, `--json`, `--saida`. Sai com código 1 quando a execução termina com `erro` (sem proposta
 em falta permanente, rodadas esgotadas, provedor indisponível).

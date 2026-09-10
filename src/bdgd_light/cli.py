@@ -1227,6 +1227,14 @@ def agente(
             "checa tensão/corrente).",
         ),
     ] = False,
+    sem_compactar: Annotated[
+        bool,
+        typer.Option(
+            "--sem-compactar",
+            help="Envia ao modelo os retornos íntegros das ferramentas (padrão: compactados — "
+            "contagens no lugar de listas de nós, top-N opções; ver agent/compactar.py).",
+        ),
+    ] = False,
     vmin: Annotated[float, typer.Option("--vmin", help="Limite inferior de tensão (pu).")] = 0.93,
     vmax: Annotated[float, typer.Option("--vmax", help="Limite superior de tensão (pu).")] = 1.05,
     fila: Annotated[
@@ -1324,6 +1332,7 @@ def agente(
         vmax=vmax,
         exigir_score=not sem_score,
         provider=provider,
+        compactar=not sem_compactar,
     )
     if not json_:
         console.print(
@@ -1406,6 +1415,9 @@ def serve(
     sem_score: Annotated[
         bool, typer.Option("--sem-score", help="Sem gêmeo OpenDSS em restore_options.")
     ] = False,
+    sem_compactar: Annotated[
+        bool, typer.Option("--sem-compactar", help="Retornos íntegros das ferramentas ao modelo.")
+    ] = False,
     vmin: Annotated[float, typer.Option("--vmin")] = 0.93,
     vmax: Annotated[float, typer.Option("--vmax")] = 1.05,
     fila: Annotated[
@@ -1477,6 +1489,7 @@ def serve(
             vmax=vmax,
             exigir_score=not sem_score,
             provider=provider,
+            compactar=not sem_compactar,
         )
         agente = AgenteEmSegundoPlano(orq)
         console.print(

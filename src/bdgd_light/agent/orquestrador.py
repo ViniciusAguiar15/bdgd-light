@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from bdgd_light.agent.audit import AuditLog
+from bdgd_light.agent.compactar import TOP_N_OPCOES, compactar
 from bdgd_light.agent.llm import (
     Conversa,
     FakeLLMClient,
@@ -521,6 +522,13 @@ class Execucao:
     exemplos: list[str] = field(default_factory=list)
     erro: str | None = None
     inicio: str = ""
+    compactado: bool = True
+
+    @property
+    def chars_ferramentas(self) -> int:
+        """Tamanho (caracteres de JSON) dos resultados de ferramenta enviados ao modelo — proxy de
+        tokens quando o provedor não informa uso (fake)."""
+        return sum(int(f.get("chars") or 0) for f in self.ferramentas)
 
     @property
     def n_ferramentas(self) -> int:
@@ -552,6 +560,8 @@ class Execucao:
             "segundos_llm": round(self.segundos_llm, 3),
             "segundos_ferramentas": round(self.segundos_ferramentas, 3),
             "segundos_total": round(self.segundos_total, 3),
+            "chars_ferramentas": self.chars_ferramentas,
+            "compactado": self.compactado,
             "hash_auditoria": self.hash_auditoria,
             "exemplos": list(self.exemplos),
             "erro": self.erro,
@@ -582,9 +592,13 @@ class Orquestrador:
         audit: AuditLog | None = None,
         provider: str | None = None,
         ferramentas: Sequence[str] = FERRAMENTAS_MODELO,
+        compactar: bool = True,
+        top_n_opcoes: int = TOP_N_OPCOES,
     ):
         self.sessao = sessao
         self.cliente = cliente
+        self.compactar = compactar
+        self.top_n_opcoes = top_n_opcoes
         self.exemplos = list(carregar_exemplos() if exemplos is None else exemplos)
         self.top_k = top_k
         self.max_rodadas = max_rodadas
@@ -733,6 +747,13 @@ class Orquestrador:
                     }
                 )
                 raise
+            if nome == "restore_options":
+                self._opcoes = list(resultado.get("opcoes") or [])
+            elif nome == "isolate_fault":
+                self._isolamento = dict(resultado)
+            elif nome == "inject_fault":
+                self._opcoes = self._isolamento = None
+            para_modelo = self._para_modelo(nome, resultado)
             self._chamadas.append(
                 {
                     "ferramenta": nome,
@@ -740,18 +761,20 @@ class Orquestrador:
                     "ok": True,
                     "resumo": _resumir(resultado),
                     "segundos": round(time.perf_counter() - inicio, 3),
+                    "chars": len(json.dumps(para_modelo, ensure_ascii=False, default=str)),
                 }
             )
-            if nome == "restore_options":
-                self._opcoes = list(resultado.get("opcoes") or [])
-            elif nome == "isolate_fault":
-                self._isolamento = dict(resultado)
-            elif nome == "inject_fault":
-                self._opcoes = self._isolamento = None
-            return resultado
+            return para_modelo
 
         executar.__name__ = nome
         return executar
+
+    def _para_modelo(self, nome: str, resultado: Any) -> Any:
+        """O que o modelo recebe: o resultado compactado (padrão) ou íntegro (``--sem-compactar``).
+        O orquestrador e o verificador sempre trabalham com o resultado íntegro."""
+        if not self.compactar:
+            return resultado
+        return compactar(nome, resultado, top_n=self.top_n_opcoes)
 
     def _propor(self, chave: str | None = None, justificativa: str = "") -> dict[str, Any]:
         argumentos = {"chave": chave, "justificativa": justificativa}
@@ -792,7 +815,11 @@ class Orquestrador:
         resultado = self.sessao.propose_plan(chave=chave, justificativa=justificativa)
         resultado["verificador"] = veredito.to_dict()
         self._proposta, self._veredito = resultado, veredito
-        registrar(ok=True, resumo=_resumir(resultado))
+        registrar(
+            ok=True,
+            resumo=_resumir(resultado),
+            chars=len(json.dumps(resultado, ensure_ascii=False, default=str)),
+        )
         if self.audit is not None:
             self.audit.registrar(
                 "agente.verificador.ok", proposta=resultado["id"], chave=chave, **veredito.to_dict()
@@ -825,6 +852,7 @@ class Orquestrador:
             modelo=getattr(self.cliente, "modelo", None),
             exemplos=[e.id for e in escolhidos],
             inicio=datetime.now(UTC).isoformat(timespec="seconds"),
+            compactado=self.compactar,
         )
         historico: list[Message] = [
             Message.system(montar_prompt_sistema(escolhidos)),
@@ -1098,9 +1126,15 @@ def _resumo_falta(feitas: Sequence[tuple[str, dict, Any]]) -> str:
     opt = por_nome.get("restore_options", {})
     prop = por_nome.get("propose_plan")
     sem = (loc.get("sem_tensao") or {}).get("clientes", {})
+    restam = (iso.get("clientes_desligados") or {}).get("total")
     linhas = [
         f"Falta permanente no trecho {loc.get('trecho', '?')} ({loc.get('ctmt', '?')}), religador "
-        f"{loc.get('religador', '?')} aberto: {sem.get('total', '?')} clientes sem tensão.",
+        f"{loc.get('religador', '?')} aberto: {sem.get('total', '?')} clientes sem tensão"
+        + (
+            f"; após isolar a falta e religar o tronco são, {restam} continuam sem tensão."
+            if restam is not None
+            else "."
+        ),
         f"Isolamento (fronteira {', '.join(iso.get('chaves') or []) or '—'}): "
         f"{_sequencia_texto(iso.get('sequencia')) if iso.get('sequencia') else 'já isolada'}"
         + ("; religar o tronco são" if iso.get("religar_apos_isolar") else "")
@@ -1139,4 +1173,6 @@ def _resumo_falta(feitas: Sequence[tuple[str, dict, Any]]) -> str:
 def _sequencia_texto(manobras: Any) -> str:
     if not manobras:
         return "—"
-    return ", ".join(f"{m.get('acao')} {m.get('chave')}" for m in manobras)
+    return ", ".join(
+        m if isinstance(m, str) else f"{m.get('acao')} {m.get('chave')}" for m in manobras
+    )
