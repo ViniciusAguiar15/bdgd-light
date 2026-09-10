@@ -14,6 +14,40 @@ from pathlib import Path
 
 _DIAS = ("DU", "SA", "DO")
 _RE_MASTER = re.compile(r"^Master_(?P<dia>DU|SA|DO)(?P<mes>\d{2})_", re.IGNORECASE)
+# unidade de banco escrita pelo bdgd2opendss como trifásica (phases=3) com barras de 2 nós
+_RE_UNIDADE_BANCO = re.compile(
+    r'^(?P<ini>New\s+"?Transformer\.[^"\s]+"?\s+)phases=3(?P<meio>\s+windings=2\s+'
+    r'buses=\[\s*"?[^"\s.]+\.\d\.\d"?\s+"?[^"\s.]+\.\d\.\d"?\s*\][^\n]*?kvs=\[)'
+    r"(?P<kv1>[\d.]+)\s+(?P<kv2>[\d.]+)\]",
+    re.IGNORECASE,
+)
+
+
+def corrigir_bancos_monofasicos(pasta: str | Path) -> int:
+    """Corrige, nos ``TransformadorMTMTMTBT_*.dss`` de ``pasta``, as unidades de bancos de
+    transformadores monofásicos (``UNTRMT.TIP_TRAFO`` ``DF``/``DA``) e devolve quantas mudou.
+
+    O bdgd2opendss escreve cada unidade (``TRF_<cod>A/B/C``) como ``phases=3 windings=2`` com
+    barras de **dois** nós (``MT.2.3`` / ``BT.2.4``) e ``kvs=[13.2 0.22]``. Num elemento trifásico
+    o OpenDSS liga o terceiro condutor ao nó 0 (terra), o que aterra um vértice do delta: no cluster
+    Tijuca isso dava 64 % de perdas, 0,2 pu na BT e trafos a 1.100 % de carga. Uma unidade ligada
+    entre duas fases MT e fase–neutro BT é ``phases=1`` com ``kvs=[13.2 0.127]`` (tensão do
+    enrolamento). A função é idempotente e mantém o resto da linha.
+    """
+    n = 0
+    for arquivo in sorted(Path(pasta).glob("TransformadorMTMTMTBT_*.dss")):
+        texto = arquivo.read_text(encoding="utf-8", errors="replace")
+
+        def _troca(m: re.Match) -> str:
+            nonlocal n
+            n += 1
+            kv2 = float(m["kv2"]) / 3**0.5
+            return f"{m['ini']}phases=1{m['meio']}{m['kv1']} {kv2:.3f}]"
+
+        novo = "\n".join(_RE_UNIDADE_BANCO.sub(_troca, ln) for ln in texto.split("\n"))
+        if novo != texto:
+            arquivo.write_text(novo, encoding="utf-8")
+    return n
 
 
 def localizar_pasta(out: str | Path, ctmt: str) -> Path | None:
@@ -59,6 +93,7 @@ def converter(gdb: str | Path, ctmt: str, out: str | Path) -> tuple[Path, float]
     out = Path(out)
     existente = localizar_pasta(out, ctmt)
     if existente and listar_masters(existente):
+        corrigir_bancos_monofasicos(existente)  # idempotente: conserta conversões antigas
         return existente, 0.0
     if not gdb.is_dir():
         raise FileNotFoundError(f"{gdb} não é um diretório .gdb")
@@ -76,4 +111,5 @@ def converter(gdb: str | Path, ctmt: str, out: str | Path) -> tuple[Path, float]
             f"bdgd2opendss terminou sem gerar Master para {ctmt} em {out} "
             "(CTMT inexistente na BDGD ou tabela obrigatória ausente; veja o log acima)."
         )
+    corrigir_bancos_monofasicos(pasta)
     return pasta, time.perf_counter() - t0
