@@ -14,7 +14,7 @@ atualização de estado em tempo real.
   camadas para GeoJSON (EPSG:4326) e chama `tippecanoe` (documentar instalação; falhar com mensagem
   clara se não estiver no PATH).
 - Estilo por camada: SSDMT por tensão, SSDBT, UNTRMT (círculos), UNSEMT (ícone NA/NF), UCBT (pontos
-  pequenos, só em zoom alto), SUB. Popup de atributos e painel lateral com toggle de camadas.
+  pequenos, só em zoom alto), UNTRAT (subestação). Popup de atributos e painel lateral com toggle de camadas.
 - Workflow `.github/workflows/pages.yml` que faz build do console e publica no GitHub Pages (tiles
   de exemplo pequenos podem ser commitados em `console/public/tiles/exemplo.pmtiles`, < 5 MB).
 

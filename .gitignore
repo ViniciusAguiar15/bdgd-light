@@ -5,6 +5,7 @@ data/
 *.zip
 *.parquet
 *.gpkg
+!tests/fixtures/*.gpkg
 *.pmtiles
 out/
 

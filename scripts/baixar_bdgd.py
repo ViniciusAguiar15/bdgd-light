@@ -8,6 +8,7 @@ Uso:
 
 O download mostra progresso e é retomado (HTTP Range) se o .zip parcial existir.
 """
+
 import argparse
 import os
 import sys
@@ -32,7 +33,7 @@ def baixar(url: str, destino: str) -> None:
         resp_ctx = urllib.request.urlopen(req)
     except urllib.error.HTTPError as e:
         if e.code == 416 and parcial:
-            print(f"Arquivo já completo ({parcial/1e9:.2f} GB) — pulando download.")
+            print(f"Arquivo já completo ({parcial / 1e9:.2f} GB) — pulando download.")
             return
         raise
     with resp_ctx as resp:
@@ -51,9 +52,11 @@ def baixar(url: str, destino: str) -> None:
                 baixado += len(bloco)
                 if total:
                     pct = baixado * 100 / total
-                    sys.stdout.write(f"\r  {baixado/1e9:.2f} GB / {total/1e9:.2f} GB ({pct:.1f}%)")
+                    sys.stdout.write(
+                        f"\r  {baixado / 1e9:.2f} GB / {total / 1e9:.2f} GB ({pct:.1f}%)"
+                    )
                 else:
-                    sys.stdout.write(f"\r  {baixado/1e9:.2f} GB")
+                    sys.stdout.write(f"\r  {baixado / 1e9:.2f} GB")
                 sys.stdout.flush()
     print("\nDownload concluído.")
 
@@ -70,11 +73,17 @@ def extrair(zip_path: str) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--dist", default="light", help="distribuidora (light, cemig)")
     ap.add_argument("--ano", type=int, default=2025, help="ano de referência da BDGD")
-    ap.add_argument("--id", dest="item_id", default=None, help="item ID do ArcGIS (ignora --dist/--ano)")
-    ap.add_argument("--so-extrair", action="store_true", help="não baixa, só extrai o zip existente")
+    ap.add_argument(
+        "--id", dest="item_id", default=None, help="item ID do ArcGIS (ignora --dist/--ano)"
+    )
+    ap.add_argument(
+        "--so-extrair", action="store_true", help="não baixa, só extrai o zip existente"
+    )
     args = ap.parse_args()
 
     if args.item_id:

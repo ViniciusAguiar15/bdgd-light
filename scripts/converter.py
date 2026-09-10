@@ -15,6 +15,7 @@ Exemplos:
 Dica: pegue o bbox desenhando no site https://boundingbox.klokantech.com
 (formato CSV: min_lon, min_lat, max_lon, max_lat).
 """
+
 import argparse
 import os
 
@@ -27,8 +28,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("gdb", help="caminho do .gdb (ou .gpkg)")
     ap.add_argument("camada", help="nome da camada, ex.: UNTRD, SSDMT, UCBT")
-    ap.add_argument("--bbox", nargs=4, type=float, metavar=("MIN_LON", "MIN_LAT", "MAX_LON", "MAX_LAT"),
-                    help="recorte por área em graus (lon/lat)")
+    ap.add_argument(
+        "--bbox",
+        nargs=4,
+        type=float,
+        metavar=("MIN_LON", "MIN_LAT", "MAX_LON", "MAX_LAT"),
+        help="recorte por área em graus (lon/lat)",
+    )
     ap.add_argument("--max", type=int, default=None, help="máximo de feições")
     ap.add_argument("-o", "--saida", default=None, help="arquivo de saída (.geojson)")
     args = ap.parse_args()
@@ -65,8 +71,10 @@ def main():
     print(f"OK → {saida} ({tam:.1f} MB)")
     print("Abra o index.html no navegador e arraste esse arquivo para o mapa.")
     if tam > 80:
-        print("AVISO: arquivo grande — o navegador pode ficar lento. "
-              "Use --bbox menor ou --max para reduzir.")
+        print(
+            "AVISO: arquivo grande — o navegador pode ficar lento. "
+            "Use --bbox menor ou --max para reduzir."
+        )
 
 
 if __name__ == "__main__":
