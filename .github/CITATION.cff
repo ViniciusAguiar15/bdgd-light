@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+title: "bdgd-light: COD agêntico sobre a BDGD da Light (Rio de Janeiro)"
+authors:
+  - family-names: Aguiar
+    given-names: Vinicius
+repository-code: "https://github.com/ViniciusAguiar15/bdgd-light"
+license: MIT
+date-released: "2026-09-10"
