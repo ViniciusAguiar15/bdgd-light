@@ -774,3 +774,71 @@ uv run ruff check . && uv run ruff format . && uv run pytest                    
    no harness (só injeta `falta_permanente`).
 5. Resposta implícita (H09) e resposta errada com proposta certa (H03): o critério estrito está certo,
    mas vale um *prompt* que exija o número pedido explicitamente na resposta final.
+
+### Fechamento
+
+- **PR #49** aberto 17:52 com `Closes #36`; CI verde na 1ª rodada (test 3.11/3.12, console,
+  llm-smoke); squash → `main` `0acf9fd` às 17:56. 10 commits (compactação, motivo de descarte, review
+  PR-15/RESULTADOS-OPENAI, fake Q&A, harness, 2 fixes do agente, `--acrescentar`, docs, diário).
+
+## 10. Resumo final da noite 2 (18:00)
+
+**Fila esgotada: 9 issues, 9 PRs mergeados, `main` em `0acf9fd`.** Nenhum force-push, nada de
+`data/` no git, nenhum commit direto em `main`. Suíte: 275 testes (162 na abertura da noite).
+
+| # | issue | PR | merge (BRT) | tentativas de CI | destaque |
+|---|---|---|---|---|---|
+| 1 | #30 escopo v3 | #37 | 10:54 | 1 | clusters Tijuca/Ipanema (recorte, grafo, DSS, tiles); bug real dos ties ambíguos; seletor de cenário |
+| 2 | #31 ADR-003 LLM | #38 | 11:13 | 1 | perfis openai/gemini/ollama/fake; `llm-smoke` com Gemini real; `docs/spike-llm.md` |
+| 3 | #17 Master do gêmeo | #41 | 12:10 | 1 | Master.dss direto do GPKG, paridade ao bdgd2opendss |
+| 4 | #18 score_eletrico | #42 | 12:36 | 1 | verificador elétrico (margem, Vmin/Vmax, sobrecargas), ordenação |
+| 5 | #32 servidor MCP | #43 | 13:19 | 3 (limite) | 12 ferramentas + aprovação HITL; falha do 3.11 corrigida na 3ª |
+| 6 | #33 simulador | #45 | 13:32 | 1 | semente, cenários nomeados, fila JSONL |
+| 7 | #34 orquestrador + verificador | #46 | 14:11 | 1 | validado com Gemini nos 3 cenários; OpenAI pendente |
+| 8 | #35 console F3 | #47 | 16:13 | 2 | fila/proposta/aprovação; exit 139 do CI → `encerrar_processo` (issue #48) |
+| 9 | #36 benchmark | #49 | 17:56 | 1 | fake 150/150; Gemini 60/60 + 19/20; `MALFORMED` da compactação corrigido |
+
+### Validações com modelo real
+
+- **Gemini 2.5 Flash** (chave presente): `llm-smoke`, 3 cenários do agente (§7), benchmark completo
+  (§9: 80 execuções, 99 % pass@1, 100 % pass@k, ~9,1 k tokens/execução).
+- **OpenAI**: `OPENAI_API_KEY` **ausente** no ambiente da sessão (verificado em §0, §2, §7, §8, §9) —
+  nada foi validado com OpenAI nesta noite. O mantenedor rodou por conta própria e deixou
+  `docs/review/RESULTADOS-OPENAI.md` (incorporado em `docs/agent.md` e no critério do benchmark).
+  Comandos pendentes: `docs/bench.md` → "Resultados"; `uv run bdgd-light agente --cenario … --provider
+  openai` para os 3 cenários.
+
+### Pendências consolidadas (por prioridade)
+
+1. **OpenAI**: benchmark (`bench --provider openai --nivel simple --k 3 --seed 42`, depois
+   `--nivel medium,hard --acrescentar`) e os 3 cenários do agente com tokens/tempo em `docs/agent.md`.
+2. **PR-15 pedidos 1 e 3**: modo passo a passo no console (uma manobra por clique) e GIF/3 capturas no
+   README (o smoke já salva `smoke.png`).
+3. **Issue #48**: motor OpenDSS em subprocesso (a mitigação `encerrar_processo`/`os._exit` está em
+   `main`; a causa — finalização da DSS C-API fora da thread dona — continua).
+4. **Issues abertas anteriores**: #39 (inventário CTMT com folga EM_SUB), #40 (filtrar PONNOT/UCBT pelo
+   bbox), #44 (convergência do Tijuca: `maxiterations=100` + `vminpu=0.9`).
+5. **Benchmark**: Gemini k=5 nas hard; mais tarefas medium/hard de Ipanema; eventos
+   `chave_indisponivel`/`falta_transitoria`; prompt exigindo o número pedido explicitamente na
+   resposta final (H09 "outras 9" / H03 "6 viáveis").
+6. **Issues #22–#29** são duplicatas de #1–#8 (§0) — fechar como duplicadas.
+7. Console: SSE/WebSocket no lugar do polling se a fila crescer; várias sessões/operadores.
+
+### Comandos de validação da noite (todos rodados localmente com `data/feeders` presente)
+
+```bash
+uv sync --extra dev --extra twin --extra agent
+uv run ruff check . && uv run ruff format --check . && uv run pytest        # 275 passed
+uv run bdgd-light recortar --parquet data/parquet --ctmt ALC9925,ALC9946,URG29983,RCP9882 --nome-cluster tijuca --out data/feeders
+uv run bdgd-light dss --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 --restaurar 974020904 --json /tmp/tijuca_gpkg.json
+uv run bdgd-light grafo --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 --score   # 10 opções
+uv run bdgd-light mcp --listar                                              # 12 ferramentas
+uv run bdgd-light sim --cluster tijuca --emitir 3 --seed 42
+for c in tijuca_cabofrio_tronco ipanema_9210 taquara_bocari; do
+  uv run bdgd-light agente --cenario $c --provider gemini --estado /tmp/ag/estado --saida /tmp/ag/${c}_gemini.json; done
+uv run bdgd-light bench --gabarito                                          # 30/30
+uv run bdgd-light bench --provider fake --k 5 --seed 42                     # 150/150
+uv run bdgd-light bench --provider gemini --nivel simple,medium --k 3 --seed 42
+uv run bdgd-light bench --provider gemini --nivel hard --k 2 --seed 42 --acrescentar
+cd console && npm ci && npm run build && npm run smoke                      # 3 cenários, aprovação ponta a ponta
+```
