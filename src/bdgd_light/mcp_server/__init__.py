@@ -16,6 +16,7 @@ from bdgd_light.mcp_server.sessao import (
     SessaoCOD,
     SessaoError,
     ferramentas_da_sessao,
+    resolver_cluster,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "SessaoCOD",
     "SessaoError",
     "ferramentas_da_sessao",
+    "resolver_cluster",
 ]
