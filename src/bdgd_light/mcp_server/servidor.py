@@ -8,10 +8,10 @@ cliente recebe ``is_error=True`` com a mensagem, e a recusa de ``set_switch`` fi
 
 Requer o extra ``agent`` (``uv sync --extra agent``). Funciona com o SDK ``mcp`` 1.10+ (``FastMCP``)
 e 2.x (``MCPServer``): em Python < 3.13 o ``bdgd2opendss`` fixa ``typing-extensions==4.12.2``, o
-que trava o ``mcp`` em 1.x — daí a camada de compatibilidade ``_compat``.
+que trava o ``mcp`` em 1.x — daí a camada de compatibilidade abaixo. Este módulo **não** usa
+``from __future__ import annotations``: o ``FastMCP`` 1.x inspeciona as anotações das ferramentas em
+tempo de execução e, com strings, quebra em ``issubclass`` (Python 3.11).
 """
-
-from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence

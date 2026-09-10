@@ -357,7 +357,7 @@ CI verde (test 3.11/3.12 + llm-smoke), squash → `main` `d983e00`. Commits: `fe
 | PR | ver "Fechamento" |
 | docs/review | nada novo (PR-01…PR-10 já versionados; PR-09 → #34) |
 | Módulo | `src/bdgd_light/mcp_server/`: `sessao.py` (domínio: `SessaoCOD`, `Proposta`, `FilaPropostas`, `RecusadoError`), `servidor.py` (`MCPServer` + rotas humanas + `descritores`), CLI `mcp` e `aprovar`, `docs/mcp-ferramentas.md` |
-| SDK | `mcp` **2.2.0** local (Python 3.13) mas **1.10.1 no CI** (3.11/3.12): `bdgd2opendss` fixa `typing-extensions==4.12.2` e o `mcp` 2.x exige `>=4.13`, então o `uv.lock` bifurca. Primeira rodada do CI quebrou na importação (`mcp.server.mcpserver`); corrigido com camada de compatibilidade (`MCPServer`/`FastMCP`, `Client`/`create_connected_server_and_client_session`, `is_error`/`isError`) e testes rodados também num venv 3.12 (`UV_PROJECT_ENVIRONMENT=/tmp/venv312 uv sync --python 3.12 …`) |
+| SDK | `mcp` **2.2.0** local (Python 3.13) mas **1.10.1 no CI** (3.11/3.12): `bdgd2opendss` fixa `typing-extensions==4.12.2` e o `mcp` 2.x exige `>=4.13`, então o `uv.lock` bifurca. Primeira rodada do CI quebrou na importação (`mcp.server.mcpserver`); corrigido com camada de compatibilidade (`MCPServer`/`FastMCP`, `Client`/`create_connected_server_and_client_session`, `is_error`/`isError`) e testes rodados também em venvs 3.11 e 3.12 (`UV_PROJECT_ENVIRONMENT=/tmp/venv311 uv sync --python 3.11 …`). Segunda rodada quebrou só no 3.11: o `FastMCP` 1.x faz `issubclass(anotação, Context)` e, com `from __future__ import annotations`, a anotação é string — no 3.12 o pydantic 2.11 engole, no 3.11 (pydantic 2.13) estoura. `servidor.py` ficou sem o `__future__` import (anotações reais). |
 
 ### Decisões
 
@@ -400,8 +400,8 @@ CI verde (test 3.11/3.12 + llm-smoke), squash → `main` `d983e00`. Commits: `fe
 ```bash
 uv run ruff check . && uv run ruff format . && uv run pytest         # 200 passed (187 + 13 novos)
 uv run pytest tests/test_mcp_server.py -q                             # fluxo completo, recusas, fila, MCP em memória, CLI
-UV_PROJECT_ENVIRONMENT=/tmp/venv312 uv sync --python 3.12 --extra dev --extra twin --extra agent
-/tmp/venv312/bin/python -m pytest tests/test_mcp_server.py -q         # mesma resolução do CI (mcp 1.10.1): 13 passed
+for v in 3.11 3.12; do UV_PROJECT_ENVIRONMENT=/tmp/venv$v uv sync --python $v --extra dev --extra twin --extra agent; done
+/tmp/venv3.11/bin/python -m pytest tests/test_mcp_server.py -q        # mesma resolução do CI (mcp 1.10.1): 13 passed
 uv run bdgd-light mcp --listar                                        # 12 ferramentas
 uv run bdgd-light mcp --cluster tijuca --transporte http --porta 8765 # em outro terminal:
 curl -s localhost:8765/estado | head -c 300; uv run bdgd-light aprovar
