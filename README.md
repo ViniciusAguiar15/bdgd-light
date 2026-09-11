@@ -234,11 +234,13 @@ uv run bdgd-light recortar --parquet data/parquet --ctmt TQR0007 --out data/feed
 | `--out` | `data/feeders` | diretório de saída (`<CTMT>.gpkg` + `<CTMT>.meta.json` por alimentador e, com vários, `cluster_<A>-<B>….gpkg`); com um só CTMT pode ser o caminho de um `.gpkg` |
 | `--nome-cluster` | `cluster_<A>-<B>…` | nome do GPKG do cluster |
 | `--raio-tie` | `2` | raio da detecção de interligações |
+| `--folga-bbox` | `500` | folga (m) do *bbox* da rede que limita `PONNOT`/`UCBT`; negativo desliga o filtro (issue #40) |
 
 Camadas do GPKG, na ordem: `CTMT`, `SUB`, `UNTRAT` (subestação inteira do CTMT), `SSDMT`, `UNSEMT`,
 `UNTRMT`, `UNREMT`, `UNCRMT`, `UCMT_tab`, `UGMT_tab` (pela coluna `CTMT`), `SSDBT`, `UNSEBT`, `RAMLIG`,
 `UCBT_tab`, `UGBT_tab`, `PIP` (pelo transformador `UNI_TR_MT`), `PONNOT` (postes referenciados por
-`PN_CON*`),
+`PN_CON*` e dentro do *bbox* da rede do recorte + `--folga-bbox` — na Light 2025 `UCBT_tab.PN_CON`
+aponta para postes a dezenas de km do alimentador; o que sai é contado em `avisos` no `meta.json`),
 `EQTRMT`, `EQSE`, `EQRE`, `EQCR` (equipamentos das unidades), `SEGCON`, `CRVCRG` (só os códigos usados) e
 `INTERLIGACOES` — camada calculada com as chaves NA de interligação que envolvem o CTMT, dos dois
 lados (`COD_ID`, `CTMT`, `CTMT_VIZ`, `SSDMT_VIZ`, `PAC_VIZ`, `DIST_M`, `TLCD`, `TIP_UNID`, `EM_SUB`). As
@@ -459,8 +461,9 @@ uv run bdgd-light tiles --gpkg data/feeders/cluster_TQR0007-TQR33859-TQR33862.gp
 #   INTERLIGACOES        36   …
 #   UNSEMT              162
 #   UNTRMT              263
-#   SSDBT             4.713   UCBT 1.759   PONNOT 2.664   (11 camadas)
-#   bbox 4326: -43.49307, -23.01403, -43.17526, -22.90352
+#   SSDBT             4.713   UCBT 1.756   PONNOT 2.661   (11 camadas)
+#   ⚠ UCBT: 3 postes de UCBT_tab.PN_CON sem PONNOT no recorte
+#   bbox 4326: -43.45072, -22.93235, -43.37283, -22.90352
 #   ✔ console/public/tiles/exemplo.pmtiles (1.43 MB, zoom 9–16, 1.4 s)
 ```
 
@@ -471,6 +474,7 @@ uv run bdgd-light tiles --gpkg data/feeders/cluster_TQR0007-TQR33859-TQR33862.gp
 | `--geojson` | `<out>_geojson/` | pasta dos GeoJSON intermediários (um `.geojsonl` por camada) |
 | `--geojson-only` | off | não chama o tippecanoe |
 | `--zoom-min` / `--zoom-max` | 9 / 16 | faixa de zoom do PMTiles |
+| `--folga-bbox` | `500` | folga (m) do *bbox* da rede que limita `PONNOT`/`UCBT` nos tiles (rede de segurança para recortes anteriores à issue #40); negativo desliga |
 
 Além das colunas da BDGD, o tile leva os atributos que o estilo usa e que vêm de outras camadas do
 recorte: `TEN_KV`/`NOME_CTMT` no SSDMT (de `CTMT.TEN_NOM` e `NOME`), `TIE`/`CTMT_VIZ`/`EM_SUB` nas
@@ -480,10 +484,13 @@ tem um zoom mínimo (`tippecanoe.minzoom`): tronco MT a partir do 9, chaves 11, 
 UC/postes 14–15. Em Python: `from bdgd_light.ingest.tiles import gerar_tiles`.
 
 Os tiles dos clusters da demo ficam versionados em `console/public/tiles/exemplo_tijuca.pmtiles`
-(0,98 MB) e `exemplo_ipanema.pmtiles` (0,78 MB), gerados de `data/feeders/cluster_tijuca.gpkg` e
+(0,98 MB) e `exemplo_ipanema.pmtiles` (0,77 MB), gerados de `data/feeders/cluster_tijuca.gpkg` e
 `cluster_ipanema.gpkg` (`bdgd-light recortar --ctmt ALC9925,ALC9946,URG29983,RCP9882 --nome-cluster
-cluster_tijuca …`). Ressalva: `PONNOT`/`UCBT` trazem postes referenciados por `UCBT_tab.PN_CON` fora
-do bairro, então o bbox do PMTiles é maior que o cluster — o console usa centro/zoom fixos por cenário.
+cluster_tijuca …`). Na Light 2025 `UCBT_tab.PN_CON` aponta para postes a dezenas de km do alimentador
+(22 no cluster Tijuca, 5 em Ipanema, 13 em TQR); `recortar` e `tiles` os descartam pelo *bbox* da rede
+com 500 m de folga (issue #40), então o bbox do PMTiles é o do bairro (Tijuca: −43,245…−43,221 /
+−22,937…−22,916, antes −43,50…−43,19 / −23,01…−22,18). As UCs desses postes seguem em `UCBT_tab`
+(carga dos trafos), só não aparecem na camada `UCBT` dos tiles (aviso `postes … sem PONNOT`).
 
 ### `bdgd-light llm` — cliente LLM com *tool calling* (spike da issue #7, perfis da ADR-003)
 

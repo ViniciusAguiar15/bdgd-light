@@ -11,6 +11,7 @@ import re
 import shutil
 from pathlib import Path
 
+import pyogrio
 import pytest
 from rich.console import Console
 from typer.testing import CliRunner
@@ -69,9 +70,12 @@ def test_camadas_declaradas_sao_coerentes():
     assert minzoom["SSDMT"] < minzoom["UNSEMT"] < minzoom["UNTRMT"] < minzoom["UCBT"]
 
 
+AVISO_UC00007 = "UCBT: 1 postes de UCBT_tab.PN_CON sem PONNOT no recorte"  # PN107, issue #40
+
+
 def test_geojson_por_camada_em_4326_com_minzoom(geojson_cluster):
     arquivos, contagem, bbox, avisos = geojson_cluster
-    assert avisos == []
+    assert avisos == [AVISO_UC00007]
     assert set(arquivos) == {
         "SUB",
         "UNTRAT",
@@ -136,10 +140,36 @@ def test_untrmt_conta_ucbt_e_ucbt_e_agregada_por_poste(geojson_cluster):
     assert trafos["TR002"]["N_UCBT"] == 2
     assert trafos["TR003"]["N_UCBT"] == 1
     ucbt = ler_geojsonl(arquivos["UCBT"])
-    assert sum(f["properties"]["N_UC"] for f in ucbt) == 6
+    assert sum(f["properties"]["N_UC"] for f in ucbt) == 5  # UC00007 sem poste no recorte
     assert all(f["geometry"]["type"] == "Point" for f in ucbt)
     assert {f["properties"]["CTMT"] for f in ucbt} == set(CLUSTER)
     assert all(f["properties"]["PN_CON"].startswith("PN") for f in ucbt)
+
+
+def test_postes_fora_do_bbox_da_rede_ficam_fora_dos_tiles(parquet_mini, tmp_path):
+    # recorte gerado sem o filtro da issue #40 (ou anterior a ele): PN107 a ~40 km entra no GPKG
+    r = recortar(
+        parquet_mini, CLUSTER, tmp_path / "f", folga_bbox_m=None, console=Console(quiet=True)
+    )
+    gpkg = r.cluster.gpkg
+    assert pyogrio.read_info(gpkg, layer="PONNOT")["features"] == 26
+
+    avisos: list[str] = []
+    arquivos, contagem, bbox = escrever_geojson(gpkg, tmp_path / "gj", avisos=avisos)
+    assert contagem["PONNOT"] == 25 and contagem["UCBT"] == 5
+    assert avisos == [  # na ordem de CAMADAS_TILES
+        "UCBT: 1 feição(ões) fora do bbox da rede descartada(s) dos tiles",
+        "PONNOT: 1 feição(ões) fora do bbox da rede descartada(s) dos tiles",
+    ]
+    assert -43.22 < bbox[0] and bbox[1] > -22.93  # sem o poste longe, o bbox é o da rede
+    assert "PN107" not in {f["properties"]["COD_ID"] for f in ler_geojsonl(arquivos["PONNOT"])}
+
+    sem_filtro: list[str] = []
+    _, contagem2, bbox2 = escrever_geojson(
+        gpkg, tmp_path / "gj2", avisos=sem_filtro, folga_bbox_m=None
+    )
+    assert sem_filtro == [] and contagem2["PONNOT"] == 26 and contagem2["UCBT"] == 6
+    assert bbox2[0] == pytest.approx(-43.6) and bbox2[1] == pytest.approx(-23.0)
 
 
 def test_camadas_ausentes_geram_aviso_e_nao_quebram(bdgd_mini, tmp_path):
@@ -232,7 +262,7 @@ def test_gera_pmtiles_de_verdade(cluster_gpkg, tmp_path):
     assert r.pmtiles == out and out.exists()
     assert r.bytes == out.stat().st_size > 1000
     assert out.read_bytes()[:7] == b"PMTiles"
-    assert r.feicoes["SSDMT"] == 8 and r.avisos == []
+    assert r.feicoes["SSDMT"] == 8 and r.avisos == [AVISO_UC00007]
     assert (tmp_path / "gj" / "SSDMT.geojsonl").exists()
 
 

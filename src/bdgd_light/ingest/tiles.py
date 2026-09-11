@@ -8,6 +8,10 @@ que o estilo do console usa e o zoom mínimo por camada, e chama o ``tippecanoe`
 Camadas derivadas: ``UCBT`` (a Light 2025 não tem a camada geográfica; agregamos ``UCBT_tab`` por
 poste ``PN_CON`` sobre ``PONNOT``) e, em ``UNSEMT``, ``TIE``/``EM_SUB`` vindos de ``INTERLIGACOES``;
 ``SSDMT`` ganha ``TEN_KV`` e ``NOME_CTMT`` do ``CTMT``; ``UNTRMT`` ganha ``N_UCBT``.
+
+``PONNOT``/``UCBT`` ficam limitados ao *bbox* da rede do recorte com folga (``FOLGA_BBOX_M``, issue
+#40): recortes anteriores ao filtro em ``recorte.selecionar`` trazem postes de ``UCBT_tab.PN_CON``
+a dezenas de km do alimentador, que inflavam o *bbox* do PMTiles.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ import pyogrio
 import shapely
 
 from bdgd_light.catalogo import TENSAO_KV, TIPOS_CHAVE_MT
+from bdgd_light.ingest.recorte import CAMADAS_BBOX, FOLGA_BBOX_M, bbox_rede
 
 CRS_TILES = "EPSG:4326"
 ZOOM_MIN_PADRAO = 9
@@ -234,21 +239,53 @@ def _ucbt_por_poste(
     return gpd.GeoDataFrame(saida.drop(columns=["COD_ID"]), geometry="geometry", crs=ponnot.crs)
 
 
+def bbox_rede_gpkg(
+    gpkg: Path, existentes: set[str], folga_m: float
+) -> tuple[float, float, float, float] | None:
+    """*Bbox* da rede do recorte (camadas ``CAMADAS_BBOX``) com folga, lido dos metadados do GPKG
+    (``pyogrio.read_info``, sem carregar as feições)."""
+    caixas: dict[str, gpd.GeoDataFrame] = {}
+    for nome in CAMADAS_BBOX:
+        if nome not in existentes:
+            continue
+        info = pyogrio.read_info(gpkg, layer=nome)
+        limites = info.get("total_bounds")
+        if limites is None or not info.get("features") or np.isnan(limites).any():
+            continue
+        caixas[nome] = gpd.GeoDataFrame(geometry=[shapely.box(*limites)], crs=info.get("crs"))
+    return bbox_rede(caixas, folga_m)
+
+
+def _limitar_ao_bbox(
+    gdf: gpd.GeoDataFrame, bbox: tuple[float, float, float, float], nome: str, avisos: list[str]
+) -> gpd.GeoDataFrame:
+    fica = gdf.geometry.isna() | gdf.geometry.intersects(shapely.box(*bbox))
+    fora = int((~fica).sum())
+    if fora:
+        avisos.append(f"{nome}: {fora} feição(ões) fora do bbox da rede descartada(s) dos tiles")
+    return gdf[fica]
+
+
 def escrever_geojson(
     gpkg: str | Path,
     pasta: str | Path,
     camadas: Iterable[CamadaTiles] = CAMADAS_TILES,
     *,
     avisos: list[str] | None = None,
+    folga_bbox_m: float | None = FOLGA_BBOX_M,
 ) -> tuple[dict[str, Path], dict[str, int], tuple[float, float, float, float] | None]:
     """Escreve ``<pasta>/<CAMADA>.geojsonl`` (EPSG:4326, uma feição por linha, com o membro
     ``tippecanoe.minzoom``) para cada camada geográfica do recorte. Devolve caminhos, contagem de
-    feições e o *bbox* geral."""
+    feições e o *bbox* geral. Camadas baseadas em ``PONNOT`` ficam dentro do *bbox* da rede com
+    ``folga_bbox_m`` metros (``None`` desliga)."""
     gpkg = Path(gpkg)
     pasta = Path(pasta)
     pasta.mkdir(parents=True, exist_ok=True)
     avisos = avisos if avisos is not None else []
     existentes = {nome for nome, _ in pyogrio.list_layers(gpkg)}
+    bbox_rede_ = (
+        bbox_rede_gpkg(gpkg, existentes, folga_bbox_m) if folga_bbox_m is not None else None
+    )
     arquivos: dict[str, Path] = {}
     contagem: dict[str, int] = {}
     bounds: list[float] | None = None
@@ -265,6 +302,10 @@ def escrever_geojson(
         else:
             gdf = _derivar(cam.nome, gdf, gpkg, existentes, avisos)
         gdf = gdf[gdf.geometry.notna()]
+        if bbox_rede_ is not None and cam.camada_gpkg == "PONNOT":
+            gdf = _limitar_ao_bbox(gdf, bbox_rede_, cam.nome, avisos)
+        if gdf.empty:
+            continue
         if gdf.crs is None:
             avisos.append(f"{cam.nome} sem CRS: assumindo EPSG:4674")
             gdf = gdf.set_crs("EPSG:4674")
@@ -355,12 +396,14 @@ def gerar_tiles(
     camadas: Iterable[CamadaTiles] = CAMADAS_TILES,
     apenas_geojson: bool = False,
     executavel: str | None = None,
+    folga_bbox_m: float | None = FOLGA_BBOX_M,
 ) -> ResultadoTiles:
     """Recorte GPKG → GeoJSONSeq por camada → ``tippecanoe`` → ``saida`` (``.pmtiles``).
 
     ``pasta_geojson`` (padrão ``<saida sem extensão>_geojson/``) guarda os GeoJSON intermediários,
     que também servem de *fallback* quando ``apenas_geojson=True`` ou o tippecanoe não existe.
     Lança ``TippecanoeAusenteError`` com instruções de instalação se ele não estiver no PATH.
+    ``folga_bbox_m`` limita ``PONNOT``/``UCBT`` ao *bbox* da rede (``None`` desliga).
     """
     inicio = time.perf_counter()
     saida = Path(saida)
@@ -370,7 +413,9 @@ def gerar_tiles(
     caminho_exec = shutil.which(executavel)
     if not apenas_geojson and caminho_exec is None:
         raise TippecanoeAusenteError(INSTALAR_TIPPECANOE)
-    arquivos, contagem, bounds = escrever_geojson(gpkg, pasta, camadas, avisos=avisos)
+    arquivos, contagem, bounds = escrever_geojson(
+        gpkg, pasta, camadas, avisos=avisos, folga_bbox_m=folga_bbox_m
+    )
     if not arquivos:
         raise ValueError(f"nenhuma camada geográfica em {gpkg}")
     resultado = ResultadoTiles(None, arquivos, contagem, bounds, avisos=avisos)

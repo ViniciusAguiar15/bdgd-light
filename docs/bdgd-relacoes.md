@@ -43,7 +43,7 @@ Regra usada pelo recorte (`recortar`) para decidir o que pertence a um CTMT, e c
 | `UCBT_tab`, `UGBT_tab` | tabela | `UNI_TR_MT` ∈ UNTRMT do CTMT (**não** pela coluna `CTMT` da tabela, ver abaixo) | `UNI_TR_MT`, `CTMT`, `PAC`, `PN_CON`, `TIP_CC`, `ENE_01..12` / `POT_INST` |
 | `PIP` | tabela (Light) | `UNI_TR_MT` ∈ UNTRMT do CTMT (iluminação pública; o bdgd2opendss a modela como carga `BT_IP<COD_ID>`) | `UNI_TR_MT`, `CTMT`, `PAC`, `PN_CON`, `TIP_CC`, `ENE_01..12` |
 | `UCBT`, `UCMT`, `UGBT`, `UGMT` | (inexistentes na Light 2025) | mesmas regras das `*_tab`, se existirem | — |
-| `PONNOT` | ponto | `COD_ID` ∈ união de `PN_CON`, `PN_CON_1`, `PN_CON_2` de todas as camadas já selecionadas (não tem `CTMT`) | `COD_ID` |
+| `PONNOT` | ponto | `COD_ID` ∈ união de `PN_CON`, `PN_CON_1`, `PN_CON_2` de todas as camadas já selecionadas (não tem `CTMT`), dentro do *bbox* da rede do recorte + 500 m | `COD_ID` |
 | `EQTRMT` | tabela | `UNI_TR_MT` ∈ UNTRMT do CTMT | `UNI_TR_MT`, `POT_NOM`, `TEN_PRI` |
 | `EQSE` | tabela | `UN_SE` ∈ UNSEMT ∪ UNSEBT do CTMT | `UN_SE` |
 | `EQRE`, `EQCR` | tabela | `UN_RE` ∈ UNREMT / `UN_CR` ∈ UNCRMT | `UN_RE`, `UN_CR` |
@@ -96,6 +96,16 @@ equivalente e os alimentadores de um cluster costumam partir da mesma SE.
 (UNSEMT, UNTRMT, UNSEBT, UC*/UG*_tab), `PN_CON_1`/`PN_CON_2` (SSDMT, SSDBT, RAMLIG) das feições
 selecionadas — 100 % dos `PN_CON` da base resolvem em `PONNOT.COD_ID`. Postes sem nenhuma referência
 (órfãos) nunca entram num recorte.
+
+Resolver não quer dizer estar perto: na Light 2025 parte dos `UCBT_tab.PN_CON` aponta para postes a
+dezenas de km do alimentador (22 dos 1.908 postes do cluster Tijuca, a 5–84 km da rede — sete em
+Paraíba do Sul e um em Nova Iguaçu, pelo `MUN`; 5 em Ipanema, um deles em Paracambi, referenciado por
+149 UCs; 13 em TQR), o que fazia o *bbox* do recorte e dos tiles cobrir meia região metropolitana
+(issue #40). Por isso `PONNOT` — e `UCBT` com geometria, quando existir — fica restrita ao *bbox* da
+união de `SSDMT`, `SSDBT`, `UNSEMT`, `UNSEBT`, `UNTRMT`, `UNREMT`, `UNCRMT` e `RAMLIG` do recorte, com
+`--folga-bbox` (500 m) de margem; a UC continua em `UCBT_tab` (é carga do transformador), e o
+`meta.json` registra em `avisos` quantos postes saíram. `bdgd-light tiles` aplica o mesmo filtro ao
+ler o GPKG, para recortes gerados antes.
 
 ### Equipamentos e catálogos
 
