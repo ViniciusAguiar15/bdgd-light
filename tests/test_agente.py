@@ -417,12 +417,27 @@ def test_rejeicao_com_motivo_vira_restricao_e_replanejamento(sessao, simulador):
     assert ex2.tipo == "replanejamento"
     assert ex2.proposta["id"] == "P-0002" and ex2.proposta["chave"] == "CH005"
     assert ex2.proposta["replanejada_apos_rejeicao"] == "a chave CH003 está em manutenção"
+    assert ex2.proposta["restricoes_resumo"] == sessao.resumo_restricoes()
     assert sessao.replanejamentos_evento == 1
     assert sessao.restricoes_agregadas["chaves_proibidas"] == ["CH003"]
     opcoes = sessao.restore_options(score=False)["opcoes"]
     ch003 = next(o for o in opcoes if o["chave"] == "CH003")
     assert "manutenção" in ch003["bloqueada"]
     assert "agente.replanejamento" in [r["tipo"] for r in registros(sessao)]
+
+
+def test_rejeicao_vaga_ainda_proibe_chave_rejeitada(sessao, simulador):
+    ev = simulador.falta_permanente("SEG001")
+    orq = Orquestrador(sessao, fake_operador(), provider="fake")
+    ex1 = orq.executar_evento(ev)
+    assert ex1.proposta["chave"] == "CH003"
+    sessao.reject("P-0001", operador="ana", motivo="não gosto dessa rota")
+
+    ex2 = orq.replanejar_apos_rejeicao("P-0001", "não gosto dessa rota", evento=ev)
+    assert ex2.proposta["chave"] == "CH005"
+    assert ex2.proposta["restricoes_resumo"] == sessao.resumo_restricoes()
+    assert sessao.restricoes_agregadas["chaves_proibidas"] == ["CH003"]
+    assert ex2.proposta["chave"] != ex1.proposta["chave"]
 
 
 def test_rejeicao_faz_verificador_recusar_chave_proibida(sessao, simulador):

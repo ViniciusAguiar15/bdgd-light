@@ -789,19 +789,23 @@ class Orquestrador:
         try:
             resposta = self.cliente.chat(mensagens, tools=[EXTRATOR_RESTRICOES])
         except LLMError:
-            return _heuristica_restricao(motivo, alternativas)
+            return _garantir_chave_rejeitada(_heuristica_restricao(motivo, alternativas), proposta)
         if isinstance(resposta, ToolCalls):
             for chamada in resposta.calls:
                 if chamada.name == EXTRATOR_RESTRICOES.name:
-                    return _normalizar_restricao(chamada.arguments, motivo)
+                    return _garantir_chave_rejeitada(
+                        _normalizar_restricao(chamada.arguments, motivo), proposta
+                    )
         if isinstance(resposta, Text):
             try:
                 bruto = json.loads(resposta.content)
             except (TypeError, json.JSONDecodeError):
-                return _heuristica_restricao(motivo, alternativas)
+                return _garantir_chave_rejeitada(
+                    _heuristica_restricao(motivo, alternativas), proposta
+                )
             if isinstance(bruto, Mapping):
-                return _normalizar_restricao(bruto, motivo)
-        return _heuristica_restricao(motivo, alternativas)
+                return _garantir_chave_rejeitada(_normalizar_restricao(bruto, motivo), proposta)
+        return _garantir_chave_rejeitada(_heuristica_restricao(motivo, alternativas), proposta)
 
     def _carregar(self, cluster: str) -> None:
         alvo = resolver_cluster(cluster, self.sessao.feeders)
@@ -1244,6 +1248,29 @@ def _heuristica_restricao(
         "somente_telecomandadas": "telecom" in texto.lower(),
         "resumo": texto or None,
     }
+
+
+def _garantir_chave_rejeitada(
+    restricao: Mapping[str, Any], proposta: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Toda rejeição impede ao menos a reproposição da mesma chave da proposta recusada."""
+
+    chave = str(proposta.get("chave") or "").strip()
+    chaves = (
+        [chave, *(restricao.get("chaves_proibidas") or [])]
+        if chave
+        else [*(restricao.get("chaves_proibidas") or [])]
+    )
+    vistas: set[str] = set()
+    normalizadas: list[str] = []
+    for valor in chaves:
+        texto = str(valor).strip()
+        if texto and texto not in vistas:
+            vistas.add(texto)
+            normalizadas.append(texto)
+    saida = dict(restricao)
+    saida["chaves_proibidas"] = normalizadas
+    return saida
 
 
 def fake_operador(modelo: str = "fake-operador") -> FakeLLMClient:

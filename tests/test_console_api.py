@@ -259,6 +259,7 @@ def test_rejeitar_replaneja_com_restricao(cliente: TestClient, sessao: SessaoCOD
     detalhe = cliente.get("/api/propostas/P-0002").json()
     assert detalhe["chave"] == "CH005"
     assert detalhe["replanejada_apos_rejeicao"] == "a chave CH003 está em manutenção"
+    assert detalhe["restricoes_resumo"] == sessao.resumo_restricoes()
     alternativas = {a["chave"]: a for a in detalhe["alternativas"]}
     assert "manutenção" in alternativas["CH003"]["bloqueada"]
     assert cliente.get("/api/estado").json()["replanejamentos_evento"] == 1

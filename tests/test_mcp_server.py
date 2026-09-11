@@ -152,6 +152,25 @@ def test_fluxo_flisr_completo_com_hitl(sessao: SessaoCOD):
     assert aprovacao["dados"]["resultado"]["token"].startswith("sha256:")
 
 
+def test_restricao_por_alimentador_aproximado_gera_aviso(sessao: SessaoCOD):
+    sessao.inject_fault("SEG001")
+    sessao.isolate_fault()
+    sessao.aplicar_restricao(
+        {
+            "chaves_proibidas": [],
+            "alimentadores_evitar": ["RJO00"],
+            "somente_telecomandadas": False,
+            "resumo": "evite RJO00",
+        },
+        motivo="não quero esse prefixo",
+    )
+
+    opcoes = sessao.restore_options(score=False)["opcoes"]
+    ch003 = next(o for o in opcoes if o["chave"] == "CH003")
+    assert "casamento aproximado" in ch003["bloqueada"]
+    assert "RJO00 casou com RJO002 por prefixo" in ch003["bloqueada"]
+
+
 def test_rejeicao_e_expiracao(sessao: SessaoCOD):
     sessao.inject_fault("SEG001")
     sessao.restore_options()
