@@ -116,6 +116,9 @@ Relatórios completos (por nível, por tarefa, erros, comparativo) em [`docs/ben
 `2026-09-11-fake*.md` (k=5, 170 execuções cada) e `2026-09-11-gemini*.md`. Os de 2026-09-10 (30
 tarefas, rodada da PR #36) ficam como histórico; o comparativo usa só o CSV mais recente de cada
 provedor·modo. Custo total da noite em Gemini: 284 execuções, 3,9 M tokens, **US$ 1,69**.
+Na demo ao vivo, porém, o padrão atual do `cliente_do_ambiente()` é **OpenAI**: sem
+`BDGD_LLM_PROVIDER`/`BDGD_LLM_ENDPOINT`, com `OPENAI_API_KEY` e `GEMINI_API_KEY` presentes, a
+resolução para em `OPENAI_API_KEY`.
 
 ### Comparativo
 
@@ -159,12 +162,18 @@ em `docs/bench/2026-09-11-gemini.md` (55 execuções *hard*).
 | gpt-4.1-mini | com exemplos | 55 | 55/55 = 100 % | 0 | 0/55 | 18.897 | 0,0081 | 18,7 |
 | gpt-4.1-mini | sem exemplos | 55 | 55/55 = 100 % | 0 | 0/55 | 17.714 | 0,0075 | 16,4 |
 
-Conclusão: com **n = 55 por braço**, a correlação entre tirar os exemplos anotados e eliminar o
-`MALFORMED_FUNCTION_CALL` se confirma **no Gemini**, mas **não** se repete no OpenAI — que ficou em
-100 % com e sem exemplos e nunca produziu a chamada malformada. O efeito, portanto, parece ser
-**do provedor / do parser de tool call do Flash**, não uma evidência geral de que "exemplos
-anotados atrapalham". Por isso, **não** vale desligá-los por padrão sem uma decisão específica para
-o perfil Gemini (ou uma mudança no formato textual dos exemplos).
+Conclusão: com **n = 55 por braço**, o gatilho é o texto dos exemplos, mas **só no Gemini Flash**:
+dentro do mesmo provedor, mesma seed e mesmo n, o braço com exemplos fica em **47/55** e o sem
+exemplos em **55/55**, enquanto no `gpt-4.1-mini` o mesmo prompt fica em **55/55** com e sem
+exemplos e nunca produz a chamada malformada. Logo, não há evidência de que exemplos anotados
+degradem o planejamento em geral — há um parser de *tool call* do Gemini Flash que quebra com esse
+formato textual. Por isso, **não** vale desligá-los por padrão sem uma decisão específica para o
+perfil Gemini (ou uma mudança no formato textual dos exemplos).
+Esta rodada mede se os exemplos **custam** acerto; ela **não** mede se os exemplos **rendem**
+acerto, porque não há aqui um braço com n comparável que isole eventual ganho de ordenação/precisão
+atribuível aos exemplos. Portanto, ela não confirma nem refuta a premissa do PowerChain de que
+pares tarefa↔workflow anotados ajudam; mostra apenas que, no provedor padrão da demo, eles não
+custam acerto e saem ~6 % mais baratos.
 
 ### Leitura para a apresentação
 
@@ -194,13 +203,14 @@ o perfil Gemini (ou uma mudança no formato textual dos exemplos).
    US$ 0,0157 → 0,0090, −43 %); nas *simple* 11,1 k → 5,8 k (−47 %), nas *medium* 6,8 k → 5,1 k
    (−25 %). Acerto e ordem não mudam (precisão até sobe a 100 %) — é ganho puro de custo, e afasta
    o contexto de qualquer limite prático.
-5. **Exemplos anotados: o efeito agora parece claramente dependente do provedor.** No Gemini 2.5
-   Flash, tirar os exemplos zera o `MALFORMED_FUNCTION_CALL` nas *hard* (8/55 → **0/55**), mas o
-   custo sobe (19,2 k → **25,4 k** tokens/exec.) e a precisão/ordem não melhoram o suficiente para
-   justificar uma troca global. No OpenAI, com o mesmo recorte *hard* k=5, o acerto fica em
-   **55/55** com e sem exemplos; sem exemplos ele só fica um pouco mais barato e rápido
-   (18,9 k → 17,7 k tokens; US$ 0,0081 → 0,0075). A leitura correta, portanto, é: os exemplos não
-   explicam o comportamento de todos os provedores; o problema observado é específico do Flash.
+5. **Exemplos anotados: o efeito é uma interação entre exemplos e o parser do Gemini Flash.** No
+   Gemini 2.5 Flash, tirar os exemplos zera o `MALFORMED_FUNCTION_CALL` nas *hard* (8/55 →
+   **0/55**), mas o custo sobe (19,2 k → **25,4 k** tokens/exec.) e a precisão/ordem não melhoram
+   o suficiente para justificar uma troca global. No OpenAI, com o mesmo recorte *hard* k=5, o
+   acerto fica em **55/55** com e sem exemplos; sem exemplos ele só fica um pouco mais barato e
+   rápido (18,9 k → 17,7 k tokens; US$ 0,0081 → 0,0075). A leitura correta, portanto, é: o texto
+   dos exemplos é o gatilho do problema observado, mas o componente suscetível é o parser de
+   *tool call* do Gemini Flash — não há evidência de degradação geral do planejamento.
 6. **No estado atual, o erro remanescente é específico do provedor.** No Gemini, todos os 8 erros
    *hard* da configuração
    padrão (e os 2 da rodada sem compactar) são `finish_reason = function_call_filter:
