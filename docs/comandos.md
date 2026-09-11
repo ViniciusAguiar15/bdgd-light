@@ -137,13 +137,15 @@ uv run bdgd-light recortar --parquet data/parquet --ctmt TQR0007 --out data/feed
 | `--out` | `data/feeders` | diretório de saída (`<CTMT>.gpkg` + `<CTMT>.meta.json` por alimentador e, com vários, `cluster_<A>-<B>….gpkg`); com um só CTMT pode ser o caminho de um `.gpkg` |
 | `--nome-cluster` | `cluster_<A>-<B>…` | nome do GPKG do cluster |
 | `--raio-tie` | `2` | raio da detecção de interligações |
-| `--folga-bbox` | `500` | folga (m) do *bbox* da rede que limita `PONNOT`/`UCBT`; negativo desliga o filtro (issue #40) |
+| `--folga-bbox` | `500` | folga (m) do *bbox* da rede que segue como rede de segurança para `PONNOT`/`UCBT`; negativo desliga só esse fallback geométrico |
 
 Camadas do GPKG, na ordem: `CTMT`, `SUB`, `UNTRAT` (subestação inteira do CTMT), `SSDMT`, `UNSEMT`,
 `UNTRMT`, `UNREMT`, `UNCRMT`, `UCMT_tab`, `UGMT_tab` (pela coluna `CTMT`), `SSDBT`, `UNSEBT`, `RAMLIG`,
 `UCBT_tab`, `UGBT_tab`, `PIP` (pelo transformador `UNI_TR_MT`), `PONNOT` (postes referenciados por
-`PN_CON*` e dentro do *bbox* da rede do recorte + `--folga-bbox` — na Light 2025 `UCBT_tab.PN_CON`
-aponta para postes a dezenas de km do alimentador; o que sai é contado em `avisos` no `meta.json`),
+`PN_CON*`; quando a referência vem de `UCBT`/`UCBT_tab`, o poste precisa ficar a até 2 km do trafo
+da UC, e o *bbox* da rede + `--folga-bbox` fica como rede de segurança — na Light 2025
+`UCBT_tab.PN_CON` aponta para postes a dezenas de km do alimentador; o que sai é contado em
+`avisos` no `meta.json`),
 `EQTRMT`, `EQSE`, `EQRE`, `EQCR` (equipamentos das unidades), `SEGCON`, `CRVCRG` (só os códigos usados) e
 `INTERLIGACOES` — camada calculada com as chaves NA de interligação que envolvem o CTMT, dos dois
 lados (`COD_ID`, `CTMT`, `CTMT_VIZ`, `SSDMT_VIZ`, `PAC_VIZ`, `DIST_M`, `TLCD`, `TIP_UNID`, `EM_SUB`). As

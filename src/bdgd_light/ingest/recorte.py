@@ -8,10 +8,12 @@ Cada camada é filtrada pela regra de junção documentada em ``docs/bdgd-relaco
 - Camadas BT (SSDBT, UNSEBT, RAMLIG, UCBT/UCBT_tab, UGBT/UGBT_tab, PIP): pelo transformador
   (``UNI_TR_MT`` ∈ UNTRMT selecionados), que é quem define o alimentador; a coluna ``CTMT`` dessas
   camadas só é usada se não houver UNTRMT.
-- ``PONNOT`` (postes): ``COD_ID`` ∈ ``PN_CON``/``PN_CON_1``/``PN_CON_2`` das feições selecionadas
-  **e** dentro do *bbox* da rede do recorte com folga (``FOLGA_BBOX_M``): na Light 2025
-  ``UCBT_tab.PN_CON`` aponta para postes a dezenas de km do alimentador, que inflariam o recorte e
-  o *bbox* dos tiles. O mesmo filtro vale para ``UCBT`` com geometria.
+- ``PONNOT`` (postes): ``COD_ID`` ∈ ``PN_CON``/``PN_CON_1``/``PN_CON_2`` das feições selecionadas;
+  quando a referência vem de ``UCBT``/``UCBT_tab``, o poste precisa ficar perto do transformador da
+  UC (``DIST_MAX_POSTE_TRAFO_UC_M``). O *bbox* da rede do recorte com folga (``FOLGA_BBOX_M``)
+  segue como rede de segurança — na Light 2025 ``UCBT_tab.PN_CON`` aponta para postes a dezenas de
+  km do alimentador, o que inflaria o recorte e o *bbox* dos tiles. O mesmo filtro por *bbox* vale
+  para ``UCBT`` com geometria.
 - ``UNTRAT`` e ``SUB``: toda a subestação do CTMT (``SUB`` ∈ ``CTMT.SUB``).
 - Equipamentos (EQTRMT, EQSE, EQRE, EQCR): ``UNI_TR_MT``/``UN_SE``/``UN_RE``/``UN_CR`` das unidades.
 - Catálogos (SEGCON, CRVCRG): só os códigos usados (``TIP_CND``, ``TIP_CC``).
@@ -66,6 +68,7 @@ CAMADAS_POR_TRAFO = ["SSDBT", "UNSEBT", "RAMLIG", "UCBT", "UCBT_tab", "UGBT", "U
 CAMADAS_BBOX = ["SSDMT", "SSDBT", "UNSEMT", "UNSEBT", "UNTRMT", "UNREMT", "UNCRMT", "RAMLIG"]
 CAMADAS_FILTRADAS_POR_BBOX = ["PONNOT", "UCBT"]
 FOLGA_BBOX_M = 500.0
+DIST_MAX_POSTE_TRAFO_UC_M = 2_000.0
 EQUIPAMENTOS = {  # camada de equipamento → (coluna de ligação, camadas de unidades)
     "EQTRMT": ("UNI_TR_MT", ["UNTRMT"]),
     "EQSE": ("UN_SE", ["UNSEMT", "UNSEBT"]),
@@ -226,6 +229,78 @@ def _dentro_do_bbox(
     return gdf[fica], int((~fica).sum())
 
 
+def _filtrar_postes_por_trafo_uc(
+    camadas: dict[str, pd.DataFrame],
+    avisos: list[str] | None = None,
+    distancia_max_m: float = DIST_MAX_POSTE_TRAFO_UC_M,
+) -> dict[str, pd.DataFrame]:
+    """Descarta postes vindos de ``UCBT``/``UCBT_tab`` cuja referência fica longe demais do
+    transformador da UC; se não houver dados suficientes para medir, preserva a feição e deixa o
+    *bbox* como rede de segurança."""
+    postes = camadas.get("PONNOT")
+    trafos = camadas.get("UNTRMT")
+    if not isinstance(postes, gpd.GeoDataFrame) or postes.empty:
+        return camadas
+    if not isinstance(trafos, gpd.GeoDataFrame) or trafos.empty:
+        return camadas
+
+    camadas_sem_uc = {k: v for k, v in camadas.items() if k not in {"UCBT", "UCBT_tab"}}
+    referencias_outras = set(_valores(camadas_sem_uc, camadas_sem_uc, COLUNAS_PN))
+    referencias_uc: list[pd.DataFrame] = []
+    for camada in ("UCBT", "UCBT_tab"):
+        df = camadas.get(camada)
+        if df is None or "PN_CON" not in df.columns or "UNI_TR_MT" not in df.columns:
+            continue
+        refs = df[["COD_ID", "PN_CON", "UNI_TR_MT"]].dropna(subset=["PN_CON", "UNI_TR_MT"]).copy()
+        if refs.empty:
+            continue
+        refs["camada"] = camada
+        referencias_uc.append(refs)
+    if not referencias_uc:
+        return camadas
+
+    refs_uc = pd.concat(referencias_uc, ignore_index=True).drop_duplicates(["PN_CON", "UNI_TR_MT"])
+    postes_geom = (
+        postes[["COD_ID", "geometry"]]
+        .dropna(subset=["geometry"])
+        .rename(columns={"COD_ID": "PN_CON", "geometry": "geometry_poste"})
+    )
+    trafos_geom = (
+        trafos[["COD_ID", "geometry"]]
+        .dropna(subset=["geometry"])
+        .rename(columns={"COD_ID": "UNI_TR_MT", "geometry": "geometry_trafo"})
+    )
+    medidas = refs_uc.merge(postes_geom, on="PN_CON").merge(trafos_geom, on="UNI_TR_MT")
+    if medidas.empty:
+        return camadas
+
+    postos_3857 = gpd.GeoSeries(medidas["geometry_poste"], crs=postes.crs).to_crs("EPSG:3857")
+    trafos_3857 = gpd.GeoSeries(medidas["geometry_trafo"], crs=trafos.crs).to_crs("EPSG:3857")
+    medidas["dist_trafo_m"] = postos_3857.distance(trafos_3857)
+
+    referencias_validas = set(referencias_outras)
+    referencias_validas |= set(refs_uc["PN_CON"]) - set(medidas["PN_CON"])
+    referencias_validas |= set(
+        medidas.loc[medidas["dist_trafo_m"] <= distancia_max_m, "PN_CON"].astype(str)
+    )
+    invalidos = sorted(
+        set(medidas.loc[medidas["dist_trafo_m"] > distancia_max_m, "PN_CON"].astype(str))
+        - referencias_outras
+    )
+    if not invalidos:
+        return camadas
+
+    filtrado = dict(camadas)
+    filtrado["PONNOT"] = postes[postes["COD_ID"].astype(str).isin(referencias_validas)].copy()
+    if avisos is not None:
+        avisos.append(
+            "PONNOT: "
+            f"{_fmt_int(len(invalidos))} poste(s) de UCBT/UCBT_tab a mais de "
+            f"{distancia_max_m:g} m do trafo da UC descartado(s)"
+        )
+    return filtrado
+
+
 def filtrar_por_bbox(
     camadas: dict[str, pd.DataFrame],
     folga_bbox_m: float | None = FOLGA_BBOX_M,
@@ -254,6 +329,7 @@ def selecionar(
     *,
     interligacoes: gpd.GeoDataFrame | None = None,
     folga_bbox_m: float | None = FOLGA_BBOX_M,
+    filtrar_postes_uc: bool = True,
     avisos: list[str] | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Aplica as regras de junção e devolve ``{camada: feições}`` para o conjunto de CTMT.
@@ -261,7 +337,8 @@ def selecionar(
     Só camadas existentes na fonte entram (a ausência é decidida pelo chamador). Levanta
     ``CtmtInexistenteError`` se algum CTMT pedido não existe na tabela CTMT. ``PONNOT`` e ``UCBT``
     (com geometria) ficam restritos ao *bbox* da rede com ``folga_bbox_m`` metros (``None``
-    desliga); o que saiu é contado em ``avisos``.
+    desliga); ``filtrar_postes_uc=False`` preserva os postes brutos referenciados por UCs para um
+    filtro posterior; o que saiu é contado em ``avisos``.
     """
     ctmts = list(dict.fromkeys(ctmts))
     sel: dict[str, pd.DataFrame] = {}
@@ -298,6 +375,8 @@ def selecionar(
     if fonte.tem("PONNOT"):
         postes = _valores(sel, list(sel), COLUNAS_PN)
         sel["PONNOT"] = fonte.ler("PONNOT", filtros=filtro_in("COD_ID", postes))
+        if filtrar_postes_uc:
+            sel = _filtrar_postes_por_trafo_uc(sel, avisos)
 
     sel = filtrar_por_bbox(sel, folga_bbox_m, avisos)
 
@@ -373,7 +452,13 @@ def recortar(
     console.print(f"Recortando {len(ctmts)} CTMT de [bold]{fonte.caminho}[/] → [bold]{out_dir}[/]")
     t0 = time.perf_counter()
     # seleção única na fonte, sem filtro de bbox: cada recorte (e o cluster) aplica o seu
-    camadas_brutas = selecionar(fonte, ctmts, interligacoes=interligacoes, folga_bbox_m=None)
+    camadas_brutas = selecionar(
+        fonte,
+        ctmts,
+        interligacoes=interligacoes,
+        folga_bbox_m=None,
+        filtrar_postes_uc=False,
+    )
     memoria = FonteMemoria(camadas_brutas)
 
     recortes: list[Recorte] = []

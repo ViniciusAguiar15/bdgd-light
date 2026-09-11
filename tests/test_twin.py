@@ -295,13 +295,10 @@ def test_simular_falha_do_motor_e_estado():
     assert estado_motor()["reinicios"] == antes + 1
 
 
-def test_modo_motor_invalido(monkeypatch):
+def test_modo_motor_e_fixo_em_processo(monkeypatch):
     from bdgd_light.twin.powerflow import modo_motor
 
-    monkeypatch.setenv("BDGD_MOTOR", "gpu")
-    with pytest.raises(ValueError, match="BDGD_MOTOR='gpu'"):
-        modo_motor()
-    monkeypatch.setenv("BDGD_MOTOR", "")
+    monkeypatch.setenv("BDGD_MOTOR", "thread")
     assert modo_motor() == "processo"
 
 
