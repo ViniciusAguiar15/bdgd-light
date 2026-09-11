@@ -347,12 +347,12 @@ uv run ruff check . && uv run ruff format . && uv run pytest
 - `PTS4022` ainda mostra 1 tie de campo (5 → 1) — chave a mais de 50 m do polígono da SE; conferir
   no mapa se é pátio maior ou tie real antes de aumentar `raio_sub_m`.
 
-## 6. #44 — convergência do cluster Tijuca: diagnóstico, avisos de dado e rótulo exato (09:55–)
+## 6. #44 — convergência do cluster Tijuca: diagnóstico, avisos de dado e rótulo exato (09:55–10:31)
 
 | | |
 |---|---|
 | Branch | `fix/twin-convergencia` (a partir de `main` `81d4f9c`) |
-| PR | ver "Fechamento" ao fim da seção |
+| PR | **#59** — CI verde na primeira (console 12 s, llm-smoke 18 s, test 3.11 2m31s / 3.12 1m24s) → squash-merge às 10:31, `main` `2ca33d0`; issues #44 e #53 fechadas. |
 | Leituras | `docs/review/` sem arquivo novo; issue #44 (hipótese do mantenedor: ramal BT longo/fino), `PR-11.md` pedido 3, `docs/spike-opendss.md` §3 e pendências, `twin/powerflow.py` (cascata), `twin/gpkg2dss.py`. |
 
 ### Decisões
@@ -415,3 +415,63 @@ uv run ruff check . && uv run ruff format . && uv run pytest
   o cluster continua com Vmin BT 0,303 pu por causa do `RBT_589704551`.
 - O critério ≥ 90 % é um relato, não a condição completa: Ipanema precisa do `vminpu=0.9` com um
   único trafo de fase única (`11043897`, PTS9088, 148 UC em C).
+
+## 7. Resumo final da noite 3 (10:35)
+
+**Fila esgotada: 3 itens do backlog (16–18) = 6 issues, 6 PRs mergeados, `main` em `2ca33d0`.**
+Nenhum force-push, nada de `data/` no git, nenhum commit direto em `main`, CI verde na primeira
+tentativa em todos. Suíte: **292 testes** (275 na abertura da noite).
+
+| # | issue | PR | merge (BRT) | tentativas de CI | destaque |
+|---|---|---|---|---|---|
+| 1 | #51 demo/aula | #54 | 07:52 | 1 | modo passo a passo no console, 3 capturas PNG no README, `docs/demo-roteiro.md` testado do zero |
+| 2 | #52 benchmark completo | #55 | 09:15 | 1 | 284 execuções Gemini (US$ 1,69), +4 tarefas Ipanema, eventos novos, prompt com número explícito, custo em US$ |
+| 3 | #48 motor em subprocesso | #56 | 09:36 | 1 | DSS C-API isolada num processo filho; Linux sem `SIGSEGV` na saída |
+| 4 | #40 recorte/tiles por bbox | #57 | 09:45 | 1 | postes de `PN_CON` longe da rede fora do recorte e dos tiles |
+| 5 | #39 inventário `EM_SUB` | #58 | 09:54 | 1 | inventário regerado (3,8 s), `scripts/regioes_inventario.py`, tabela por região reproduzível |
+| 6 | #44 convergência Tijuca (fecha #53) | #59 | 10:31 | 1 | ciclo-limite por `FAS_CON`; `ajustes` exato; avisos `ramais_longos`/`trafos_fase_unica`; `scripts/diagnostico_convergencia.py` |
+
+### Validações com modelo real
+
+- **Gemini 2.5 Flash** (chave presente, validada em §0): `llm-smoke`, benchmark completo da §2
+  (simple/medium/hard k=3, hard k=5, 284 execuções, 3,9 M tokens, US$ 1,69), ensaio do roteiro.
+- **OpenAI**: `OPENAI_API_KEY` **ausente** no ambiente da sessão (§0: processo, `zsh -lic`,
+  `~/.zshrc`/`~/.zprofile`, `.env`, `launchctl`, keychain) — nada foi validado com OpenAI nesta
+  noite. Os 3 cenários do agente com OpenAI já estavam em `docs/agent.md` (mantenedor, 10/09);
+  o benchmark OpenAI fica com os comandos e o custo estimado (~US$ 0,55) em `docs/bench.md`.
+
+### Pendências consolidadas (por prioridade)
+
+1. **OpenAI**: `uv run bdgd-light bench --provider openai --nivel simple --k 3 --seed 42` e depois
+   `--nivel medium,hard --acrescentar` (§2); demo ao vivo com `--provider openai` (§1).
+2. **Qualidade de dado da BDGD para a Light** (§6): `FAS_CON = AN` em massa (14 trafos da Tijuca
+   com ≥ 90 % das UC monofásicas na mesma fase — fase real ou padrão de cadastro?) e os ramais
+   `RAMLIG` > 300 m (988 m com 55 UC). Se for cadastro, rebalanceamento seguro por PAC vira opção.
+3. **Benchmark** (§2): `--nivel hard --k 5 --sem-exemplos` para confirmar o efeito dos exemplos no
+   `MALFORMED_FUNCTION_CALL`; repetir em `ReadTimeout`.
+4. **Recorte** (§4): filtro geométrico (bbox + 500 m), não topológico; `PTS4022` com 1 tie de campo a
+   conferir no mapa (§5).
+5. **Motor** (§3): remover `BDGD_MOTOR=thread`/`encerrar_processo` quando ninguém precisar; Windows
+   não é alvo (`AF_UNIX`).
+6. **GIF** (§1): sem `ffmpeg`/`gifski` na máquina — com `gifski`, `SMOKE_CAPTURAS=/tmp/cap … &&
+   gifski -o demo.gif /tmp/cap/*.png`.
+7. `docs/review/PR-17.md` (revisão do mantenedor do PR #54) continua só local, não versionado por
+   mim — decidir se entra no repositório.
+
+### Comandos de validação da noite (rodados localmente com `data/` presente)
+
+```bash
+uv sync --extra dev --extra twin --extra agent
+uv run ruff check . && uv run ruff format --check . && uv run pytest                       # 292 testes
+uv run bdgd-light llm --provider gemini "Quanto é 2 + 3?"                                  # OK; openai: chave ausente
+BDGD_CONSOLE_TOKEN=demo uv run bdgd-light serve --cluster tijuca --provider fake --porta 8010 --estado /tmp/n3/serve/estado
+(cd console && SMOKE_FLUXO=1 SMOKE_PASSOS=1 SMOKE_TOKEN=demo SMOKE_CAPTURAS=../docs/img npm run smoke -- "http://127.0.0.1:8010/?cenario=tijuca")
+uv run bdgd-light bench --provider gemini --nivel hard --k 5 --seed 42 --estado /tmp/n3/bench/estado-gemini
+uv run bdgd-light bench --provider gemini --nivel simple,medium --k 3 --seed 42 --acrescentar --estado /tmp/n3/bench/estado-gemini
+uv run bdgd-light recortar --parquet data/parquet --ctmt ALC9925,ALC9946,URG29983,RCP9882 --nome-cluster tijuca --out data/feeders
+uv run bdgd-light tiles --gpkg data/feeders/cluster_tijuca.gpkg --out data/tiles
+uv run bdgd-light inventario --parquet data/parquet --out data/inventario_ctmt.csv
+uv run scripts/regioes_inventario.py data/inventario_ctmt.csv
+uv run bdgd-light dss --gpkg data/feeders/cluster_tijuca.gpkg --reconverter                # vminpu=0.9, 6 it.; avisos
+uv run scripts/diagnostico_convergencia.py data/dss/gpkg/cluster_ALC9925-RCP9882-ALC9946-URG29983/Master_DU01_base.dss
+```
