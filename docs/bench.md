@@ -127,7 +127,7 @@ provedor·modo. Custo total da noite em Gemini: 284 execuções, 3,9 M tokens, *
 | **gemini** (exemplos + compactação) | gemini-2.5-flash | 124 (k=3 simple/medium, **k=5 hard**) | 100 % | 100 % | 85 % | 94 % | **100 %** | 95 % | 99 % | 11.557 | **0,0051** | 2.366 | 8,6 |
 | gemini · sem exemplos | gemini-2.5-flash | 68 (k=2) | 100 % | 100 % | 95 % | 99 % | 100 % | 98 % | 96 % | 9.290 | 0,0044 | 2.244 | 8,1 |
 | gemini · sem compactar | gemini-2.5-flash | 68 (k=2) | 100 % | 100 % | 91 % | 97 % | 100 % | 96 % | 100 % | 18.858 | 0,0071 | 9.236 | 7,2 |
-| openai | gpt-4.1-mini | — | — | — | — | — | — | — | — | — | — | — | — |
+| **openai** | gpt-4.1-mini-2025-04-14 | 102 (k=3) | 100 % | 85 % | 100 % | 94 % | 94 % | 99 % | 95 % | 9.556 | **0,0041** | 5.687 | 8,4 |
 
 Por nível, Gemini com exemplos e compactação (a configuração padrão do agente):
 
@@ -136,6 +136,14 @@ Por nível, Gemini com exemplos e compactação (a configuração padrão do age
 | simple | 30 (k=3) | 30/30 | 100 % | 5.830 | 0,0021 | 1,9 | — |
 | medium | 39 (k=3) | 39/39 | 100 % | 5.135 | 0,0019 | 2,0 | — |
 | hard | 55 (k=5) | 47/55 = 85 % | 100 % (pass@5) | 19.234 | 0,0090 | 16,9 | 8 × `MALFORMED_FUNCTION_CALL` |
+
+Os 3 **cenários ponta a ponta** também foram rerodados localmente com OpenAI via
+`zsh -lic 'uv run bdgd-light agente --cenario ... --provider openai'`:
+Tijuca (`tijuca_cabofrio_tronco`) em 4 rodadas / 25.841 tokens / ~US$ 0,011, mesma proposta de
+fechar `974020904`; Ipanema (`ipanema_9210`) em 4 rodadas / 13.274 tokens / ~US$ 0,0058,
+reconhecendo corretamente o caso **sem chave**; Taquara (`taquara_bocari`) em 4 rodadas / 33.316
+tokens / ~US$ 0,0139, com chave equivalente `11056672` para `TQR33859`. Em todos: 0 recusas, 0
+replanejamentos e verificador aprovado.
 
 ### Leitura para a apresentação
 
@@ -147,19 +155,25 @@ Por nível, Gemini com exemplos e compactação (a configuração padrão do age
    prompt (número explícito), e H07 5/5 (479, o número que o gpt-4.1-mini trocou pelo total do
    CTMT). Os 8 erros das *hard* (15 %) são todos de infraestrutura — abaixo — e pass@5 = 100 % em
    todas as tarefas.
-2. **Custo.** Uma execução *simple*/*medium* custa **US$ 0,002**; uma *hard* completa (falta →
-   isolamento → score elétrico → proposta, ~19 k tokens, 4,4 rodadas) **US$ 0,009** — o evento
-   inteiro da demo sai por menos de um centavo de dólar; o tempo (17 s) é dominado pelo gêmeo
-   OpenDSS pontuando as opções, não pelo modelo (~2 s por rodada). Um dia de COD com 100 eventos
-   ficaria em ~US$ 1 no Flash; no `gpt-4.1-mini` (US$ 0,40/1,60 por M) o cenário de Tijuca custa
-   ~US$ 0,014 com os 32,7 k tokens medidos pelo mantenedor em `docs/agent.md`.
-3. **Compactação dos retornos (PR-14): metade dos tokens nas *hard*, mesmo acerto.** Sem
+2. **OpenAI fechou a lacuna do comparativo, mas revelou outro tipo de erro.** O
+   `gpt-4.1-mini-2025-04-14` ficou em **94 %** no total sem nenhum erro de infraestrutura: 30/30
+   *simple*, 33/39 *medium* e 33/33 *hard*. As 6 falhas são todas das duas perguntas *medium* que
+   pedem o número de clientes que continuam sem tensão após o isolamento (M07 e M09): o modelo
+   chamou a sequência certa, mas respondeu **zero** em Tijuca e **516** em Taquara, confundindo o
+   total ainda desligado com outra grandeza do retorno. Em compensação, nas *hard* ele não exibiu
+   o `MALFORMED_FUNCTION_CALL` do Gemini e entregou 100 % de pass@1.
+3. **Custo.** Uma execução *simple*/*medium* custa **~US$ 0,002** nos dois provedores; uma *hard*
+   completa custa **US$ 0,0090** no Gemini e **US$ 0,0083** no OpenAI. O evento inteiro da demo
+   segue abaixo de um centavo de dólar em ambos; o tempo é dominado pelo gêmeo OpenDSS, não pelo
+   modelo. No agregado desta rodada, o OpenAI foi ligeiramente mais barato por execução
+   (**US$ 0,0041** vs **US$ 0,0051**) porque consumiu menos tokens.
+4. **Compactação dos retornos (PR-14): metade dos tokens nas *hard*, mesmo acerto.** Sem
    compactar, os JSON de ferramenta passam de 2,4 k para 9,2 k caracteres por execução (nas *hard*
    de 4,2 k para 15,8 k) e as *hard* vão de 19 k para **40 k tokens** (−52 % com compactação;
    US$ 0,0157 → 0,0090, −43 %); nas *simple* 11,1 k → 5,8 k (−47 %), nas *medium* 6,8 k → 5,1 k
    (−25 %). Acerto e ordem não mudam (precisão até sobe a 100 %) — é ganho puro de custo, e afasta
    o contexto de qualquer limite prático.
-4. **Exemplos anotados: para o Gemini 2.5 Flash, não compram acerto.** Sem os 3 exemplos por
+5. **Exemplos anotados: para o Gemini 2.5 Flash, não compram acerto.** Sem os 3 exemplos por
    afinidade a execução gasta ~550 tokens a menos nas *simple* (−9 %) e ~1,7 k nas *hard* (−7 %),
    o acerto fica igual (67/68; o único erro foi um `ReadTimeout` de 60 s da API) e a ordem sobe
    (98 % vs 95 %: com exemplos o modelo pulou `locate_fault` e chamou `isolate_fault` direto nas 6
@@ -169,7 +183,8 @@ Por nível, Gemini com exemplos e compactação (a configuração padrão do age
    sem pedido), não para ensiná-lo a sequência — que o prompt de regras já ensina. Com o Flash o
    custo dos exemplos (US$ 0,0002–0,0005/exec.) é irrelevante; a decisão fica para o OpenAI e para
    modelos menores (Ollama).
-5. **O erro que restou é do provedor, não do agente.** Todos os 8 erros *hard* da configuração
+6. **No estado atual, o erro remanescente é específico do provedor.** No Gemini, todos os 8 erros
+   *hard* da configuração
    padrão (e os 2 da rodada sem compactar) são `finish_reason = function_call_filter:
    MALFORMED_FUNCTION_CALL` do Gemini na chamada seguinte a `isolate_fault` (a de
    `restore_options(score=true)`), com as 3 tentativas do cliente falhando igual — tokens cobrados
@@ -182,8 +197,10 @@ Por nível, Gemini com exemplos e compactação (a configuração padrão do age
    1,0) além do lembrete — a temperatura 0 tende a reproduzir a mesma chamada malformada; numa
    validação de 24 execuções nas 6 tarefas que falharam (H01, H02, H04, H06, H08, H10, k=4, com
    exemplos) sobrou **1 erro (4 %)** contra 15 % — melhora, mas com n pequeno; a tentativa repetida
-   ainda falhou nesse caso. Próximo passo é a comparação k=5 *hard* sem exemplos (pendências).
-6. **Sem manobra é tão importante quanto manobrar.** Nos dois eventos novos (`chave_indisponivel`,
+   ainda falhou nesse caso. No OpenAI o problema não é tool call malformada, e sim resposta final
+   numérica em duas tarefas *medium*. Portanto, a discussão sobre desligar exemplos continua aberta
+   e precisa do A/B do bloco seguinte.
+7. **Sem manobra é tão importante quanto manobrar.** Nos dois eventos novos (`chave_indisponivel`,
    `falta_transitoria`) o agente não propôs nada em nenhuma das 14 execuções do Gemini (nem nas 30
    do fake) e citou o número certo de clientes; numa execução de M12 o Gemini consultou
    `get_switch_state` antes de responder — permitido, mas conta contra a precisão (a referência é
@@ -234,12 +251,6 @@ Rodada de 2026-09-10 (PR #36), mantida como histórico:
 
 ### Pendências
 
-- **OpenAI não rodou nesta máquina** (sem `OPENAI_API_KEY` no ambiente do agente noturno, noites 2 e
-  3). Comandos para o mantenedor, na ordem de custo (≈ US$ 0,10 + 0,15 + 0,30 nos preços de lista
-  do `gpt-4.1-mini`): `uv run bdgd-light bench --provider openai --nivel simple --k 3 --seed 42`,
-  depois `--nivel medium --k 3 --seed 42 --acrescentar` e `--nivel hard --k 3 --seed 42
-  --acrescentar`; o comparativo e a coluna US$ saem sozinhos. Os 3 cenários do agente com OpenAI
-  já estão em `docs/agent.md` (validação do mantenedor, 2026-09-10).
 - Confirmar o efeito dos exemplos no `MALFORMED_FUNCTION_CALL`: `--provider gemini --nivel hard
   --k 5 --seed 42 --sem-exemplos` (55 execuções, ~US$ 0,55) contra os 8/55 com exemplos; se
   confirmar, o perfil `gemini` pode desligar os exemplos por padrão (ou trocar o formato textual
