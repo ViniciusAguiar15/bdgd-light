@@ -281,7 +281,7 @@ uv run ruff check . && uv run ruff format . && uv run pytest     # 281 testes ve
 | | |
 |---|---|
 | Branch | `fix/inventario-em-sub` (a partir de `main` `a5793e1`) |
-| PR | ver "Fechamento" ao fim da seção |
+| PR | **#58** — CI verde na primeira (console 9 s, llm-smoke 20 s, test 3.11 1m26s / 3.12 1m20s) → squash-merge às 09:54, `main` `81d4f9c`; issue #39 fechada. |
 | Leituras | `docs/review/` sem arquivo novo; issue #39, `PR-08.md` pedido 2, `NOITE-2.md` §1 pendência 1; `interligacoes.py` (`raio_sub_m`, `RAIO_SUB_PADRAO_M = 50`). |
 
 ### Decisões
@@ -346,3 +346,72 @@ uv run ruff check . && uv run ruff format . && uv run pytest
   mais sensível ao raio. Se um dia houver polígonos de bairro (IPP), trocar por `within`.
 - `PTS4022` ainda mostra 1 tie de campo (5 → 1) — chave a mais de 50 m do polígono da SE; conferir
   no mapa se é pátio maior ou tie real antes de aumentar `raio_sub_m`.
+
+## 6. #44 — convergência do cluster Tijuca: diagnóstico, avisos de dado e rótulo exato (09:55–)
+
+| | |
+|---|---|
+| Branch | `fix/twin-convergencia` (a partir de `main` `81d4f9c`) |
+| PR | ver "Fechamento" ao fim da seção |
+| Leituras | `docs/review/` sem arquivo novo; issue #44 (hipótese do mantenedor: ramal BT longo/fino), `PR-11.md` pedido 3, `docs/spike-opendss.md` §3 e pendências, `twin/powerflow.py` (cascata), `twin/gpkg2dss.py`. |
+
+### Decisões
+
+- **Medir antes de mexer.** Regenerei o Master da Tijuca do GPKG atual (`dss --gpkg
+  cluster_tijuca.gpkg --reconverter`, 4,7 s) e montei uma matriz de ajustes no motor em processo
+  (`/tmp/n3/diag/diag1..7.py`, consolidados em `scripts/diagnostico_convergencia.py`):
+  `maxiterations=100` sozinho **nunca** converge (100 iterações); `vminpu=0.9` sozinho converge em
+  **6** com o limite padrão de 15 (0,95 → 5; 0,7 → 22; 0,8/0,6 não); `model=2` em tudo → 2;
+  `newton`, `tolerance=1e-3`, `model=1` e `loadmult` 0,9/0,8/0,6 não. Logo não é carga nem lentidão.
+- **É um ciclo-limite de período 6.** Uma iteração por vez: `max|ΔV|` 0,097 pu toda iteração
+  (`335019687_2.1`) e 0,24 pu a cada seis nos neutros `11366449_bt_*.4` (0,40 ↔ 0,64 pu); 164 nós
+  oscilam, 122 no circuito de `TRF_28262926A` (RCP9882) e 38 em `TRF_11366449A`. A bissecção por
+  circuito com tensão nó–terra enganou (deslocamento de neutro); a tensão **terminal** das cargas
+  resolveu: 2.294 cargas `model=3` com V < 0,9 pu — `vminpu=0.9` só nelas converge em 6 iterações,
+  igual a aplicar em todas.
+- **Hipótese do ramal longo rejeitada; causa é `FAS_CON`.** A barra a 0,303 pu é a ponta do
+  `RBT_589704551` (988 m, 55 UC) — problema de dado real, mas já abaixo de 0,5 pu e fora do ciclo.
+  O que oscila são circuitos com toda a carga monofásica numa fase: 14 trafos do cluster têm
+  ≥ 90 % das UC monofásicas na mesma fase (`10951643` 638/678 em A, `28262926` 192/192 em A,
+  `10951787AP85826` 148 em A, `10938261` 90 em B…); `28262926` sozinho em `vminpu=0.5` derruba a
+  convergência (`vminpu=0.9` em tudo menos ele: não converge). Confirmei no GPKG que os
+  `SSDBT`/`RAMLIG` desses circuitos são `AN` (2 fios).
+- **Rebalancear fases: implementado, testado e revertido.** Round-robin das UC monofásicas por
+  trafo degenerado "converge" em 2 iterações para lixo (119 pu, −1,2 GW): não há condutor B/C nos
+  circuitos a 2 fios. Neutro multiaterrado (15 Ω em todos os 8.304 nós `.4`) também não ajuda.
+  Nenhuma alteração do modelo foi mantida — `cluster.py`/`cli.py` voltaram ao `main`.
+- **O que foi para o código.** (1) `_rotular_ajustes` em `powerflow.py`: `ajustes` lista só o
+  degrau necessário — `maxiterations=100` sai do rótulo quando o `Solve` final convergiu dentro do
+  limite original (a cascata continua cumulativa; teste `test_estabilizadores_em_cascata` intacto).
+  Tijuca, Ipanema e TQR passam a relatar `vminpu=0.9` — a afirmação da issue de que TQR converge sem
+  estabilizador não se confirma (TQR0007 5 it., cluster TQR 9 it., Ipanema 7 it., todos com
+  `vminpu=0.9`). (2) `_Conversor.suspeitos()` em `gpkg2dss.py`: avisos + `contagem["ramais_longos"]`
+  (RAMLIG > 300 m, com o maior nominalmente) e `contagem["trafos_fase_unica"]` (≥ 20 UC monofásicas,
+  ≥ 90 % na mesma fase, top 3 no aviso); o modelo não muda. (3) `scripts/diagnostico_convergencia.py`
+  reproduz a análise para qualquer Master (≈20 s na Tijuca; sai cedo se o padrão converge).
+- **Docs.** `docs/spike-opendss.md`: seção "Diagnóstico de convergência do cluster Tijuca (issue
+  #44)" (matriz, ciclo-limite, cargas críticas, causa, decisões, pendências) e correções dos rótulos
+  antigos ("maxiterations=100 + vminpu=0.9"); README (`scripts/`, `--sem-estabilizar`); ajuda do
+  `--estabilizar`; exemplo do `docs/mcp-ferramentas.md` e a nota da #44; `docs/escopo-cidade.md`
+  (parêntese do cluster A). `docs/agent/sessao-tijuca.json` mantém o rótulo antigo (histórico).
+
+### Validação
+
+```bash
+uv run bdgd-light dss --gpkg data/feeders/cluster_tijuca.gpkg --reconverter          # avisos + "Estabilizadores: vminpu=0.9", 6 it.
+uv run scripts/diagnostico_convergencia.py \
+    data/dss/gpkg/cluster_ALC9925-RCP9882-ALC9946-URG29983/Master_DU01_base.dss       # matriz, ciclo-limite, cargas críticas
+uv run pytest tests/test_twin.py tests/test_gpkg2dss.py -q
+uv run ruff check . && uv run ruff format . && uv run pytest
+```
+
+### Pendências desta issue
+
+- Perguntar à Light/mantenedor se `FAS_CON = AN` em massa (4.170 UC `AN` × 1.978 `BN` × 1.382 `CN`
+  no cluster; 14 trafos quase 100 % numa fase) é fase real ou padrão de cadastro. Se for cadastro,
+  a lista de `trafos_fase_unica` é a fila de correção — e um rebalanceamento **seguro** (só para
+  fases que existem no `SSDBT`/`RAMLIG` de cada PAC) vira opção de conversão.
+- Os 7 ramais > 300 m da Tijuca (988 m, 342 m, 320 m…) seguem como pergunta de qualidade de dado;
+  o cluster continua com Vmin BT 0,303 pu por causa do `RBT_589704551`.
+- O critério ≥ 90 % é um relato, não a condição completa: Ipanema precisa do `vminpu=0.9` com um
+  único trafo de fase única (`11043897`, PTS9088, 148 UC em C).
