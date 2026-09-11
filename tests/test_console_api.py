@@ -27,6 +27,7 @@ from bdgd_light.ingest.recorte import recortar  # noqa: E402
 from bdgd_light.mcp_server import SessaoCOD  # noqa: E402
 from bdgd_light.mcp_server.humano import Autorizador  # noqa: E402
 from bdgd_light.sim import Evento, FilaEventos  # noqa: E402
+from bdgd_light.twin import score_eletrico  # noqa: E402
 
 CLUSTER_MINI = Path("tests/fixtures/dss/cluster_mini")
 OP = {"X-Operador": "ana", "Authorization": "Bearer segredo"}
@@ -148,6 +149,10 @@ def test_fluxo_injetar_propor_aprovar(cliente: TestClient, sessao: SessaoCOD, re
     assert hitl[0]["dados"]["operador"] == "ana" and hitl[0]["dados"]["origem"] == "console"
     assert cliente.get("/api/propostas/P-0001").json()["alternativas"] == []
     assert cliente.get("/api/agente").json()["execucoes"][0]["proposta"] == "P-0001"
+    eletrico = cliente.get("/api/propostas/P-0001/eletrico").json()
+    assert eletrico["proposta_id"] == "P-0001" and eletrico["escolhida"] == "CH003"
+    assert eletrico["opcoes"][0]["score"]["convergencia"]["iteracoes"] >= 1
+    assert eletrico["opcoes"][0]["score"]["perfil_tensao_mt"][0]["barra"] == "RJO002_MT_0"
 
     # reinício da demo: recarregar volta a rede ao normal e a nova falta gera P-0002
     r = cliente.post("/api/eventos", json={"trecho": "SEG001", "recarregar": True}, headers=OP)
@@ -155,6 +160,33 @@ def test_fluxo_injetar_propor_aprovar(cliente: TestClient, sessao: SessaoCOD, re
     e = cliente.get("/api/estado").json()
     assert e["falta"] == "SEG001" and e["eventos_n"] == 2
     assert [p["id"] for p in e["propostas"] if p["status"] == "pendente"] == ["P-0002"]
+
+
+def test_endpoint_eletrico_mostra_sobrecarga_coerente(
+    cliente: TestClient, sessao: SessaoCOD, recorte: Path
+):
+    r = cliente.post("/api/eventos", json={"cluster": str(recorte), "trecho": "SEG001"}, headers=OP)
+    assert r.status_code == 202
+    plano = sessao._plano()
+    opcoes = plano.restore_options("SEG001")
+    scores = score_eletrico(opcoes, plano, sessao.master_base(), comandos_base=["set loadmult=30"])
+    sessao._scores = {
+        s.chave: {k: v for k, v in s.to_dict().items() if k != "chave"} for s in scores
+    }
+    sessao.propostas.obter("P-0001").score = sessao._scores["CH003"]
+    sessao.propostas.salvar()
+
+    eletrico = cliente.get("/api/propostas/P-0001/eletrico")
+    assert eletrico.status_code == 200
+    corpo = eletrico.json()
+    assert corpo["proposta_id"] == "P-0001" and len(corpo["opcoes"]) == 2
+    inviavel = next(o for o in corpo["opcoes"] if o["chave"] == "CH003")
+    assert inviavel["score"]["viavel"] is False
+    trecho = inviavel["score"]["trechos_carregados_mt"][0]
+    assert trecho["cod_id"] == "SEG005"
+    assert trecho["carregamento_pct"] == pytest.approx(182.4, abs=5.0)
+    assert inviavel["score"]["perfil_tensao_mt"][0]["barra"] == "RJO002_MT_0"
+    assert inviavel["score"]["perfil_tensao_mt"][-1]["distancia_m"] > 0
 
 
 def test_passo_a_passo_uma_manobra_por_chamada(cliente: TestClient, sessao: SessaoCOD, recorte):

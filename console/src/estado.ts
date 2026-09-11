@@ -3,11 +3,13 @@
  * `energizado`, `aberta`, `fonte`, ...) desenhado por cima dos tiles.
  */
 import type { Feature, FeatureCollection } from "geojson";
+import type { LayerSpecification } from "maplibre-gl";
 import type { GeoJSONSource, Map as MapaLibre } from "maplibre-gl";
 import { FONTE_ESTADO, LAYERS_ESTADO } from "./camadas";
 import { mostrarEstado } from "./painel";
 
 type Colecao = FeatureCollection;
+const CAMADA_DESTAQUE_TRECHOS = "estado-trechos-destaque";
 
 export async function carregarEstado(mapa: MapaLibre, url: string): Promise<void> {
   const resp = await fetch(url);
@@ -33,4 +35,36 @@ export async function carregarEstado(mapa: MapaLibre, url: string): Promise<void
     chavesAbertas: chaves.filter((f: Feature) => f.properties?.aberta === true).length,
     trafosSemTensao: trafos.filter((f: Feature) => f.properties?.energizado === false).length,
   });
+}
+
+function filtroTrechos(codigos: string[]) {
+  if (!codigos.length) return ["==", ["get", "COD_ID"], "__sem_destaque__"] as const;
+  return [
+    "all",
+    ["==", ["get", "camada"], "SSDMT"],
+    ["match", ["get", "COD_ID"], codigos, true, false],
+  ] as const;
+}
+
+function garantirCamadaDestaque(mapa: MapaLibre) {
+  if (mapa.getLayer(CAMADA_DESTAQUE_TRECHOS)) return;
+  const spec: LayerSpecification = {
+    id: CAMADA_DESTAQUE_TRECHOS,
+    type: "line",
+    source: FONTE_ESTADO,
+    filter: filtroTrechos([]) as never,
+    paint: {
+      "line-color": "#ffd54f",
+      "line-width": ["interpolate", ["linear"], ["zoom"], 10, 4, 16, 10],
+      "line-opacity": 0.95,
+    },
+    layout: { "line-cap": "round", "line-join": "round" },
+  };
+  mapa.addLayer(spec);
+}
+
+export function destacarTrechos(mapa: MapaLibre, codigos: string[]) {
+  if (!mapa.getSource(FONTE_ESTADO)) return;
+  garantirCamadaDestaque(mapa);
+  mapa.setFilter(CAMADA_DESTAQUE_TRECHOS, filtroTrechos(codigos) as never);
 }
