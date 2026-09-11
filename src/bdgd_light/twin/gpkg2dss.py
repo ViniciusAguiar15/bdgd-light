@@ -151,6 +151,8 @@ MONOFASICAS = frozenset({"A", "B", "C", "AN", "BN", "CN", "AX", "BX", "CX"})
 _CHAVE = "r1=0.001 r0=0.001 x1=0.0 x0=0.0 c1=0.0 c0=0.0  switch = T length=0.00100"
 _ENERGIAS = [f"ENE_{m:02d}" for m in range(1, 13)]
 _POTENCIAS = [f"POT_{i:02d}" for i in range(1, 97)]
+PREFIXO_ELEMENTO_TRECHO_MT = "smt_"
+TIPO_TRECHO_MT_OPEN_DSS = PREFIXO_ELEMENTO_TRECHO_MT.removesuffix("_").upper()
 
 
 class GpkgInvalidoError(ValueError):
@@ -256,6 +258,21 @@ def _num(valor, padrao: float = 0.0) -> float:
     except (TypeError, ValueError):
         return padrao
     return padrao if math.isnan(x) else x
+
+
+def nome_elemento_trecho_mt(cod_id) -> str:
+    """Nome OpenDSS do trecho MT (camada ``SSDMT``)."""
+    return f"Line.{PREFIXO_ELEMENTO_TRECHO_MT.upper()}{_texto(cod_id)}"
+
+
+def cod_id_trecho_mt_de_elemento(elemento: object) -> str | None:
+    """Extrai o ``COD_ID`` de ``Line.SMT_<COD_ID>`` de forma case-insensitive."""
+    nome = str(elemento or "").strip()
+    prefixo = f"line.{PREFIXO_ELEMENTO_TRECHO_MT}"
+    if not nome.lower().startswith(prefixo):
+        return None
+    cod_id = nome[len(prefixo) :].strip()
+    return cod_id.upper() or None
 
 
 def _kv(codigo, padrao: float = 0.0) -> float:
@@ -485,8 +502,13 @@ class _Conversor:
                 nulos += 1
                 comp_m = 0.001
             a, b = _texto(r["PAC_1"]), _texto(r["PAC_2"])
+            nome_elemento = (
+                nome_elemento_trecho_mt(r["COD_ID"])
+                if prefixo == TIPO_TRECHO_MT_OPEN_DSS
+                else f"Line.{prefixo}_{_texto(r['COD_ID'])}"
+            )
             linha = (
-                f'New "Line.{prefixo}_{_texto(r["COD_ID"])}" phases={fases} bus1="{a}.{nos}" '
+                f'New "{nome_elemento}" phases={fases} bus1="{a}.{nos}" '
                 f'bus2="{b}.{nos}" linecode="{_texto(r.get("TIP_CND"))}_{fases}" '
                 f"length={comp_m / 1000:.9f} units=km"
             )
@@ -639,7 +661,12 @@ class _Conversor:
             no_ini = mt[(mt["PAC_1"] == self.pac_ini) | (mt["PAC_2"] == self.pac_ini)]
             if not no_ini.empty:
                 cod = _texto(no_ini.iloc[0]["COD_ID"])
-                return [f'New "Energymeter.M_{self.ctmt}" element="Line.SMT_{cod}" terminal=1']
+                return [
+                    (
+                        f'New "Energymeter.M_{self.ctmt}" '
+                        f'element="{nome_elemento_trecho_mt(cod)}" terminal=1'
+                    )
+                ]
         self.avisos.append(f"{self.ctmt}: nenhum elemento no PAC_INI {self.pac_ini!r}; sem medidor")
         return []
 
@@ -812,7 +839,7 @@ def converter_ctmt(
         ("CircuitoMT", c.circuito()),
         ("CodCondutor", c.linecodes()),
         ("TransformadorMTMTMTBT", c.transformadores()),
-        ("SegmentosMT", c._segmentos("SSDMT", "SMT", bt=False)),
+        ("SegmentosMT", c._segmentos("SSDMT", TIPO_TRECHO_MT_OPEN_DSS, bt=False)),
         ("ChavesMT", c._chaves("UNSEMT", "CMT", bt=False)),
         ("SegmentosBT", c._segmentos("SSDBT", "SBT", bt=True)),
         ("ChavesBT", c._chaves("UNSEBT", "CBT", bt=True)),

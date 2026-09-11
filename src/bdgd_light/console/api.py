@@ -39,6 +39,7 @@ from bdgd_light.sim.eventos import (
     FilaEventos,
     Simulador,
 )
+from bdgd_light.twin.gpkg2dss import cod_id_trecho_mt_de_elemento
 
 LIMITE_EXECUCOES = 20
 Corpo = Annotated[dict[str, Any] | None, Body()]  # corpo JSON opcional (objeto)
@@ -221,14 +222,6 @@ def _resultado_ferramenta(execucao: Mapping[str, Any], nome: str) -> Mapping[str
     return None
 
 
-def _cod_id_trecho_de_elemento(elemento: Any) -> str | None:
-    nome = str(elemento or "").lower()
-    prefixo = "line.smt_"
-    if not nome.startswith(prefixo):
-        return None
-    return nome.split(prefixo, 1)[1].upper()
-
-
 def _destaques_execucao(execucao: Mapping[str, Any]) -> dict[str, Any] | None:
     evento = execucao.get("evento")
     if not isinstance(evento, Mapping) or evento.get("tipo") != PICO_CARGA:
@@ -240,14 +233,14 @@ def _destaques_execucao(execucao: Mapping[str, Any]) -> dict[str, Any] | None:
     for item in fluxo.get("sobrecargas") or []:
         if not isinstance(item, Mapping):
             continue
-        cod = item.get("cod_id") or _cod_id_trecho_de_elemento(item.get("elemento"))
+        cod = item.get("cod_id") or cod_id_trecho_mt_de_elemento(item.get("elemento"))
         if cod and cod not in trechos:
             trechos.append(str(cod))
     if not trechos:
         for item in fluxo.get("trechos_carregados_mt") or []:
             if not isinstance(item, Mapping):
                 continue
-            cod = item.get("cod_id") or _cod_id_trecho_de_elemento(item.get("elemento"))
+            cod = item.get("cod_id") or cod_id_trecho_mt_de_elemento(item.get("elemento"))
             if cod and cod not in trechos:
                 trechos.append(str(cod))
     return {

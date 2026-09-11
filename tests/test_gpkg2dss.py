@@ -22,8 +22,10 @@ from bdgd_light.grid import Cluster  # noqa: E402
 from bdgd_light.ingest.recorte import recortar  # noqa: E402
 from bdgd_light.twin import (  # noqa: E402
     DIAS,
+    PREFIXO_ELEMENTO_TRECHO_MT,
     ConversaoGpkg,
     GpkgInvalidoError,
+    cod_id_trecho_mt_de_elemento,
     comandos_manobras,
     converter_ctmt,
     converter_gpkg,
@@ -31,6 +33,7 @@ from bdgd_light.twin import (  # noqa: E402
     escolher_master,
     listar_ctmts,
     montar_master_cluster,
+    nome_elemento_trecho_mt,
     run_powerflow,
 )
 
@@ -89,6 +92,17 @@ def test_dias_por_tipo_igual_ao_bdgd2opendss():
     assert dias["DU"][1] == 21 and dias["DO"][1] == 5 and dias["SA"][1] == 5
     assert dias["DU"][2] == 19 and dias["DO"][2] == 5
     assert all(sum(d[m] for d in dias.values()) in (28, 30, 31) for m in range(1, 13))
+
+
+def test_nome_elemento_trecho_mt_round_trip():
+    cod_id = "SEG001"
+    elemento = nome_elemento_trecho_mt(cod_id)
+
+    assert PREFIXO_ELEMENTO_TRECHO_MT
+    assert elemento == "Line.SMT_SEG001"
+    assert cod_id_trecho_mt_de_elemento(elemento) == cod_id
+    assert cod_id_trecho_mt_de_elemento(elemento.lower()) == cod_id
+    assert cod_id_trecho_mt_de_elemento("Transformer.TRF_TR001A") is None
 
 
 def test_listar_ctmts_e_erros(tmp_path):

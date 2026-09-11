@@ -52,6 +52,7 @@ from bdgd_light.grid.rede import (
     ler_camadas,
     manobra,
 )
+from bdgd_light.twin.gpkg2dss import cod_id_trecho_mt_de_elemento
 
 FEEDERS_PADRAO = Path("data/feeders")
 DSS_PADRAO = Path("data/dss/gpkg")
@@ -702,26 +703,19 @@ class SessaoCOD:
                 passos.append(manobra(ABRIR if d["aberta"] else FECHAR, cod))
         return passos
 
-    @staticmethod
-    def _cod_id_elemento_mt(elemento: str | None) -> str | None:
-        nome = str(elemento or "").lower()
-        prefixo = "line.smt_"
-        if not nome.startswith(prefixo):
-            return None
-        return nome.split(prefixo, 1)[1].upper()
-
     @classmethod
     def _trechos_carregados_mt(cls, correntes, *, limite: int = 5) -> list[dict[str, Any]]:
         if len(correntes) == 0:
             return []
-        linhas = correntes[correntes["elemento"].str.lower().str.startswith("line.smt_")]
-        linhas = linhas.dropna(subset=["carregamento_pct"]).sort_values(
-            "carregamento_pct", ascending=False
+        linhas = (
+            correntes.assign(cod_id=correntes["elemento"].map(cod_id_trecho_mt_de_elemento))
+            .dropna(subset=["cod_id", "carregamento_pct"])
+            .sort_values("carregamento_pct", ascending=False)
         )
         return [
             {
                 "elemento": item["elemento"],
-                "cod_id": cls._cod_id_elemento_mt(item.get("elemento")),
+                "cod_id": item["cod_id"],
                 "i_max_a": item["i_max_a"],
                 "i_nominal_a": item["i_nominal_a"],
                 "carregamento_pct": item["carregamento_pct"],
@@ -1077,7 +1071,7 @@ class SessaoCOD:
             "sobrecargas": [
                 {
                     **item,
-                    "cod_id": self._cod_id_elemento_mt(item.get("elemento")),
+                    "cod_id": cod_id_trecho_mt_de_elemento(item.get("elemento")),
                 }
                 for item in r.sobrecargas.head(5).to_dict(orient="records")
             ],

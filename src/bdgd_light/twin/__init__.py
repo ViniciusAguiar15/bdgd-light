@@ -16,12 +16,15 @@ from bdgd_light.twin.convert import (
 )
 from bdgd_light.twin.gpkg2dss import (
     DIAS,
+    PREFIXO_ELEMENTO_TRECHO_MT,
     ConversaoGpkg,
     GpkgInvalidoError,
+    cod_id_trecho_mt_de_elemento,
     converter_ctmt,
     converter_gpkg,
     dias_por_tipo,
     listar_ctmts,
+    nome_elemento_trecho_mt,
 )
 from bdgd_light.twin.powerflow import (
     ESTABILIZADORES,
@@ -46,9 +49,11 @@ __all__ = [
     "ErroOpenDSS",
     "GpkgInvalidoError",
     "MotorError",
+    "PREFIXO_ELEMENTO_TRECHO_MT",
     "PowerFlowResult",
     "ScoreEletrico",
     "ampacidade_tronco",
+    "cod_id_trecho_mt_de_elemento",
     "comandos_manobras",
     "converter",
     "converter_ctmt",
@@ -61,6 +66,7 @@ __all__ = [
     "listar_masters",
     "localizar_pasta",
     "montar_master_cluster",
+    "nome_elemento_trecho_mt",
     "nome_master_cluster",
     "ordenar_scores",
     "preparar_master_cluster",
