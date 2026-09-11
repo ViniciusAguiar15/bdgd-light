@@ -67,7 +67,10 @@ cluster, em `README.md` ("Clusters da demo"); resultados abaixo (BDGD 2025-12-31
 | B Ipanema | PTS0001, PTS9088, PTS9924, PTS4022 | 13.249 | 1.838 / 15,5 / 95 | 1 (0) — 74 interligações `EM_SUB` | 4.720 UCBT, 33 trafos (14,0 MVA) | 7.803 kW / 3.832 kvar (2.802 + 2.560 + 1.155 + 1.285) | 537 kW (6,9 %) | 1,041–1,045 | 7 it., 0,6 s |
 
 (OpenDSS: Tijuca 10.029 barras / 32.132 cargas / 283 trafos; Ipanema 6.990 barras / 9.272 cargas / 33 trafos.
-Como em TQR, a BT herda ramais suspeitos da BDGD e tem nós abaixo de 0,5 pu — o veredito é sempre MT.)
+Como em TQR, a BT herda ramais suspeitos da BDGD e tem nós abaixo de 0,5 pu — o veredito é sempre MT. O
+fluxo converge com o estabilizador `vminpu=0.9`; a causa é o desequilíbrio de fase cadastrado — 14 trafos
+da Tijuca com ≥ 90 % das UC monofásicas na mesma fase — e o conversor avisa quais são; ver "Diagnóstico de
+convergência do cluster Tijuca" em `docs/spike-opendss.md`, issue #44.)
 
 **Cenário A (Tijuca) confirmado nos dados.** Falta no trecho `11304252` (tronco de `ALC9925` CABOFRIO) → isolar
 abrindo `10927447` e `11035901` → 315 nós, **4.036 UCBT, 6 UCMT, 63 trafos (8.960 kVA)** ficam restauráveis por
