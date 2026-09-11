@@ -33,9 +33,13 @@ from typing import Any
 import pandas as pd
 
 # Cascata de estabilizadores, aplicada em ordem até convergir; cada item é (rótulo, comandos).
-#   1. mais iterações — resolve a maioria dos casos "quase" convergidos;
+#   1. mais iterações — resolve os casos "quase" convergidos (não muda o modelo);
 #   2. vminpu=0,9 — abaixo de 0,9 pu as cargas passam a impedância constante (recomendação do
-#      próprio OpenDSS para cargas de corrente/potência constante em barras muito deprimidas);
+#      próprio OpenDSS para cargas de corrente/potência constante em barras muito deprimidas). Nos
+#      clusters da Light é este o degrau que resolve: a não convergência é um ciclo-limite das
+#      cargas de corrente constante em circuitos BT muito desequilibrados (issue #44), e não
+#      convergência lenta — por isso ``ajustes`` só lista ``maxiterations=100`` quando a solução
+#      final de fato passou do limite original de iterações (ver ``_rotular_ajustes``);
 #   3. impedância constante em todas as cargas — sempre converge; é o último recurso e subestima a
 #      carga nas barras deprimidas.
 ESTABILIZADORES: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -43,6 +47,7 @@ ESTABILIZADORES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("vminpu=0.9", ("batchedit load..* vminpu=0.9",)),
     ("model=2", ("batchedit load..* model=2",)),
 )
+_ROTULO_ITERACOES = ESTABILIZADORES[0][0]
 
 _NEUTRO = 4  # convenção do bdgd2opendss: condutor .4 é o neutro aterrado por reator
 
@@ -507,6 +512,23 @@ def _comando(dss, texto: str) -> None:
         raise ErroOpenDSS(f"{texto!r}: {exc}") from exc
 
 
+def _rotular_ajustes(
+    aplicados: list[str], iteracoes: int, limite_original: int, convergiu: bool
+) -> list[str]:
+    """Estabilizadores que de fato foram necessários.
+
+    A cascata é cumulativa, mas ``maxiterations=100`` só altera o resultado se o ``Solve`` final
+    precisou de mais iterações que o limite original: se convergiu em ``iteracoes`` ≤ limite, o
+    limite maior não foi usado (ele apenas trunca a iteração) e o rótulo sai da lista — em
+    Tijuca, ``["vminpu=0.9"]`` (6 iterações), não ``["maxiterations=100", "vminpu=0.9"]``.
+    """
+    if not convergiu or len(aplicados) <= 1 or _ROTULO_ITERACOES not in aplicados:
+        return list(aplicados)
+    if iteracoes <= limite_original:
+        return [r for r in aplicados if r != _ROTULO_ITERACOES]
+    return list(aplicados)
+
+
 def _tensoes(dss) -> pd.DataFrame:
     linhas: list[tuple[str, str, int, float, float]] = []
     for barra in dss.Circuit.AllBusNames():
@@ -618,6 +640,7 @@ def _run_powerflow(
         _comando(dss, cmd)
 
     ajustes: list[str] = []
+    limite_iteracoes = int(dss.Solution.MaxIterations())
     dss.Solution.Solve()
     if not dss.Solution.Converged() and estabilizar:
         for rotulo, comandos in ESTABILIZADORES:
@@ -627,6 +650,9 @@ def _run_powerflow(
             dss.Solution.Solve()
             if dss.Solution.Converged():
                 break
+        ajustes = _rotular_ajustes(
+            ajustes, int(dss.Solution.Iterations()), limite_iteracoes, dss.Solution.Converged()
+        )
 
     perdas = dss.Circuit.Losses()
     potencia = dss.Circuit.TotalPower()

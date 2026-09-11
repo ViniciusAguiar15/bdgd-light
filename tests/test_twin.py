@@ -158,6 +158,47 @@ def test_estabilizadores_em_cascata():
     assert com.ajustes == [ESTABILIZADORES[0][0]] == ["maxiterations=100"]
 
 
+def test_rotulo_dos_ajustes_so_lista_o_que_foi_necessario():
+    """`maxiterations=100` só fica em `ajustes` se o Solve final passou do limite original
+    (issue #44: em Tijuca o degrau que resolve é o `vminpu=0.9`, em 6 iterações)."""
+    from bdgd_light.twin.powerflow import _rotular_ajustes
+
+    cascata = ["maxiterations=100", "vminpu=0.9"]
+    assert _rotular_ajustes(cascata, 6, 15, True) == ["vminpu=0.9"]
+    assert _rotular_ajustes(cascata, 40, 15, True) == cascata
+    assert _rotular_ajustes(cascata, 6, 15, False) == cascata  # não convergiu: relata tudo
+    assert _rotular_ajustes(["maxiterations=100"], 4, 2, True) == ["maxiterations=100"]
+    assert _rotular_ajustes(["maxiterations=100"], 2, 2, True) == ["maxiterations=100"]
+    assert _rotular_ajustes(["vminpu=0.9"], 5, 15, True) == ["vminpu=0.9"]
+    assert _rotular_ajustes([], 3, 15, True) == []
+
+
+def test_script_diagnostico_convergencia_para_cedo_quando_o_padrao_converge():
+    """`scripts/diagnostico_convergencia.py` (issue #44) roda o motor no próprio processo, por isso
+    é exercitado em subprocesso — o processo do pytest nunca carrega o opendssdirect."""
+    import subprocess
+    import sys
+
+    proc = subprocess.run(
+        [sys.executable, "scripts/diagnostico_convergencia.py", str(IEEE13)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "padrão (maxiterations=15, vminpu do Master)   convergiu=sim" in proc.stdout
+    assert "o método padrão converge: nada a diagnosticar" in proc.stdout
+    assert "ciclo-limite" not in proc.stdout
+
+    proc = subprocess.run(
+        [sys.executable, "scripts/diagnostico_convergencia.py", "nao_existe.dss"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert proc.returncode == 2 and "Master não encontrado" in proc.stderr
+
+
 def test_comando_invalido_da_erro_claro():
     from bdgd_light.twin.powerflow import ErroOpenDSS
 
