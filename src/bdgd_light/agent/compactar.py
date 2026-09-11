@@ -18,7 +18,16 @@ TOP_N_OPCOES = 5
 MAX_TIES = 40
 """Acima disto, ``get_topology`` manda ao modelo só a contagem de interligações."""
 
-_CAMPOS_OPCAO = ("chave", "ctmt_chave", "fonte", "tlcd", "externa", "clientes", "manobras")
+_CAMPOS_OPCAO = (
+    "chave",
+    "ctmt_chave",
+    "fonte",
+    "tlcd",
+    "externa",
+    "clientes",
+    "manobras",
+    "impacto",
+)
 _CAMPOS_SCORE = (
     "viavel",
     "convergiu",
@@ -119,6 +128,15 @@ def _opcao_detalhada(o: Mapping[str, Any]) -> dict[str, Any]:
     d = {k: o.get(k) for k in _CAMPOS_OPCAO if k in o}
     d["clientes"] = _clientes(o.get("clientes"))
     d["manobras"] = _manobras(o.get("manobras"))
+    impacto = o.get("impacto")
+    if isinstance(impacto, Mapping):
+        d["impacto"] = {
+            "consumidor_minutos_evitados": impacto.get("consumidor_minutos_evitados"),
+            "clientes_sem_tensao_ate_reparo": impacto.get("clientes_sem_tensao_ate_reparo"),
+            "tempo_reparo_min": impacto.get("tempo_reparo_min"),
+            "tempo_manobra_min": impacto.get("tempo_manobra_min"),
+            "dec_conjunto": impacto.get("dec_conjunto"),
+        }
     if o.get("bloqueada"):
         d["bloqueada"] = o.get("bloqueada")
     score = o.get("score")
@@ -139,6 +157,11 @@ def _opcao_resumida(o: Mapping[str, Any]) -> dict[str, Any]:
         "fonte": o.get("fonte"),
         "clientes": (o.get("clientes") or {}).get("total"),
     }
+    impacto = o.get("impacto")
+    if isinstance(impacto, Mapping):
+        d["consumidor_minutos_evitados"] = impacto.get("consumidor_minutos_evitados")
+        if impacto.get("dec_conjunto"):
+            d["dec_conjunto_min"] = (impacto["dec_conjunto"] or {}).get("dec_minutos")
     if o.get("bloqueada"):
         d["bloqueada"] = o.get("bloqueada")
     if score:

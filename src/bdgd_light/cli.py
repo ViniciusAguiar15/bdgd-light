@@ -17,12 +17,14 @@ from bdgd_light import __version__
 from bdgd_light.grid import (
     ABRIR,
     FECHAR,
+    TEMPO_REPARO_PADRAO_MIN,
     ChaveInexistenteError,
     Clientes,
     Cluster,
     Feeder,
     Rede,
     TrechoInexistenteError,
+    calcular_impacto_opcao,
     estado_geojson,
     ler_camadas,
     manobra,
@@ -391,6 +393,15 @@ def grafo(
     vmax: Annotated[
         float, typer.Option("--vmax", help="Limite superior de tensão MT (pu) em --score.")
     ] = 1.05,
+    tempo_reparo: Annotated[
+        float,
+        typer.Option(
+            "--tempo-reparo",
+            min=0.0,
+            help="Tempo de reparo estimado (min) para o impacto da manobra em consumidor-minutos "
+            "e DEC do conjunto; é uma premissa explícita, não medição realizada. Padrão: 180.",
+        ),
+    ] = TEMPO_REPARO_PADRAO_MIN,
 ) -> None:
     """Monta o grafo MT do alimentador (nós = PAC; arestas = trechos SSDMT e chaves UNSEMT),
     energiza a partir do disjuntor da SE e simula falta, isolamento e restauração via ties; com
@@ -430,6 +441,12 @@ def grafo(
             f"  desligados restauráveis: {len(isolamento.desligados)} nós, "
             f"{_fmt_clientes(isolamento.clientes_desligados)}"
         )
+        impactos = {
+            o.chave: calcular_impacto_opcao(
+                rede, o, isolamento=isolamento, tempo_reparo_min=tempo_reparo
+            ).to_dict()
+            for o in opcoes
+        }
         scores = None
         if opcoes and score:
             try:
@@ -440,7 +457,7 @@ def grafo(
                 _erro(str(erro))
                 return
         if opcoes:
-            _imprimir_opcoes(opcoes, rede, scores)
+            _imprimir_opcoes(opcoes, rede, scores, impactos, tempo_reparo=tempo_reparo)
         elif isolamento.desligados:
             console.print("  [red]nenhuma chave NA restaura os nós desligados[/]")
         rede.isolate_segment(falha, aplicar=True)
@@ -1935,9 +1952,35 @@ def _fmt_pu(x: float) -> str:
     return "—" if x != x else f"{x:.3f}".replace(".", ",")
 
 
-def _imprimir_opcoes(opcoes, rede: Rede, scores=None) -> None:
+def _fmt_float(x: float | None, casas: int = 1) -> str:
+    return "—" if x is None else f"{x:.{casas}f}".replace(".", ",")
+
+
+def _resumo_impacto(impacto: dict | None) -> str:
+    if not impacto:
+        return "—"
+    cm = impacto.get("consumidor_minutos_evitados")
+    if cm is None:
+        return "—"
+    return _fmt_int(round(float(cm)))
+
+
+def _dec_min(impacto: dict | None) -> str:
+    if not impacto:
+        return "—"
+    dec = impacto.get("dec_conjunto")
+    if not isinstance(dec, dict):
+        return "—"
+    valor = dec.get("dec_minutos")
+    return _fmt_float(None if valor is None else float(valor))
+
+
+def _imprimir_opcoes(
+    opcoes, rede: Rede, scores=None, impactos=None, tempo_reparo: float = 180.0
+) -> None:
     """Tabela das opções de restauração; com ``scores`` (twin.score_eletrico) acrescenta as
     colunas elétricas MT e segue a ordem dos scores (viável → margem → UCBT)."""
+    impactos = impactos or {}
     if scores is None:
         titulo = f"Opções de restauração ({len(opcoes)})"
         colunas = [
@@ -1948,6 +1991,9 @@ def _imprimir_opcoes(opcoes, rede: Rede, scores=None) -> None:
             ("Nós", "right"),
             ("UCBT", "right"),
             ("UCMT", "right"),
+            ("Cons.min", "right"),
+            ("Restam", "right"),
+            ("DEC conj. min", "right"),
             ("kVA", "right"),
             ("UC na fonte", "right"),
         ]
@@ -1961,6 +2007,9 @@ def _imprimir_opcoes(opcoes, rede: Rede, scores=None) -> None:
             ("TLCD", "center"),
             ("UCBT", "right"),
             ("UCMT", "right"),
+            ("Cons.min", "right"),
+            ("Restam", "right"),
+            ("DEC conj. min", "right"),
             ("Conv.", "center"),
             ("I disj. A", "right"),
             ("I nom. A", "right"),
@@ -1975,6 +2024,7 @@ def _imprimir_opcoes(opcoes, rede: Rede, scores=None) -> None:
     for rotulo, alinhamento in colunas:
         tabela.add_column(rotulo, justify=alinhamento, overflow="fold")
     for o, sc in linhas:
+        impacto = impactos.get(o.chave)
         celulas = [o.chave + (" (externa)" if o.externa else "")]
         if sc is None:
             celulas += [
@@ -1984,6 +2034,9 @@ def _imprimir_opcoes(opcoes, rede: Rede, scores=None) -> None:
                 _fmt_int(len(o.nos)),
                 _fmt_int(o.clientes.ucbt),
                 _fmt_int(o.clientes.ucmt),
+                _resumo_impacto(impacto),
+                _fmt_int(impacto["clientes_sem_tensao_ate_reparo"]) if impacto else "—",
+                _dec_min(impacto),
                 _fmt_int(int(o.clientes.kva)),
                 _fmt_int(o.clientes_fonte.total) if o.fonte in rede.ctmts else "?",
             ]
@@ -1994,6 +2047,9 @@ def _imprimir_opcoes(opcoes, rede: Rede, scores=None) -> None:
                 "sim" if o.tlcd else "não",
                 _fmt_int(o.clientes.ucbt),
                 _fmt_int(o.clientes.ucmt),
+                _resumo_impacto(impacto),
+                _fmt_int(impacto["clientes_sem_tensao_ate_reparo"]) if impacto else "—",
+                _dec_min(impacto),
                 "sim" if sc.convergiu else "[red]não[/]",
                 "—" if sc.i_disjuntor_a != sc.i_disjuntor_a else _fmt_int(round(sc.i_disjuntor_a)),
                 "—" if sc.i_nominal_a != sc.i_nominal_a else _fmt_int(round(sc.i_nominal_a)),
@@ -2005,6 +2061,14 @@ def _imprimir_opcoes(opcoes, rede: Rede, scores=None) -> None:
             ]
         tabela.add_row(*celulas)
     console.print(tabela)
+    console.print(
+        f"  [blue]i[/] Impacto estimado sob premissa: reparo em {tempo_reparo:g} min e "
+        "manobra em 5 min; não é medição realizada de DEC."
+    )
+    com_dec = [i for i in impactos.values() if isinstance(i.get("dec_conjunto"), dict)]
+    if com_dec:
+        conjuntos = sorted({i["dec_conjunto"]["nome"] for i in com_dec})
+        console.print("  [blue]i[/] DEC exibido em minutos do conjunto: " + ", ".join(conjuntos))
     if scores is not None:
         for sc in scores:
             if sc.motivos:

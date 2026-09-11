@@ -109,7 +109,8 @@ def test_nada_de_outro_ctmt_vaza_para_o_recorte(recorte_cluster, trafo_ctmt, bdg
     assert camadas["CTMT"]["COD_ID"].tolist() == [cod]
     for camada in CAMADAS_POR_CTMT:
         if camada in camadas:
-            assert set(camadas[camada]["CTMT"]) == {cod}, camada
+            if "CTMT" in camadas[camada].columns:
+                assert set(camadas[camada]["CTMT"]) == {cod}, camada
     for camada in CAMADAS_POR_TRAFO:
         if camada in camadas:
             # BT liga pelo transformador; a coluna CTMT da própria camada pode divergir (UC00007)
@@ -160,6 +161,7 @@ def test_contagens_esperadas_por_alimentador(recorte_cluster):
         "UNTRMT": 2,
         "UNREMT": 0,
         "UNCRMT": 1,
+        "CONJ": 1,
         "UCMT_tab": 1,
         "UGMT_tab": 1,
         "SSDBT": 2,
@@ -190,6 +192,7 @@ def test_cluster_e_a_uniao_dos_recortes(recorte_cluster):
         assert set(dados[chave]) == set(uniao[chave]), camada
     assert cluster.contagens["CTMT"] == 2 and cluster.contagens["SSDMT"] == 8
     assert cluster.contagens["SUB"] == 1 and cluster.contagens["UNTRAT"] == 2  # sem duplicar
+    assert cluster.contagens["CONJ"] == 1
     assert cluster.contagens["INTERLIGACOES"] == 3
 
 

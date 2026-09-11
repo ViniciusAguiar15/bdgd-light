@@ -719,7 +719,7 @@ def test_cli_grafo_score(grafos, tmp_path):
     )  # fmt: skip
     assert r.exit_code == 0, r.output
     texto = compacto(r)
-    assert "NÃO" in texto and "✘CH003:VminMT" in texto
+    assert "✘CH003:VminMT" in texto and "✘CH005:VminMT" in texto
     # sem --falha o --score é ignorado; sem modelo e sem conversão possível → erro claro
     r = runner.invoke(app, ["grafo", "--gpkg", str(grafos["cluster"]), "--score"])
     assert r.exit_code == 0 and "score" not in compacto(r).lower()

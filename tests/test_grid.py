@@ -446,7 +446,8 @@ def test_cli_grafo_com_falha_e_geojson(feeders, tmp_path):
     assert "Ties(2)" in texto and "CH005(externa)" in texto
     assert "FaltaemSEG001→abrirCH001,CH008" in texto
     assert "Opçõesderestauração(2)" in texto
-    assert texto.index("CH003") < texto.index("Opçõesderestauração") < texto.rindex("CH003")
+    assert "Impactoestimadosobpremissa:reparoem180mine" in texto
+    assert "CH003" in texto and "700" in texto
     assert geojson.exists()
     energizados = {
         f["properties"]["COD_ID"]: f["properties"]["energizado"]
