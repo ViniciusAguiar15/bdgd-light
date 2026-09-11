@@ -142,3 +142,50 @@ o que custou caro na rodada 4 (ver `docs/review/MANHA-4.md`, seção "Processo")
   src/bdgd_light/cli.py tests/test_replay.py`, `uv run pytest tests/test_replay.py -q` e uma
   execução manual do comando sobre uma trilha sintética (`uv run bdgd-light replay E-0001 --origem
   .scratch_issue83/estado --verificar-cadeia`) para conferir a narrativa da timeline.
+
+## 5. Issue #84 — resultados consolidados gerados a partir dos CSVs do benchmark (20:35)
+
+- **Branch/PR:** `docs/84-resultados-consolidados`, PR desta issue.
+- **O que mudou no código/documentação:** criei `scripts/gerar_resultados.py`, que percorre
+  deterministicamente os CSVs versionados de `docs/bench/`, resume métricas por arquivo/família
+  (pass@1, pass@k efetivo, ordem, precisão, chamadas desnecessárias, tokens, custo, tempo e taxa de
+  recusa do verificador) e cruza esses números com fontes versionadas do recorte e dos cenários
+  (`docs/bench.md`, `docs/escopo-cidade.md`, `docs/agent.md`, `docs/agent/sessao-tijuca.json` e
+  `docs/review/NOITE.md`). O script reescreve `docs/resultados.md` como uma página única, legível e
+  rastreável: cada linha traz a fonte (`arquivo + data`) do número consolidado.
+- **Decisões de design:** priorizei reprodutibilidade sobre "quando rodei": o documento não embute
+  `datetime.now()`. A linha de cabeçalho usa a **data-base das fontes** (máxima data extraída dos
+  CSVs/índices versionados), então duas execuções com as mesmas entradas geram exatamente o mesmo
+  arquivo. Onde a documentação versionada não expõe um valor estruturado (ex.: trechos do cluster
+  Ipanema), o consolidado deixa o campo em branco e registra a limitação, em vez de inferir número.
+- **Teste novo:** acrescentei `tests/test_gerar_resultados.py`, que monta um conjunto mínimo de
+  CSVs/documentos sintéticos, roda o script duas vezes e compara o `docs/resultados.md` gerado byte
+  a byte. O teste também confere rastreabilidade básica no texto (`docs/bench/...csv` e a taxa de
+  recusa do verificador).
+- **Documentação commitada no mesmo PR:** `docs/comandos.md` agora documenta o comando `uv run python
+  scripts/gerar_resultados.py` e atualiza a seção do benchmark para as **38 tarefas** atuais
+  (incluindo o bloco *hard+*). Também gerei e versionei `docs/resultados.md` com os dados reais já
+  presentes no repositório.
+- **Validação local dirigida:** `uv run ruff check scripts/gerar_resultados.py
+  tests/test_gerar_resultados.py`, `uv run ruff format scripts/gerar_resultados.py
+  tests/test_gerar_resultados.py`, `uv run pytest tests/test_gerar_resultados.py -q` e uma execução
+  real de `uv run python scripts/gerar_resultados.py` para conferir que o documento sai estável e sem
+  edição manual posterior.
+
+## Resumo final da rodada 5
+
+- **Issues fechadas / PRs da rodada:**
+  - #80 — parser único de elemento OpenDSS → PR #85.
+  - #81 — suíte adversarial do verificador → PR #86.
+  - #82 — ganho dos exemplos anotados (resultado nulo bem medido, sem forçar conclusão) → PR #87.
+  - #83 — replay da auditoria do agente → PR #88.
+  - #84 — resultados consolidados gerados a partir dos CSVs do benchmark → PR desta tarefa.
+- **Estado final esperado do repositório ao concluir esta branch/PR:** `main` atualizado com os cinco
+  squash-merges da rodada 5, issues #80–#84 fechadas e nenhum PR pendente dessa fila.
+- **Pendências conhecidas:** nesta rodada não faltou chave para concluir as entregas. `OPENAI_API_KEY`
+  e `GEMINI_API_KEY` já estavam presentes quando foram necessárias; portanto, **não ficou comando
+  pendente** por falta de segredo no ambiente.
+- **Higiene de repositório confirmada:** nenhum arquivo de `data/` foi commitado; nenhum `.gdb`,
+  `.zip`, `.parquet`, `.gpkg` ou `.pmtiles` entrou no git; e nenhum documento desta rodada ficou
+  solto fora do PR da própria issue — inclusive este diário e o consolidado de resultados entram na
+  branch da issue #84.
