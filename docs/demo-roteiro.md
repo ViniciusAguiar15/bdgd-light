@@ -21,6 +21,10 @@ export OPENAI_API_KEY=…                                             # ou GEMIN
 uv run bdgd-light llm --provider openai "Quanto é 2 + 3?"          # a chave funciona? (1 chamada, ~1 s)
 ```
 
+Hoje, com `OPENAI_API_KEY` e `GEMINI_API_KEY` presentes e sem `BDGD_LLM_PROVIDER`/`BDGD_LLM_ENDPOINT`,
+o `cliente_do_ambiente()` resolve por padrão para **OpenAI**; por isso a demo abaixo fixa
+`--provider openai`.
+
 Deixe **dois terminais** abertos na raiz do repositório e o navegador em `http://127.0.0.1:8000/`.
 Se a porta 8000 estiver ocupada, use `--porta 8010` em todos os comandos abaixo.
 
