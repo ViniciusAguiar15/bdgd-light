@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arquitetura do COD Agêntico Light</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #f4f6f2;
+    --surface: #ffffff;
+    --ink: #17221c;
+    --ink-2: #4b5852;
+    --line: #cfd6d0;
+    --amber: #d9920f;
+    --amber-soft: #fbefd2;
+    --teal: #1f7a8c;
+    --teal-soft: #dcecf0;
+    --red: #c4432b;
+    --red-soft: #f8ddd7;
+    --green: #2f7d4f;
+    --green-soft: #ddeee2;
+    --grey-soft: #e6eae6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12181a; --surface: #1a2224; --ink: #e8ede9; --ink-2: #a3ada7; --line: #35413f;
+      --amber: #f0b03a; --amber-soft: #3a2e12; --teal: #4fb3c7; --teal-soft: #14333a;
+      --red: #e46a52; --red-soft: #3d1f19; --green: #5fbf85; --green-soft: #173325; --grey-soft: #242e2e;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12181a; --surface: #1a2224; --ink: #e8ede9; --ink-2: #a3ada7; --line: #35413f;
+    --amber: #f0b03a; --amber-soft: #3a2e12; --teal: #4fb3c7; --teal-soft: #14333a;
+    --red: #e46a52; --red-soft: #3d1f19; --green: #5fbf85; --green-soft: #173325; --grey-soft: #242e2e;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: "Barlow", "Segoe UI", system-ui, sans-serif; font-size: 16px; line-height: 1.55; padding: 40px 20px 72px; }
+  main { max-width: 1040px; margin: 0 auto; display: grid; gap: 40px; }
+  h1, h2, h3 { font-family: "Barlow Semi Condensed", "Barlow", sans-serif; text-wrap: balance; margin: 0; line-height: 1.1; }
+  h1 { font-size: 40px; font-weight: 700; }
+  h2 { font-size: 26px; font-weight: 700; }
+  h3 { font-size: 18px; font-weight: 600; }
+  p { margin: 0; max-width: 68ch; }
+  .eyebrow { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
+  header { display: grid; gap: 10px; }
+  header p { color: var(--ink-2); font-size: 17px; }
+  code, .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: .92em; }
+  figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px 18px 14px; }
+  figure .wrap { overflow-x: auto; }
+  svg { display: block; max-width: 100%; height: auto; min-width: 640px; }
+  figcaption { color: var(--ink-2); font-size: 14px; margin-top: 10px; max-width: 80ch; }
+  section { display: grid; gap: 16px; }
+  .layers { display: grid; gap: 12px; }
+  .layer { display: grid; grid-template-columns: 150px 1fr; gap: 14px; padding: 14px 0; border-top: 1px solid var(--line); align-items: start; }
+  .layer:last-child { border-bottom: 1px solid var(--line); }
+  .layer .k { display: grid; gap: 6px; }
+  .layer .k .t { font-family: "Barlow Semi Condensed"; font-weight: 700; font-size: 18px; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 3px; width: max-content; }
+  .done { background: var(--green-soft); color: var(--green); }
+  .doing { background: var(--amber-soft); color: var(--amber); }
+  .todo { background: var(--grey-soft); color: var(--ink-2); }
+  .layer p { max-width: 74ch; }
+  .layer p + p { margin-top: 6px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+  .note { border-left: 3px solid var(--teal); padding: 4px 0 4px 14px; color: var(--ink-2); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px 22px; font-size: 13px; color: var(--ink-2); }
+  .legend span::before { content: ""; display: inline-block; width: 22px; height: 0; border-top: 3px solid; margin-right: 6px; vertical-align: middle; }
+  .legend .a::before { border-color: var(--amber); }
+  .legend .b::before { border-color: var(--teal); border-top-style: dashed; }
+  .legend .c::before { border-color: var(--red); }
+  table { border-collapse: collapse; font-size: 14.5px; width: 100%; }
+  th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: "Barlow Semi Condensed"; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-2); font-weight: 700; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tabela { overflow-x: auto; }
+  @media (max-width: 560px) { .layer { grid-template-columns: 1fr; } h1 { font-size: 32px; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="eyebrow">bdgd-light · Light SESA (382) · Tijuca, Rio de Janeiro</div>
+  <h1>Arquitetura do COD Agêntico Light</h1>
+  <p>Como os dados abertos da ANEEL viram uma rede simulada, como o agente enxerga e manobra essa rede, e onde o operador humano entra. Sistema construído e medido; números de 11 de setembro de 2026.</p>
+</header>
+
+<section>
+  <h2>1. A visão geral: dados → modelos → ferramentas → agente → operador</h2>
+  <p>O sistema tem cinco camadas. Tudo à esquerda é <em>offline</em> e roda uma vez por versão da BDGD; tudo à direita é o ciclo de operação, que roda a cada evento na rede. A fronteira entre os dois mundos é o servidor MCP: é ele que transforma modelos de rede em ferramentas que um LLM consegue chamar.</p>
+  <figure>
+    <div class="wrap">
+    <svg viewBox="0 0 1180 560" role="img" aria-label="Fluxo em cinco camadas: a BDGD da ANEEL é exportada para Parquet e recortada em GeoPackages por cluster; disso derivam o grafo em networkx, o gêmeo digital em OpenDSS e os tiles do mapa; o servidor MCP expõe grafo e gêmeo como doze ferramentas; o agente orquestrador e verificador chama as ferramentas e propõe manobras; o console mostra o mapa e o operador aprova cada manobra; um simulador injeta a falta." font-family="Barlow, sans-serif" font-size="13" fill="currentColor" style="color: var(--ink)">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--amber)"/></marker>
+        <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--teal)"/></marker>
+        <marker id="ax" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--red)"/></marker>
+      </defs>
+
+      <g font-size="11" font-weight="600" letter-spacing="1.5" fill="var(--ink-2)">
+        <text x="20" y="22">DADOS (OFFLINE)</text>
+        <text x="330" y="22">MODELOS DA REDE</text>
+        <text x="620" y="22">FERRAMENTAS</text>
+        <text x="810" y="22">AGENTE</text>
+        <text x="1010" y="22">OPERADOR</text>
+      </g>
+      <g stroke="var(--line)" stroke-dasharray="3 5" fill="none">
+        <line x1="310" y1="30" x2="310" y2="540"/><line x1="600" y1="30" x2="600" y2="540"/><line x1="790" y1="30" x2="790" y2="540"/><line x1="990" y1="30" x2="990" y2="540"/>
+      </g>
+
+      <!-- DADOS -->
+      <g>
+        <rect x="20" y="60" width="130" height="64" rx="4" fill="var(--surface)" stroke="currentColor"/>
+        <text x="85" y="86" text-anchor="middle" font-weight="600">BDGD ANEEL</text>
+        <text x="85" y="104" text-anchor="middle" font-size="11" fill="var(--ink-2)">Light 2025 · 43 camadas</text>
+        <text x="85" y="118" text-anchor="middle" font-size="11" fill="var(--ink-2)">1.802 alimentadores</text>
+
+        <line x1="150" y1="92" x2="182" y2="92" stroke="var(--amber)" stroke-width="2" marker-end="url(#ar)"/>
+        <text x="166" y="82" text-anchor="middle" font-size="10" fill="var(--ink-2)">export</text>
+
+        <rect x="184" y="60" width="110" height="64" rx="4" fill="var(--surface)" stroke="currentColor"/>
+        <text x="239" y="86" text-anchor="middle" font-weight="600">Parquet</text>
+        <text x="239" y="104" text-anchor="middle" font-size="11" fill="var(--ink-2)">1 arquivo/camada</text>
+        <text x="239" y="118" text-anchor="middle" font-size="11" fill="var(--ink-2)">EPSG:4674</text>
+
+        <line x1="239" y1="124" x2="239" y2="168" stroke="var(--amber)" stroke-width="2" marker-end="url(#ar)"/>
+        <text x="248" y="150" font-size="10" fill="var(--ink-2)">inventário + recorte</text>
+
+        <rect x="150" y="170" width="150" height="84" rx="4" fill="var(--amber-soft)" stroke="var(--amber)" stroke-width="1.5"/>
+        <text x="225" y="192" text-anchor="middle" font-weight="600">GPKG por cluster</text>
+        <text x="225" y="210" text-anchor="middle" font-size="11">Tijuca · 4 alimentadores</text>
+        <text x="225" y="226" text-anchor="middle" font-size="11" fill="var(--ink-2)">Ipanema · Taquara</text>
+        <text x="225" y="244" text-anchor="middle" font-size="10" fill="var(--ink-2)">rede + chaves + ties calculadas</text>
+
+        <text x="20" y="300" font-size="11" fill="var(--ink-2)">Também da BDGD:</text>
+        <text x="20" y="316" font-size="11" fill="var(--ink-2)">curvas de carga, energia mensal por</text>
+        <text x="20" y="331" font-size="11" fill="var(--ink-2)">consumidor, condutores, e o estado</text>
+        <text x="20" y="346" font-size="11" fill="var(--ink-2)">e telecomando de cada chave.</text>
+        <text x="20" y="368" font-size="11" fill="var(--ink-2)">Interligação entre alimentadores</text>
+        <text x="20" y="383" font-size="11" fill="var(--ink-2)">é calculada por geometria: a BDGD</text>
+        <text x="20" y="398" font-size="11" fill="var(--ink-2)">não a declara.</text>
+      </g>
+
+      <!-- MODELOS -->
+      <g>
+        <line x1="300" y1="200" x2="348" y2="110" stroke="var(--amber)" stroke-width="2" marker-end="url(#ar)"/>
+        <line x1="300" y1="208" x2="348" y2="208" stroke="var(--amber)" stroke-width="2" marker-end="url(#ar)"/>
+        <line x1="300" y1="216" x2="348" y2="306" stroke="var(--amber)" stroke-width="2" marker-end="url(#ar)"/>
+
+        <rect x="350" y="78" width="230" height="64" rx="4" fill="var(--surface)" stroke="currentColor"/>
+        <text x="362" y="100" font-weight="600">Grafo (networkx)</text>
+        <text x="362" y="117" font-size="11" fill="var(--ink-2)">1.662 nós · 148 chaves · 23 ties</text>
+        <text x="362" y="132" font-size="11" fill="var(--ink-2)">energizado? · a jusante · restauração</text>
+
+        <rect x="350" y="176" width="230" height="64" rx="4" fill="var(--surface)" stroke="currentColor"/>
+        <text x="362" y="198" font-weight="600">Gêmeo digital (OpenDSS)</text>
+        <text x="362" y="215" font-size="11" fill="var(--ink-2)">gerado do próprio recorte</text>
+        <text x="362" y="230" font-size="11" fill="var(--ink-2)">34 mil nós · fluxo em ≈1,2 s</text>
+
+        <rect x="350" y="274" width="230" height="64" rx="4" fill="var(--surface)" stroke="currentColor"/>
+        <text x="362" y="296" font-weight="600">Tiles do mapa (PMTiles)</text>
+        <text x="362" y="313" font-size="11" fill="var(--ink-2)">1 MB por cluster, 11 camadas</text>
+        <text x="362" y="328" font-size="11" fill="var(--ink-2)">arquivos estáticos no GitHub Pages</text>
+      </g>
+
+      <!-- FERRAMENTAS -->
+      <g>
+        <line x1="580" y1="110" x2="618" y2="170" stroke="var(--amber)" stroke-width="2" marker-end="url(#ar)"/>
+        <line x1="580" y1="208" x2="618" y2="208" stroke="var(--amber)" stroke-width="2" marker-end="url(#ar)"/>
+        <rect x="620" y="120" width="150" height="192" rx="4" fill="var(--teal-soft)" stroke="var(--teal)" stroke-width="1.5"/>
+        <text x="695" y="142" text-anchor="middle" font-weight="600">Servidor MCP</text>
+        <g font-family="JetBrains Mono, monospace" font-size="10.5">
+          <text x="632" y="164">load_cluster</text>
+          <text x="632" y="180">get_topology</text>
+          <text x="632" y="196">inject_fault</text>
+          <text x="632" y="212">locate_fault</text>
+          <text x="632" y="228">isolate_fault</text>
+          <text x="632" y="244">restore_options</text>
+          <text x="632" y="260">run_powerflow</text>
+          <text x="632" y="276">propose_plan</text>
+          <text x="632" y="292">set_switch 🔒</text>
+        </g>
+        <text x="695" y="332" text-anchor="middle" font-size="10" fill="var(--ink-2)">12 ferramentas; cada uma com</text>
+        <text x="695" y="346" text-anchor="middle" font-size="10" fill="var(--ink-2)">descrição e unidades em português</text>
+      </g>
+
+      <!-- AGENTE -->
+      <g>
+        <line x1="770" y1="190" x2="808" y2="190" stroke="var(--teal)" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#at)" marker-start="url(#at)"/>
+        <text x="789" y="178" text-anchor="middle" font-size="10" fill="var(--ink-2)">chama</text>
+
+        <rect x="810" y="110" width="160" height="202" rx="4" fill="var(--surface)" stroke="var(--teal)" stroke-width="1.5"/>
+        <text x="890" y="132" text-anchor="middle" font-weight="600">Agente (LLM)</text>
+        <rect x="822" y="146" width="136" height="48" rx="3" fill="var(--teal-soft)"/>
+        <text x="890" y="165" text-anchor="middle" font-size="12" font-weight="600">Orquestrador</text>
+        <text x="890" y="181" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">escolhe a próxima ferramenta</text>
+        <line x1="890" y1="196" x2="890" y2="212" stroke="var(--teal)" stroke-width="1.5" marker-end="url(#at)"/>
+        <rect x="822" y="214" width="136" height="52" rx="3" fill="var(--teal-soft)"/>
+        <text x="890" y="233" text-anchor="middle" font-size="12" font-weight="600">Verificador</text>
+        <text x="890" y="249" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">11 checagens + OpenDSS;</text>
+        <text x="890" y="262" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">reprova e manda replanejar</text>
+        <text x="890" y="286" text-anchor="middle" font-size="10" fill="var(--ink-2)">exemplos anotados no contexto</text>
+        <text x="890" y="300" text-anchor="middle" font-size="10" fill="var(--ink-2)">OpenAI · Gemini · operador fake</text>
+
+        <text x="890" y="336" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">nunca recebe set_switch</text>
+      </g>
+
+      <!-- OPERADOR -->
+      <g>
+        <line x1="970" y1="170" x2="1008" y2="170" stroke="var(--teal)" stroke-width="2" marker-end="url(#at)"/>
+        <text x="989" y="158" text-anchor="middle" font-size="10" fill="var(--ink-2)">propõe</text>
+        <line x1="1008" y1="238" x2="970" y2="238" stroke="var(--green)" stroke-width="2" marker-end="url(#at)"/>
+        <text x="989" y="256" text-anchor="middle" font-size="10" fill="var(--ink-2)">aprova (token)</text>
+
+        <rect x="1010" y="110" width="150" height="202" rx="4" fill="var(--surface)" stroke="currentColor"/>
+        <text x="1085" y="132" text-anchor="middle" font-weight="600">Console web</text>
+        <text x="1085" y="150" text-anchor="middle" font-size="11" fill="var(--ink-2)">MapLibre + satélite</text>
+        <rect x="1022" y="160" width="126" height="56" rx="3" fill="var(--grey-soft)"/>
+        <text x="1085" y="180" text-anchor="middle" font-size="11">mapa: chaves, trechos</text>
+        <text x="1085" y="196" text-anchor="middle" font-size="11">energizados / sem luz</text>
+        <text x="1085" y="238" text-anchor="middle" font-size="11">fila de eventos</text>
+        <text x="1085" y="254" text-anchor="middle" font-size="11">proposta e alternativas</text>
+        <text x="1085" y="270" text-anchor="middle" font-size="11" font-weight="600">1 clique = 1 manobra</text>
+        <text x="1085" y="292" text-anchor="middle" font-size="11" fill="var(--ink-2)">trilha de auditoria</text>
+        <text x="1085" y="336" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">humano no loop (nível 2)</text>
+      </g>
+
+      <path d="M580 306 L600 306 Q 700 306 700 372 L 1085 372 L 1085 314" fill="none" stroke="var(--amber)" stroke-width="2" marker-end="url(#ar)"/>
+      <text x="880" y="364" text-anchor="middle" font-size="10" fill="var(--ink-2)">tiles do mapa (arquivos estáticos)</text>
+
+      <rect x="350" y="430" width="230" height="64" rx="4" fill="var(--red-soft)" stroke="var(--red)" stroke-width="1.5"/>
+      <text x="465" y="452" text-anchor="middle" font-weight="600">Simulador de eventos</text>
+      <text x="465" y="470" text-anchor="middle" font-size="11" fill="var(--ink-2)">falta, pico de carga, chave indisponível</text>
+      <text x="465" y="485" text-anchor="middle" font-size="11" fill="var(--ink-2)">(não há telemetria pública)</text>
+      <path d="M580 462 L 890 462 L 890 314" fill="none" stroke="var(--red)" stroke-width="2" marker-end="url(#ax)"/>
+      <text x="735" y="454" text-anchor="middle" font-size="10" fill="var(--ink-2)">evento: "religador abriu em CABOFRIO"</text>
+
+      <path d="M620 300 L 600 300 Q 585 300 585 282" fill="none" stroke="var(--teal)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#at)"/>
+      <text x="598" y="262" text-anchor="end" font-size="10" fill="var(--ink-2)">set_switch</text>
+
+      <rect x="20" y="520" width="1140" height="1" fill="var(--line)"/>
+      <text x="20" y="545" font-size="11" fill="var(--ink-2)">Sob tudo isso: log encadeado por hash — raciocínio, chamada de ferramenta, resultado, aprovação e comando. É o que permite auditar o incidente depois.</text>
+    </svg>
+    </div>
+    <figcaption>Setas âmbar são dados de rede fluindo (offline); tracejadas azul-petróleo são chamadas de ferramenta em tempo de operação; vermelhas são o evento sintético que dispara o ciclo. O agente nunca toca a rede: <code>set_switch</code> só existe do lado humano, e exige token de uma proposta aprovada.</figcaption>
+  </figure>
+  <div class="legend"><span class="a">dados de rede (offline)</span><span class="b">chamadas de ferramenta (operação)</span><span class="c">evento simulado</span></div>
+</section>
+
+<section>
+  <h2>2. Camada por camada</h2>
+  <div class="layers">
+    <div class="layer">
+      <div class="k"><span class="t">Dados</span><span class="pill done">feito</span></div>
+      <div>
+        <p>A BDGD é a base geográfica que toda distribuidora entrega à ANEEL uma vez por ano: cada poste, trecho de rede, chave, transformador e consumidor, com posição e atributos elétricos. A da Light tem 43 camadas e 1.802 alimentadores. Convertemos para Parquet (segundos em vez de minutos por consulta) e recortamos clusters de 3 ou 4 alimentadores vizinhos.</p>
+        <p>Do que ela <em>não</em> tem: telemetria em tempo real, e a informação de quais alimentadores se interligam — os pontos de acoplamento são numerados por alimentador, então a interligação só aparece geometricamente, quando uma chave normalmente aberta encosta na rede do vizinho.</p>
+      </div>
+    </div>
+    <div class="layer">
+      <div class="k"><span class="t">Escopo</span><span class="pill done">feito</span></div>
+      <div>
+        <p>Não dá para simular o Rio inteiro. O cenário principal é a <strong>Tijuca</strong>: CABOFRIO, RIMARAES, AMALIA e BOMPASTOR, quatro alimentadores aéreos de 13,2 kV de <em>três</em> subestações diferentes, ligados por chaves telecomandadas — uma falta em CABOFRIO tem três rotas de restauração para o agente comparar. O segundo cenário é <strong>Ipanema</strong>, subterrâneo, onde a resposta certa é que <em>não há</em> rota: isolar e despachar equipe.</p>
+      </div>
+    </div>
+    <div class="layer">
+      <div class="k"><span class="t">Modelos</span><span class="pill done">feito</span></div>
+      <div>
+        <p>Três representações da mesma rede, para três perguntas. O <strong>grafo</strong> responde topologia: se eu abrir esta chave, quem apaga? qual chave aberta reenergiza o resto? O <strong>gêmeo OpenDSS</strong> responde eletricidade: a tensão fica entre 0,93 e 1,05 pu? o cabo aguenta a corrente? Os <strong>tiles</strong> respondem visualização. Grafo e gêmeo são gerados do mesmo recorte, então descrevem exatamente a mesma rede — o conversor foi validado contra a ferramenta de referência do EPRI, com perdas idênticas ao grama.</p>
+      </div>
+    </div>
+    <div class="layer">
+      <div class="k"><span class="t">Ferramentas</span><span class="pill done">feito</span></div>
+      <div>
+        <p>Doze funções com nome, argumentos tipados e descrição em português, servidas por MCP. O modelo lê as descrições, escolhe o que chamar, o servidor executa. É a mesma ideia do PowerChain: em vez de ensinar eletricidade ao LLM, damos a ele ferramentas que já sabem eletricidade. Uma delas, <code>set_switch</code>, é a única que altera a rede — e recusa qualquer chamada sem token de aprovação, fora de sequência ou com proposta vencida.</p>
+      </div>
+    </div>
+    <div class="layer">
+      <div class="k"><span class="t">Agente</span><span class="pill done">feito</span></div>
+      <div>
+        <p>O orquestrador recebe o evento e decide a próxima chamada, com exemplos anotados no contexto. O verificador é determinístico e roda como portão antes de qualquer proposta: confere chave existente, ordem abre-antes-de-fecha, fronteira isolada, e passa o plano pelo OpenDSS. Reprovou, devolve os problemas e o orquestrador replaneja. Funciona com OpenAI, Gemini ou um operador roteirizado que serve de linha de base.</p>
+      </div>
+    </div>
+    <div class="layer">
+      <div class="k"><span class="t">Operador</span><span class="pill done">feito</span></div>
+      <div>
+        <p>O console mostra satélite, rede colorida por estado, fila de eventos e a proposta com raciocínio e alternativas descartadas. A aprovação exige nome e token, fica registrada na trilha, e pode ser feita manobra a manobra: um clique, uma chave, o mapa recolore. Nível 2 de autonomia — o agente propõe, o humano executa.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>3. O cenário da demonstração: falta no tronco de CABOFRIO</h2>
+  <p>Este é o ciclo completo, com os números reais do cluster da Tijuca. Cada seta é uma chamada de ferramenta que o agente decidiu fazer; a leitura horizontal é o tempo.</p>
+  <figure>
+    <div class="wrap">
+    <svg viewBox="0 0 1180 300" role="img" aria-label="Sequência do evento: o religador de CABOFRIO abre com 4.036 clientes sem tensão; o agente localiza a falta, isola abrindo duas chaves e lista as opções de restauração com score elétrico; o OpenDSS aprova as rotas por RIMARAES e BOMPASTOR e reprova a rota por AMALIA, onde um trecho vai a 180 por cento; o agente propõe a rota por RIMARAES; o operador aprova uma manobra por clique e o mapa recolore." font-family="Barlow, sans-serif" font-size="12.5" fill="currentColor" style="color: var(--ink)">
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
+      </defs>
+      <g font-size="11" font-weight="600" letter-spacing="1.5" fill="var(--ink-2)">
+        <text x="20" y="22">EVENTO</text><text x="250" y="22">DIAGNÓSTICO</text><text x="560" y="22">VERIFICAÇÃO</text><text x="790" y="22">DECISÃO</text><text x="1000" y="22">AÇÃO</text>
+      </g>
+
+      <rect x="20" y="40" width="190" height="86" rx="4" fill="var(--red-soft)" stroke="var(--red)" stroke-width="1.5"/>
+      <text x="115" y="62" text-anchor="middle" font-weight="600">Religador abre</text>
+      <text x="115" y="80" text-anchor="middle" font-size="11" fill="var(--ink-2)">falta no trecho 11304252</text>
+      <text x="115" y="95" text-anchor="middle" font-size="11" fill="var(--ink-2)">tronco de CABOFRIO</text>
+      <text x="115" y="112" text-anchor="middle" font-size="11" font-weight="600">4.036 clientes sem luz</text>
+      <line x1="210" y1="83" x2="246" y2="83" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)"/>
+
+      <g font-family="JetBrains Mono, monospace" font-size="11">
+        <rect x="250" y="40" width="270" height="140" rx="4" fill="var(--teal-soft)" stroke="var(--teal)" stroke-width="1.5"/>
+        <text x="262" y="60" font-family="Barlow, sans-serif" font-weight="600">O agente chama, em ordem:</text>
+        <text x="262" y="82">locate_fault()</text>
+        <text x="270" y="97" font-family="Barlow, sans-serif" font-size="10.5" fill="var(--ink-2)">→ religador 10927447</text>
+        <text x="262" y="117">isolate_fault()</text>
+        <text x="270" y="132" font-family="Barlow, sans-serif" font-size="10.5" fill="var(--ink-2)">→ abrir 10927447 e 11035901</text>
+        <text x="262" y="152">restore_options(score)</text>
+        <text x="270" y="167" font-family="Barlow, sans-serif" font-size="10.5" fill="var(--ink-2)">→ 10 opções, 3 telecomandadas</text>
+      </g>
+      <line x1="520" y1="110" x2="556" y2="110" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)"/>
+
+      <rect x="560" y="40" width="210" height="140" rx="4" fill="var(--surface)" stroke="currentColor"/>
+      <text x="665" y="62" text-anchor="middle" font-weight="600">OpenDSS, uma vez por rota</text>
+      <text x="572" y="86" font-size="11">via RIMARAES:</text>
+      <text x="572" y="102" font-size="11" fill="var(--green)" font-weight="600">320 A de 592 · 1,027 pu ✓</text>
+      <text x="572" y="124" font-size="11">via BOMPASTOR:</text>
+      <text x="572" y="140" font-size="11" fill="var(--green)" font-weight="600">351 A de 438 · 1,018 pu ✓</text>
+      <text x="572" y="162" font-size="11">via AMALIA:</text>
+      <text x="572" y="178" font-size="11" fill="var(--red)" font-weight="600">trecho de 20 m a 180 % ✗</text>
+      <line x1="770" y1="110" x2="806" y2="110" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)"/>
+
+      <rect x="810" y="40" width="170" height="140" rx="4" fill="var(--surface)" stroke="var(--teal)" stroke-width="1.5"/>
+      <text x="895" y="62" text-anchor="middle" font-weight="600">Proposta P-0001</text>
+      <text x="822" y="86" font-size="11">1. abrir 11035901</text>
+      <text x="822" y="104" font-size="11">2. fechar 974020904</text>
+      <text x="895" y="128" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">restaura os 4.036 clientes</text>
+      <text x="895" y="144" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">margem de 46 % no disjuntor</text>
+      <text x="895" y="164" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">verificador: 11 de 11 ✓</text>
+      <line x1="980" y1="110" x2="1016" y2="110" stroke="var(--green)" stroke-width="2" marker-end="url(#ar2)" style="color: var(--green)"/>
+      <text x="998" y="98" text-anchor="middle" font-size="10" fill="var(--green)" font-weight="600">aprovar</text>
+
+      <rect x="1020" y="40" width="140" height="140" rx="4" fill="var(--amber-soft)" stroke="var(--amber)" stroke-width="1.5"/>
+      <text x="1090" y="62" text-anchor="middle" font-weight="600">1 clique = 1 chave</text>
+      <text x="1090" y="86" text-anchor="middle" font-size="11">mapa recolore</text>
+      <text x="1090" y="102" text-anchor="middle" font-size="11">a cada manobra</text>
+      <text x="1090" y="128" text-anchor="middle" font-size="11" fill="var(--ink-2)">no fim, só o trecho</text>
+      <text x="1090" y="144" text-anchor="middle" font-size="11" fill="var(--ink-2)">da falta fica isolado,</text>
+      <text x="1090" y="160" text-anchor="middle" font-size="11" fill="var(--ink-2)">para a equipe de campo</text>
+
+      <rect x="20" y="215" width="1140" height="62" rx="4" fill="var(--grey-soft)"/>
+      <text x="32" y="238" font-weight="600" font-size="12">Trilha de auditoria (log encadeado por hash)</text>
+      <text x="32" y="258" font-size="11" fill="var(--ink-2)">evento · cada chamada e resultado · rotas descartadas e o porquê · proposta · quem aprovou e quando · comandos enviados.</text>
+      <text x="32" y="272" font-size="11" fill="var(--ink-2)">Agente = executor; operador = responsável final. Tokens nunca aparecem em claro no log.</text>
+    </svg>
+    </div>
+    <figcaption>Números medidos no cluster da Tijuca com o modelo real. O momento que a demonstração precisa mostrar: o agente encontra três rotas, o gêmeo digital reprova uma delas por um gargalo de 20 metros que a topologia não revela, e o humano decide.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>4. Quanto custa e quão bem funciona</h2>
+  <p>O sistema é também um instrumento de medida: 34 tarefas de referência, com gabarito recalculado pelas próprias ferramentas, medindo acerto, ordenação das chamadas, tokens e custo.</p>
+  <div class="tabela">
+  <table>
+    <thead><tr><th>cenário / modelo</th><th class="num">rodadas</th><th class="num">tokens</th><th class="num">tempo de LLM</th><th>resultado</th></tr></thead>
+    <tbody>
+      <tr><td>Tijuca · gpt-4.1-mini</td><td class="num">4</td><td class="num">32.662</td><td class="num">14,3 s</td><td>rota por RIMARAES, AMALIA descartada</td></tr>
+      <tr><td>Tijuca · gemini-2.5-flash</td><td class="num">5</td><td class="num">53.480</td><td class="num">≈23 s</td><td>mesma proposta</td></tr>
+      <tr><td>Ipanema · gpt-4.1-mini</td><td class="num">4</td><td class="num">32.935</td><td class="num">10,2 s</td><td>isolar e despachar equipe (sem rota)</td></tr>
+      <tr><td>Taquara · gpt-4.1-mini</td><td class="num">5</td><td class="num">37.535</td><td class="num">15,0 s</td><td>rota por CURUMAU, margem de 62 %</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>No benchmark completo, o operador determinístico acerta 100 % das 34 tarefas; o Gemini 2.5 Flash fica em 99 % ao longo de 284 execuções que custaram <strong>US$ 1,69</strong> — menos de um centavo por evento tratado. A demonstração ponta a ponta no console leva 17 a 20 segundos com o operador roteirizado e 25 a 40 segundos com modelo real, dos quais cerca de 10 são o OpenDSS calculando as rotas.</p>
+</section>
+
+</main>
+
+</body>
+</html>
