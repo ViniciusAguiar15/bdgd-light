@@ -28,6 +28,7 @@ from bdgd_light.bench import (  # noqa: E402
     acerto_sem_manobra,
     carregar_comparativo,
     carregar_tarefas,
+    chamadas_desnecessarias,
     comparativo,
     custo_usd,
     escrever_csv,
@@ -82,15 +83,15 @@ def _tarefa(**kw) -> Tarefa:
 # -- arquivos de tarefas ---------------------------------------------------------------------------
 
 
-def test_tarefas_padrao_sao_34_em_tres_niveis_com_ids_unicos():
+def test_tarefas_padrao_sao_38_em_tres_niveis_com_ids_unicos():
     tarefas = carregar_tarefas(TAREFAS_PADRAO)
-    assert len(tarefas) == 34
+    assert len(tarefas) == 38
     assert {n: sum(1 for t in tarefas if t.nivel == n) for n in ("simple", "medium", "hard")} == {
         "simple": 10,
         "medium": 13,
-        "hard": 11,
+        "hard": 15,
     }
-    assert len({t.id for t in tarefas}) == 34
+    assert len({t.id for t in tarefas}) == 38
     assert {t.cluster for t in tarefas} == {"tijuca", "ipanema", "taquara"}
     for t in tarefas:
         if t.verificar == "sem_manobra":
@@ -112,14 +113,18 @@ def test_tarefas_padrao_sao_34_em_tres_niveis_com_ids_unicos():
     assert por_id["M12"].evento == "chave_indisponivel" and por_id["M12"].chave == "10934177"
     assert por_id["M13"].evento == "falta_transitoria" and por_id["M13"].falta == "11409068"
     assert por_id["H11"].verificar == "proposta" and por_id["H11"].esperado == []
+    assert por_id["H12"].restricoes[0]["alimentadores_evitar"] == ["ALC9946"]
+    assert por_id["H13"].indisponiveis == ("746851189",)
+    assert por_id["H14"].rejeicao_previa == {"motivo": "a chave 974020904 está em manutenção"}
+    assert por_id["H15"].rejeicao_previa == {"motivo": "a chave 746851189 está em manutenção"}
 
 
 def test_tarefas_mini_carregam_e_filtram():
     tarefas = carregar_tarefas(TAREFAS_MINI)
     assert [t.id for t in tarefas] == [
-        "S01", "S02", "S03", "S04", "M01", "M02", "M03", "M04", "M05", "H01", "H02", "H03",
+        "S01", "S02", "S03", "S04", "M01", "M02", "M03", "M04", "M05", "H01", "H02", "H03", "H04",
     ]  # fmt: skip
-    assert [t.id for t in filtrar(tarefas, niveis=["hard"])] == ["H01", "H02", "H03"]
+    assert [t.id for t in filtrar(tarefas, niveis=["hard"])] == ["H01", "H02", "H03", "H04"]
     assert [t.id for t in filtrar(tarefas, ids=["S02", "M01"])] == ["S02", "M01"]
     assert filtrar(tarefas, clusters=["tijuca"]) == []
     assert filtrar(tarefas, clusters=["CLUSTER_RJO001-RJO002"]) == tarefas
@@ -153,6 +158,20 @@ def test_arquivo_de_tarefas_invalido(tmp_path):
         ({"pergunta": "?", "referencia": []}, "referencia vazia"),
         ({"evento": "falta_transitoria", "falta": "S", "verificar": "proposta"}, "só com evento"),
         ({"pergunta": "?", "referencia": ["x"], "verificar": "tudo"}, "verificar"),
+        (
+            {"pergunta": "?", "referencia": ["x"], "rejeicao_previa": {"motivo": "x"}},
+            "rejeicao_previa",
+        ),
+        (
+            {
+                "evento": "falta_permanente",
+                "falta": "S",
+                "referencia": ["x"],
+                "verificar": "proposta",
+                "rejeicao_previa": {},
+            },
+            "exige 'motivo'",
+        ),
     ]
     for extra, erro in casos:
         ruim.write_text(yaml.safe_dump({"tarefas": [base | extra]}), encoding="utf-8")
@@ -195,6 +214,9 @@ def test_pass_at_k_e_ordenacao():
     ordem, precisao = ordenacao(["get_topology", "locate_fault", "isolate_fault"], ref)
     assert ordem == 0.5 and precisao == pytest.approx(2 / 3, abs=1e-3)
     assert ordenacao([], ref) == (0.0, 0.0)
+    assert chamadas_desnecessarias(ref, ref) == 0
+    assert chamadas_desnecessarias(["locate_fault", "restore_options"], ref) == 0
+    assert chamadas_desnecessarias(["get_topology", "locate_fault", "isolate_fault"], ref) == 1
 
 
 def test_tolerancias_e_acerto_resposta():
@@ -259,10 +281,10 @@ def test_custo_usd_por_preco_de_lista():
     assert preco_modelo("fake-operador") is None and preco_modelo(None) is None
     base = dict(
         tarefa="S01", nivel="simple", cluster="c", repeticao=1, acerto=True, obtido=1, esperado=1,
-        sequencia=[], referencia=[], ordem=1.0, precisao=1.0, rodadas=2, chars_ferramentas=0,
-        segundos_llm=0.0, segundos_ferramentas=0.0, segundos_total=0.0, replanejamentos=0,
-        recusas=0, erro=None, resposta="", provider="gemini", exemplos=True, compactado=True,
-        seed=42, data="2026-09-11T00:00:00+00:00",
+        sequencia=[], referencia=[], ordem=1.0, precisao=1.0, desnecessarias=0, rodadas=2,
+        chars_ferramentas=0, segundos_llm=0.0, segundos_ferramentas=0.0, segundos_total=0.0,
+        replanejamentos=0, recusas=0, erro=None, resposta="", provider="gemini", exemplos=True,
+        compactado=True, seed=42, data="2026-09-11T00:00:00+00:00",
     )  # fmt: skip
     # Gemini: os tokens de raciocínio (total − prompt) contam como saída
     r = Rodada(**base, modelo="gemini-2.5-flash", tokens_prompt=1_000_000, tokens_completion=1_000,
@@ -296,6 +318,24 @@ def test_melhor_opcao_equivalentes_dentro_da_tolerancia():
     assert melhor_opcao({"opcoes": [*opcoes, opcao("D", 0.99, total=50)]}) == ["D"]
     assert melhor_opcao({"opcoes": [*opcoes, opcao("F", 0.455, total=80)]}) == ["A", "B"]
     assert melhor_opcao({"opcoes": [opcao("E", 0.9, viavel=False)]}) == []
+    assert melhor_opcao(
+        {
+            "opcoes": [
+                opcao("A", 0.46, total=100) | {"bloqueada": "restrição"},
+                opcao("B", 0.45, total=100),
+            ]
+        }
+    ) == ["B"]
+    assert melhor_opcao(
+        {
+            "opcoes": [
+                opcao("A", 0.46, total=100, viavel=True)
+                | {"manobras": [{"acao": "fechar", "chave": "X"}]},
+                opcao("B", 0.45, total=100),
+            ]
+        },
+        indisponiveis=["X"],
+    ) == ["B"]
     assert melhor_opcao({}) == []
 
 
@@ -312,6 +352,7 @@ def _rodada(tarefa, nivel, acerto, tokens=100, seq=None, provider="fake", **kw) 
         referencia=["get_topology"],
         ordem=1.0,
         precisao=1.0,
+        desnecessarias=0,
         rodadas=1,
         tokens_prompt=tokens,
         tokens_completion=0,
@@ -352,6 +393,7 @@ def test_resumir_pass_at_k_por_tarefa_e_tokens_por_acerto():
     assert res["hard"]["pass@1"] == 0.0 and res["hard"]["tokens_por_pass1"] is None
     assert res["total"]["pass@1"] == 0.5
     assert res["total"]["tokens_por_pass1"] == pytest.approx(400 / 0.5)
+    assert res["total"]["desnecessarias_media"] == 0.0
     assert "medium" not in res
 
 
@@ -381,6 +423,7 @@ def test_csv_ida_e_volta_relatorio_e_comparativo(tmp_path):
     assert len(por_rotulo["fake"]) == 2
     tabela = comparativo(por_rotulo, k=1)
     assert "| fake |" in tabela and "| openai |" in tabela and "pass@1 hard" in tabela
+    assert "ferr. desnec." in tabela
     config = Configuracao(provider="fake", k=1, n=1, seed=1)
     md = relatorio_markdown(
         rodadas,
@@ -394,6 +437,7 @@ def test_csv_ida_e_volta_relatorio_e_comparativo(tmp_path):
     assert md.startswith("# Benchmark do agente — fake (2026-01-01)")
     assert "## Métricas por nível" in md and "## Por tarefa" in md and "## Erros" in md
     assert "LLMError: x" in md and "## Comparativo" in md
+    assert "ferr. desnec." in md
     assert nome_relatorio(Configuracao(provider="gemini", exemplos=False)).endswith(
         "-gemini-sem-exemplos"
     )
@@ -416,8 +460,9 @@ def test_gabarito_no_cluster_mini(recorte, dss_out, tmp_path):
     assert sorted(gab.esperado(por_id["H01"])) == ["CH003", "CH005"]
     assert gab.esperado(por_id["H02"]) == 2
     assert gab.esperado(por_id["H03"]) == pytest.approx(1.0136, abs=0.005)
+    assert gab.esperado(por_id["H04"]) == ["CH005"]
     # o gabarito é calculado uma vez por (cluster, falta, ferramenta, campo)
-    assert len(gab._cache) == 7
+    assert len(gab._cache) == 8
     quebrada = _tarefa(
         cluster="cluster_RJO001-RJO002", gabarito={**por_id["S01"].gabarito, "campo": "resumo.nada"}
     )
@@ -431,14 +476,14 @@ def test_benchmark_fake_acerta_todas_as_tarefas_mini(recorte, dss_out, tmp_path)
     tarefas = carregar_tarefas(TAREFAS_MINI)
     vistos: list[str] = []
     rodadas = bench.rodar(tarefas, progresso=lambda r, i, n: vistos.append(f"{i}/{n}"))
-    assert vistos[-1] == "12/12"
+    assert vistos[-1] == "13/13"
     erradas = [
         (r.tarefa, r.obtido, r.esperado, r.resposta, r.erro) for r in rodadas if not r.acerto
     ]
     assert erradas == []
     res = resumir(rodadas, k=1)
     assert res["total"]["pass@1"] == 1.0 and res["total"]["erros"] == 0
-    assert res["simple"]["ordem"] == 1.0 and res["hard"]["precisao"] == 1.0
+    assert res["simple"]["ordem"] == 1.0 and res["hard"]["precisao"] == 0.875
     por_id = {r.tarefa: r for r in rodadas}
     assert por_id["H01"].sequencia == [
         "locate_fault", "isolate_fault", "restore_options", "propose_plan",
@@ -446,6 +491,9 @@ def test_benchmark_fake_acerta_todas_as_tarefas_mini(recorte, dss_out, tmp_path)
     assert por_id["H01"].obtido in ("CH003", "CH005")
     assert por_id["M03"].sequencia == ["locate_fault", "isolate_fault"]
     assert por_id["H03"].sequencia == ["run_powerflow"]
+    assert por_id["H04"].sequencia[-2:] == ["restore_options", "propose_plan"]
+    assert por_id["H04"].desnecessarias == 2
+    assert por_id["H04"].obtido == "CH005"
     # eventos sem manobra: nenhuma ferramenta, resposta cita os clientes do evento, sem proposta
     for tid, texto in (("M04", "2 UCBT a jusante"), ("M05", "4 UCBT ficaram sem tensão")):
         r = por_id[tid]
@@ -486,7 +534,7 @@ def _args(recorte: Path, dss_out: Path, tmp_path: Path) -> list[str]:
 def test_cli_bench_gabarito_e_relatorio(recorte, dss_out, tmp_path):
     r = runner.invoke(app, ["bench", "--gabarito", *_args(recorte, dss_out, tmp_path)])
     assert r.exit_code == 0, r.output
-    assert "12 gabaritos conferem" in r.output
+    assert "13 gabaritos conferem" in r.output
     saida = tmp_path / "relatorios"
     r = runner.invoke(
         app,
