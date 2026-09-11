@@ -219,12 +219,12 @@ uv run ruff check . && uv run ruff format . && uv run pytest     # 285 testes ve
   `encerrar_processo`) quando ninguém mais precisar dele.
 - Windows não é alvo (socket `AF_UNIX`); se um dia for, trocar por `AF_INET` em 127.0.0.1.
 
-## 4. #40 — postes de `UCBT_tab.PN_CON` longe da rede inflam recorte e tiles (09:20–10:00)
+## 4. #40 — postes de `UCBT_tab.PN_CON` longe da rede inflam recorte e tiles (09:20–09:45)
 
 | | |
 |---|---|
 | Branch | `fix/recorte-bbox` (a partir de `main` `0c36619`) |
-| PR | ver "Fechamento" ao fim da seção |
+| PR | **#57** — CI verde na primeira (console 12 s, llm-smoke 22 s, test 3.11 1m15s / 3.12 1m28s) → squash-merge às 09:45, `main` `a5793e1`; issue #40 fechada. |
 | Leituras | `docs/review/` sem arquivo novo (PR-17 continua só local); issue #40, pedido 2 do `PR-08.md`, `NOITE-2.md` (bbox −23,0…−22,18 do Tijuca), `recorte.py`, `tiles.py`, `gerar_fixture.py`. |
 
 ### Decisões
@@ -275,3 +275,74 @@ uv run ruff check . && uv run ruff format . && uv run pytest     # 281 testes ve
 - `UCBT` dos tiles perde as UCs desses postes (9 postes/Tijuca, 2/Ipanema, 3/TQR) — elas seguem em
   `UCBT_tab` e no gêmeo (cargas por trafo), só não têm ponto no mapa; o aviso `postes … sem PONNOT`
   registra isso a cada `tiles`.
+
+## 5. #39 — inventário e tabela por região com a folga `EM_SUB` (09:45–10:05)
+
+| | |
+|---|---|
+| Branch | `fix/inventario-em-sub` (a partir de `main` `a5793e1`) |
+| PR | ver "Fechamento" ao fim da seção |
+| Leituras | `docs/review/` sem arquivo novo; issue #39, `PR-08.md` pedido 2, `NOITE-2.md` §1 pendência 1; `interligacoes.py` (`raio_sub_m`, `RAIO_SUB_PADRAO_M = 50`). |
+
+### Decisões
+
+- **Regenerar é só rodar o comando.** `bdgd-light inventario` já usa `detectar_interligacoes` com a
+  folga de 50 m desde o PR #37; o CSV de `data/` era de 09/09 (antes). `uv run bdgd-light inventario
+  --parquet data/parquet --out data/inventario_ctmt.csv` levou **3,8 s** (não "minutos"; a leitura
+  do Parquet é seletiva por coluna). O CSV não é versionado (`data/`); cópia do antigo em
+  `/tmp/n3/inventario_antes.csv` para a comparação.
+- **Tabela por região reproduzível.** A tabela de `docs/escopo-cidade.md` tinha sido feita à mão
+  (sem script no repositório). Escrevi `scripts/regioes_inventario.py`: cada CTMT do município
+  (`MUN` 3304557, 1.406) vai para o bairro de referência mais próximo do centro do bbox, a até 1–4 km
+  (dois pontos para Ipanema/Leblon e Barra/Recreio); `--antes antigo.csv` imprime antes → depois.
+  Com isso a agregação bate com a original onde ela era inequívoca (Copacabana 38/1/37, Flamengo 27,
+  Lapa 36) e diverge um pouco nos limites difusos (Tijuca 49 vs 37, Méier 45 vs 61, Barra 100 vs 74) —
+  documentado no `escopo-cidade.md`, e a comparação antes → depois usa a **mesma** agregação.
+- **O que a folga mudou.** Light toda: 545 chaves NA de interligação passaram a `EM_SUB`
+  (1.138 → 1.683), em 282 alimentadores; ties de campo 9.839 → 9.294, TLCD de campo 1.422 → 1.254.
+  Município: TLCD de campo 962 → 814 (−148), campo 6.135 → 5.773, SE 814 → 1.176. Por região
+  (`uv run scripts/regioes_inventario.py data/inventario_ctmt.csv --antes /tmp/n3/inventario_antes.csv`):
+
+  | região | n | ties TLCD antes → depois | ties de campo | ties em SE |
+  |---|---|---|---|---|
+  | Centro | 190 | 12 → 6 | 46 → 40 | 363 → 369 |
+  | Lapa/Glória | 36 | 8 → 7 | 37 → 28 | 42 → 51 |
+  | Flamengo/Catete | 27 | 7 → 0 | 22 → 11 | 5 → 16 |
+  | Laranjeiras/Cosme Velho | 6 | 8 → 3 | 36 → 13 | 4 → 27 |
+  | Botafogo/Humaitá | 48 | 11 → 11 | 47 → 47 | 27 → 27 |
+  | Copacabana/Leme | 38 | 0 → 0 | 7 → 7 | 1 → 1 |
+  | **Ipanema/Leblon** | 83 | **109 → 4** | 151 → 42 | 0 → 109 |
+  | Tijuca | 49 | 25 → 25 | 168 → 163 | 4 → 9 |
+  | Vila Isabel/Grajaú | 22 | 16 → 16 | 138 → 136 | 9 → 11 |
+  | Méier | 45 | 45 → 45 | 259 → 250 | 15 → 24 |
+  | Jacarepaguá/Taquara | 38 | 65 → 65 | 374 → 348 | 18 → 44 |
+  | Barra/Recreio | 100 | 86 → 72 | 389 → 352 | 9 → 46 |
+
+  Total nas regiões: TLCD 392 → 254, campo 1.674 → 1.437, SE 497 → 734. As "141 ties TLCD" de
+  Ipanema/Leblon eram barras do pátio: `PTS0001` (LDS 9210) 31 → 0 de campo, 31 em SE, score 53.630
+  → 0; `PTS9088`/`PTS9924` idem (4 e 3); `BPD34707` (LDS 34707, Laranjeiras) 13 reclassificadas — as
+  16 interligações estão todas no pátio. Regiões aéreas não mudam (Tijuca, Vila Isabel, Méier,
+  Jacarepaguá); `URG29983` perde 1 tie de campo (9 → 8, score 30.564 → 27.168). Top do `score`
+  segue `ESP017`, `CEN002`, `SCI004` (LSA de 25 kV).
+- **Docs.** `escopo-cidade.md`: nota "desatualizada" removida, tabela nova com coluna "ties em SE" e
+  parágrafo do impacto; cenário B ganha a ressalva de que as ties do LDS 9210 são de pátio. README:
+  coluna `NA_interligacao_SE` explica a folga; `scripts/` lista o script novo. Teste do script em
+  `tests/test_inventario.py` (inventário sintético: Ipanema, Tijuca, um CTMT longe, outro município).
+
+### Validação
+
+```bash
+cp data/inventario_ctmt.csv /tmp/n3/inventario_antes.csv
+uv run bdgd-light inventario --parquet data/parquet --out data/inventario_ctmt.csv --top 5     # 3,8 s
+uv run scripts/regioes_inventario.py data/inventario_ctmt.csv --antes /tmp/n3/inventario_antes.csv
+uv run pytest tests/test_inventario.py -q
+uv run ruff check . && uv run ruff format . && uv run pytest
+```
+
+### Pendências desta issue
+
+- A agregação por bairro é geométrica (centro do bbox × ponto de referência); alimentadores longos
+  da Zona Oeste ficam fora ou caem em "Barra/Recreio" por proximidade — o número de Barra (100) é o
+  mais sensível ao raio. Se um dia houver polígonos de bairro (IPP), trocar por `within`.
+- `PTS4022` ainda mostra 1 tie de campo (5 → 1) — chave a mais de 50 m do polígono da SE; conferir
+  no mapa se é pátio maior ou tie real antes de aumentar `raio_sub_m`.

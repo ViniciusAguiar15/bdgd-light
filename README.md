@@ -70,6 +70,7 @@ scripts/
   listar_camadas.py    lista as camadas do .gdb
   converter.py         camada → GeoJSON (EPSG:4326) com recorte por bbox
   listar_modelos.py    lista os modelos do provedor LLM configurado (destaca tool calling)
+  regioes_inventario.py tabela por bairro de referência do inventário (docs/escopo-cidade.md)
 index.html             visor Leaflet legado (arrastar o GeoJSON de scripts/converter.py); o console
                        novo é console/
 docs/                  plano, ADRs (adr/ADR-001-stack.md, ADR-002-console-maplibre-pmtiles.md,
@@ -179,7 +180,7 @@ Colunas do CSV (as regras de junção estão em [`docs/bdgd-relacoes.md`](docs/b
 | `chaves_telecomandadas` | chaves com telecomando | `UNSEMT.TLCD = 1` |
 | `NA_interligacao` | chaves NA que interligam este CTMT a outro (**detecção geométrica**, contadas dos dois lados: a chave cadastrada no vizinho a ≤ 2 m de um trecho deste CTMT também conta) | `UNSEMT.geometry` + `P_N_OPE = "A"` × extremidades de `SSDMT` com outro `CTMT` |
 | `NA_interligacao_telecomandada` | idem, só telecomandadas | + `UNSEMT.TLCD = 1` |
-| `NA_interligacao_SE` | idem, chaves dentro do polígono da subestação (disjuntores de saída de alimentadores da mesma SE — não são *ties* de campo) | + `SUB.geometry` |
+| `NA_interligacao_SE` | idem, chaves dentro do polígono da subestação ou a até 50 m dele (disjuntores de saída e barras do pátio — não são *ties* de campo; a folga reclassificou 545 chaves na Light, 31 delas no LDS 9210 de Ipanema) | + `SUB.geometry` (`raio_sub_m`) |
 | `NA_interligacao_campo` | `NA_interligacao` menos as da SE — as chaves que interessam a um cenário FLISR | `EM_SUB = False` |
 | `NA_interligacao_campo_telecomandada` | idem, só telecomandadas | + `UNSEMT.TLCD = 1` |
 | `n_vizinhos`, `vizinhos` | CTMT interligados (contagem e lista `;`) | idem |
