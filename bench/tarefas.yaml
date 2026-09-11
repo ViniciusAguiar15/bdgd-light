@@ -1,11 +1,14 @@
-# Tarefas do benchmark do agente (issue #36) — 30 tarefas (10 simple / 10 medium / 10 hard) sobre os
-# clusters da demo (docs/escopo-cidade.md v3): Tijuca (ALC9925, ALC9946, URG29983, RCP9882), Ipanema
-# (PTS0001, PTS9088, PTS9924, PTS4022) e Taquara (TQR0007, TQR33859, TQR33862; regressão).
+# Tarefas do benchmark do agente (issues #36 e #52) — 34 tarefas (10 simple / 13 medium / 11 hard)
+# sobre os clusters da demo (docs/escopo-cidade.md v3): Tijuca (ALC9925, ALC9946, URG29983, RCP9882),
+# Ipanema (PTS0001, PTS9088, PTS9924, PTS4022) e Taquara (TQR0007, TQR33859, TQR33862; regressão).
 #
-# Campos: id, nivel, cluster, pergunta (ou evento: falta_permanente), falta (trecho injetado antes),
-# referencia (ferramentas na ordem esperada), gabarito (ferramenta + argumentos + campo lido do retorno;
-# `melhor_opcao` = chaves eletricamente equivalentes à melhor opção de restore_options), verificar
-# (resposta numérica | proposta), unidade, tolerancia_rel / tolerancia_abs (padrão: contagens inteiras
+# Campos: id, nivel, cluster, pergunta (ou evento: falta_permanente | falta_transitoria |
+# chave_indisponivel), falta (trecho: injetado antes da pergunta / alvo do evento de falta), chave
+# (alvo de chave_indisponivel), referencia (ferramentas na ordem esperada; vazia = nenhuma necessária),
+# gabarito (ferramenta + argumentos + campo lido do retorno; `melhor_opcao` = chaves eletricamente
+# equivalentes à melhor opção de restore_options), verificar (resposta numérica | proposta |
+# sem_manobra — reprova proposta ou chamada de propose_plan/set_switch/inject_fault e exige o número
+# do gabarito na resposta), unidade, tolerancia_rel / tolerancia_abs (padrão: contagens inteiras
 # exigem o valor exato, ±0,5; grandezas fracionárias aceitam ±2 %), escala (multiplica o gabarito:
 # margem em fração → %), esperado (documental — valor da BDGD 2023 do recorte; `bdgd-light bench
 # --gabarito` recalcula e confere).
@@ -13,7 +16,7 @@
 # O acerto numérico aceita qualquer número da resposta final dentro da tolerância (formatos pt-BR).
 # Observação da revisão (docs/review/RESULTADOS-OPENAI.md): o resumo deve ser numericamente correto —
 # H07 pontua exatamente o caso em que o gpt-4.1-mini citou 1.730 (total do CTMT) no lugar de 479.
-versao: 1
+versao: 2
 tarefas:
   # ---------------------------------------------------------------- simple: uma ferramenta, leitura direta
   - id: S01
@@ -193,6 +196,37 @@ tarefas:
     unidade: chaves
     tolerancia_abs: 0
     esperado: 4
+  # -- Ipanema (issue #52): rede subterrânea sem NA de campo — leitura de chaves e eventos sem manobra
+  - id: M11
+    nivel: medium
+    cluster: ipanema
+    pergunta: "Quantos clientes UCBT ficam sem tensão se a chave 504519384 (PTS9088) abrir?"
+    referencia: [downstream_customers]
+    gabarito: {ferramenta: downstream_customers, argumentos: {chave: "504519384"}, campo: clientes.ucbt}
+    unidade: UCBT
+    esperado: 271
+  - id: M12
+    nivel: medium
+    cluster: ipanema
+    evento: chave_indisponivel
+    chave: "10934177"
+    descricao: "Religador telecomandado do PTS9088 sem telecomando: registrar a restrição, sem manobra, e dizer quantos clientes a jusante passam a depender de equipe."
+    referencia: []
+    gabarito: {ferramenta: downstream_customers, argumentos: {chave: "10934177"}, campo: clientes.ucbt}
+    verificar: sem_manobra
+    unidade: UCBT
+    esperado: 1816
+  - id: M13
+    nivel: medium
+    cluster: ipanema
+    evento: falta_transitoria
+    falta: "11409068"
+    descricao: "Falta transitória no tronco do PTS0001: o religador 10933610 religou — nenhuma manobra; a resposta cita os clientes sem tensão durante o tempo morto."
+    referencia: []
+    gabarito: {ferramenta: downstream_customers, argumentos: {chave: "10933610"}, campo: clientes.ucbt}
+    verificar: sem_manobra
+    unidade: UCBT
+    esperado: 1730
 
   # ---------------------------------------------------------------- hard: fluxo completo com score elétrico / proposta
   - id: H01
@@ -295,3 +329,13 @@ tarefas:
     gabarito: {ferramenta: restore_options, argumentos: {score: true}, campo: melhor_opcao}
     verificar: proposta
     esperado: ["11053522", "11053620", "11056672", "752622332", "134733185", "258481641"]
+  - id: H11
+    nivel: hard
+    cluster: ipanema
+    falta: "11730406"
+    evento: falta_permanente
+    descricao: "Falta na ponta do PTS9924 (zona de 163 UCBT a jusante da chave 449470191): isolar e religar o religador 10934149 devolve 1.011 UCBT; sem NA de campo — proposta sem chave."
+    referencia: [locate_fault, isolate_fault, restore_options, propose_plan]
+    gabarito: {ferramenta: restore_options, argumentos: {score: true}, campo: melhor_opcao}
+    verificar: proposta
+    esperado: []
