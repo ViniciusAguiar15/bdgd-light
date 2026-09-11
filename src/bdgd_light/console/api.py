@@ -33,6 +33,7 @@ from bdgd_light.sim.eventos import (
     CENARIOS,
     CHAVE_INDISPONIVEL,
     FALTA_PERMANENTE,
+    FALTA_TRANSITORIA,
     PICO_CARGA,
     Evento,
     FilaEventos,
@@ -182,7 +183,80 @@ def _resumo_execucao(d: Mapping[str, Any]) -> dict[str, Any]:
     # a proposta completa vive em /api/propostas; aqui só o identificador
     if isinstance(resumo.get("proposta"), Mapping):
         resumo["proposta"] = resumo["proposta"].get("id")
+    evento = d.get("evento")
+    if isinstance(evento, Mapping):
+        resumo["evento"] = {
+            k: evento.get(k)
+            for k in ("id", "tipo", "trecho", "ctmt", "chave", "cenario")
+            if evento.get(k) is not None
+        }
+        resumo["alvo"] = _alvo_evento(evento)
+        resumo["sem_manobra"] = bool(
+            not d.get("proposta")
+            and evento.get("tipo") in (FALTA_TRANSITORIA, PICO_CARGA, CHAVE_INDISPONIVEL)
+        )
+        destaques = _destaques_execucao(d)
+        if destaques is not None:
+            resumo["destaques"] = destaques
     return resumo
+
+
+def _alvo_evento(evento: Mapping[str, Any]) -> str:
+    for campo in ("trecho", "ctmt", "chave"):
+        valor = evento.get(campo)
+        if valor:
+            return str(valor)
+    return "—"
+
+
+def _resultado_ferramenta(execucao: Mapping[str, Any], nome: str) -> Mapping[str, Any] | None:
+    for chamada in reversed(execucao.get("ferramentas") or []):
+        if (
+            isinstance(chamada, Mapping)
+            and chamada.get("ferramenta") == nome
+            and chamada.get("ok") is True
+            and isinstance(chamada.get("resultado"), Mapping)
+        ):
+            return chamada["resultado"]
+    return None
+
+
+def _cod_id_trecho_de_elemento(elemento: Any) -> str | None:
+    nome = str(elemento or "").lower()
+    prefixo = "line.smt_"
+    if not nome.startswith(prefixo):
+        return None
+    return nome.split(prefixo, 1)[1].upper()
+
+
+def _destaques_execucao(execucao: Mapping[str, Any]) -> dict[str, Any] | None:
+    evento = execucao.get("evento")
+    if not isinstance(evento, Mapping) or evento.get("tipo") != PICO_CARGA:
+        return None
+    fluxo = _resultado_ferramenta(execucao, "run_powerflow")
+    if fluxo is None:
+        return None
+    trechos: list[str] = []
+    for item in fluxo.get("sobrecargas") or []:
+        if not isinstance(item, Mapping):
+            continue
+        cod = item.get("cod_id") or _cod_id_trecho_de_elemento(item.get("elemento"))
+        if cod and cod not in trechos:
+            trechos.append(str(cod))
+    if not trechos:
+        for item in fluxo.get("trechos_carregados_mt") or []:
+            if not isinstance(item, Mapping):
+                continue
+            cod = item.get("cod_id") or _cod_id_trecho_de_elemento(item.get("elemento"))
+            if cod and cod not in trechos:
+                trechos.append(str(cod))
+    return {
+        "trechos": trechos,
+        "n_subtensao": fluxo.get("n_subtensao"),
+        "n_sobretensao": fluxo.get("n_sobretensao"),
+        "n_sobrecargas": fluxo.get("n_sobrecargas"),
+        "loadmult": fluxo.get("loadmult"),
+    }
 
 
 def _tipo_padrao(corpo: Mapping[str, Any]) -> str | None:

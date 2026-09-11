@@ -657,6 +657,33 @@ class SessaoCOD:
         return passos
 
     @staticmethod
+    def _cod_id_elemento_mt(elemento: str | None) -> str | None:
+        nome = str(elemento or "").lower()
+        prefixo = "line.smt_"
+        if not nome.startswith(prefixo):
+            return None
+        return nome.split(prefixo, 1)[1].upper()
+
+    @classmethod
+    def _trechos_carregados_mt(cls, correntes, *, limite: int = 5) -> list[dict[str, Any]]:
+        if len(correntes) == 0:
+            return []
+        linhas = correntes[correntes["elemento"].str.lower().str.startswith("line.smt_")]
+        linhas = linhas.dropna(subset=["carregamento_pct"]).sort_values(
+            "carregamento_pct", ascending=False
+        )
+        return [
+            {
+                "elemento": item["elemento"],
+                "cod_id": cls._cod_id_elemento_mt(item.get("elemento")),
+                "i_max_a": item["i_max_a"],
+                "i_nominal_a": item["i_nominal_a"],
+                "carregamento_pct": item["carregamento_pct"],
+            }
+            for item in linhas.head(limite).to_dict(orient="records")
+        ]
+
+    @staticmethod
     def _religador_de(rede: Rede, ctmt: str) -> str | None:
         """Chave de cabeceira do CTMT: a primeira chave ligada ao PAC da fonte."""
         inicio = rede.fontes.get(ctmt)
@@ -993,7 +1020,14 @@ class SessaoCOD:
             "comandos_dss": comandos,
             **resumo,
             "piores_barras": r.piores_barras(5).to_dict(orient="records"),
-            "sobrecargas": r.sobrecargas.head(5).to_dict(orient="records"),
+            "sobrecargas": [
+                {
+                    **item,
+                    "cod_id": self._cod_id_elemento_mt(item.get("elemento")),
+                }
+                for item in r.sobrecargas.head(5).to_dict(orient="records")
+            ],
+            "trechos_carregados_mt": self._trechos_carregados_mt(r.correntes),
             "fontes_a": {f.fonte: round(f.i_a, 1) for f in r.fontes.itertuples(index=False)},
         }
 

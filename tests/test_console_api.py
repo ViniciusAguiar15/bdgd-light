@@ -306,6 +306,67 @@ def test_rejeitar_e_erros(cliente: TestClient, recorte: Path):
     assert r.status_code == 404  # o recorte da demo não está nesta máquina de testes
 
 
+def test_smoke_api_cobre_tres_tipos_de_evento(
+    cliente: TestClient, recorte: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import bdgd_light.console.api as console_api
+
+    pico_original = console_api.Simulador.pico_carga
+
+    def pico_forcado(self, ctmt=None):
+        ev = pico_original(self, ctmt)
+        ev.detalhes["loadmult"] = 5.0
+        return ev
+
+    monkeypatch.setattr(console_api.Simulador, "pico_carga", pico_forcado)
+
+    falta = cliente.post(
+        "/api/eventos",
+        json={"cluster": str(recorte), "tipo": "falta_permanente", "trecho": "SEG001"},
+        headers=OP,
+    )
+    assert falta.status_code == 202, falta.text
+    estado = cliente.get("/api/estado").json()
+    assert estado["agente"]["ultima"]["evento"]["tipo"] == "falta_permanente"
+    assert estado["agente"]["ultima"]["proposta"] == "P-0001"
+    assert cliente.get("/api/propostas", params={"status": "pendente"}).json()[0]["id"] == "P-0001"
+
+    pico = cliente.post(
+        "/api/eventos",
+        json={"cluster": str(recorte), "tipo": "pico_carga", "ctmt": "RJO001", "recarregar": True},
+        headers=OP,
+    )
+    assert pico.status_code == 202, pico.text
+    estado = cliente.get("/api/estado").json()
+    ultima = estado["agente"]["ultima"]
+    assert ultima["evento"]["tipo"] == "pico_carga"
+    assert ultima["sem_manobra"] is True and ultima["proposta"] is None
+    assert "Sem manobra" in ultima["resposta"]
+    assert ultima["destaques"]["loadmult"] == 5.0
+    assert ultima["destaques"]["n_sobrecargas"] >= 1
+    assert "SEG005" in ultima["destaques"]["trechos"]
+    propostas = {p["id"]: p["status"] for p in estado["propostas"]}
+    assert propostas["P-0001"] == "expirada"
+
+    indisponivel = cliente.post(
+        "/api/eventos",
+        json={
+            "cluster": str(recorte),
+            "tipo": "chave_indisponivel",
+            "chave": "CH009",
+            "recarregar": True,
+        },
+        headers=OP,
+    )
+    assert indisponivel.status_code == 202, indisponivel.text
+    estado = cliente.get("/api/estado").json()
+    ultima = estado["agente"]["ultima"]
+    assert ultima["evento"]["tipo"] == "chave_indisponivel"
+    assert ultima["sem_manobra"] is True and ultima["proposta"] is None
+    assert "sem manobra automática" in ultima["resposta"].lower()
+    assert {p["id"]: p["status"] for p in estado["propostas"]} == {"P-0001": "expirada"}
+
+
 def test_evento_sem_agente_e_agente_ocupado(sessao: SessaoCOD, recorte: Path, tmp_path):
     class Lento:
         provider = "fake"

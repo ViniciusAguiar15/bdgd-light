@@ -48,6 +48,16 @@ proposta, quem aprovou, comandos enviados. É o que permite reconstruir o incide
 equipe. E a razão é qualidade de dado: o que parecia 141 interligações telecomandadas eram barras de
 pátio de subestação.
 
+## Variações de 1 minuto no mesmo console
+- **Pico de carga** — no seletor do painel, escolha **pico de carga** e injete. O agente roda
+  `run_powerflow` com o `loadmult` do evento, relata subtensões/sobrecargas previstas e o console
+  mostra explicitamente **veredito: sem manobra**. Use os botões de `COD_ID` para destacar no mapa
+  os trechos MT violados.
+- **Chave indisponível** — escolha **chave indisponível**. O agente registra a restrição
+  operacional, informa quantos clientes a jusante passam a depender de equipe e também encerra com
+  **veredito: sem manobra**. É a demonstração curta de que o sistema sabe quando **não** sugerir
+  chaveamento.
+
 ## 8. Arquitetura (2 min, no diagrama)
 Cinco camadas: dados → três modelos da mesma rede (grafo, gêmeo OpenDSS, tiles) → 12 ferramentas por
 MCP → agente orquestrador/verificador → operador. A fronteira é o MCP: em vez de ensinar eletricidade

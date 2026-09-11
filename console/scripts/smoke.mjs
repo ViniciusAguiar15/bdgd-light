@@ -8,8 +8,10 @@
  *   URL padrão: http://localhost:5173/?cenario=tijuca (cenário A; ?cenario=ipanema|taquara para os outros)
  *   CHROME=/caminho/para/chrome para outro binário.
  *   SMOKE_EXPR="..." avalia uma expressão JS na página e imprime o resultado.
- *   SMOKE_FLUXO=1 (com `bdgd-light serve` atrás da URL) roda a demo ponta a ponta no painel do COD:
- *     injetar falta → esperar a proposta → aprovar e executar → conferir o mapa recolorido.
+ *   SMOKE_FLUXO=1 (com `bdgd-light serve` atrás da URL) roda a demo ponta a ponta no painel do COD.
+ *     `SMOKE_EVENTO=falta_permanente|pico_carga|chave_indisponivel` escolhe o cenário do fluxo
+ *     (padrão: falta permanente). Falta: injeta → espera a proposta → aprova/executa → confere o
+ *     mapa recolorido. Pico/chave indisponível: injeta → espera o cartão final → exige "sem manobra".
  *     SMOKE_TOKEN=<BDGD_CONSOLE_TOKEN> se o backend exige segredo; SMOKE_OPERADOR (padrão "smoke").
  *   SMOKE_PASSOS=1 (com SMOKE_FLUXO) usa o modo passo a passo: clica "próxima manobra" até a
  *     proposta ficar executada e exige exatamente n cliques para n manobras.
@@ -19,12 +21,14 @@
  * SMOKE_FLUXO, se a proposta não for executada em até 60 s após o agente concluir / o mapa não mudar.
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const url = process.argv[2] ?? "http://localhost:5173/?cenario=tijuca";
 const saida = process.argv[3] ?? "smoke.png";
 const porta = 9333 + Math.floor(Math.random() * 500);
+const eventoEsperado = process.env.SMOKE_EVENTO ?? "falta_permanente";
+const userDataDir = join(process.cwd(), `.smoke-chrome-${porta}`);
 
 const candidatos = [
   process.env.CHROME,
@@ -52,13 +56,14 @@ const proc = spawn(
     "--no-first-run",
     "--window-size=1400,900",
     `--remote-debugging-port=${porta}`,
-    `--user-data-dir=/tmp/bdgd-console-smoke-${porta}`,
+    `--user-data-dir=${userDataDir}`,
     "about:blank",
   ],
   { stdio: "ignore" },
 );
 const encerrar = (codigo) => {
   proc.kill("SIGKILL");
+  rmSync(userDataDir, { recursive: true, force: true });
   process.exit(codigo);
 };
 
@@ -161,6 +166,10 @@ const PREPARO = `(() => {
   if (!out.ativo) return JSON.stringify({ ...out, erro: "painel do COD inativo: backend não respondeu em " + (cod?.api ?? "?") });
   const base = ${JSON.stringify(process.env.SMOKE_BASE ?? "")};
   if (base) document.querySelector('input[name="base"][value="' + base + '"]')?.click();
+  const tipo = ${JSON.stringify(eventoEsperado)};
+  const seletor = document.getElementById("cod-tipo-evento");
+  if (seletor) seletor.value = tipo;
+  window.__smoke.tipoEvento = tipo;
   document.getElementById("cod-operador").value = ${JSON.stringify(process.env.SMOKE_OPERADOR ?? "smoke")};
   document.getElementById("cod-token").value = ${JSON.stringify(process.env.SMOKE_TOKEN ?? "")};
   out.desenergizados = { antes: window.__smoke.apagados() };
@@ -171,7 +180,7 @@ const ETAPA_EVENTO = `(async () => {
   document.getElementById("cod-injetar").click();
   // espera o evento aparecer em curso (tela 1) — ou a proposta, se o agente for muito rápido
   for (let i = 0; i < 40 && !cod.estado?.agente?.ocupado && !cod.estado?.propostas.some((x) => x.status === "pendente"); i++) { await dormir(250); await cod.atualizar(); }
-  return JSON.stringify({ evento: document.getElementById("cod-evento")?.textContent ?? null, tEvento_s: window.__smoke.s() });
+  return JSON.stringify({ eventoTipo: window.__smoke.tipoEvento, evento: document.getElementById("cod-evento")?.textContent ?? null, tEvento_s: window.__smoke.s() });
 })()`;
 const ETAPA_PROPOSTA = `(async () => {
   const { dormir } = window.__smoke; const cod = window.cod;
@@ -210,6 +219,25 @@ const ETAPA_APROVAR = `(async () => {
   await dormir(1500);
   return JSON.stringify({ executada: !!exec, aprovadaPor: exec?.aprovada_por ?? null, depois: window.__smoke.apagados(), erro: cod.ultimoErro });
 })()`;
+const ETAPA_SEM_MANOBRA = `(async () => {
+  const { dormir, tipoEvento } = window.__smoke; const cod = window.cod;
+  let ultima = null;
+  for (let i = 0; i < 200; i++) {
+    await dormir(300);
+    await cod.atualizar();
+    ultima = cod.estado?.agente?.ultima;
+    if (ultima?.evento?.tipo === tipoEvento && !cod.estado?.agente?.ocupado) break;
+  }
+  const cartao = document.getElementById("cod-execucao")?.textContent ?? "";
+  return JSON.stringify({
+    semManobra: /sem manobra/i.test(cartao),
+    proposta: ultima?.proposta ?? null,
+    destaques: ultima?.destaques ?? null,
+    resposta: ultima?.resposta ?? null,
+    cartao: cartao.slice(0, 240),
+    erro: cod.ultimoErro,
+  });
+})()`;
 const ETAPA_FIM = `JSON.stringify({ auditoria: document.getElementById("cod-auditoria")?.firstChild?.textContent ?? null, tTotal_s: window.__smoke.s(), erro: window.cod.ultimoErro })`;
 
 let fluxo = null;
@@ -219,13 +247,19 @@ if (process.env.SMOKE_FLUXO) {
   if (!fluxo.erro) {
     Object.assign(fluxo, await ler(ETAPA_EVENTO));
     await capturar("1-evento");
-    const prop = await ler(ETAPA_PROPOSTA);
-    Object.assign(fluxo, prop);
-    fluxo.desenergizados.durante = prop.durante;
-    delete fluxo.durante;
-    await capturar("2-proposta");
+    if (eventoEsperado === "falta_permanente") {
+      const prop = await ler(ETAPA_PROPOSTA);
+      Object.assign(fluxo, prop);
+      fluxo.desenergizados.durante = prop.durante;
+      delete fluxo.durante;
+      await capturar("2-proposta");
+    } else {
+      const semManobra = await ler(ETAPA_SEM_MANOBRA);
+      Object.assign(fluxo, semManobra);
+      await capturar("2-proposta");
+    }
   }
-  if (!fluxo.erro && PASSOS) {
+  if (!fluxo.erro && eventoEsperado === "falta_permanente" && PASSOS) {
     // n cliques = n manobras; cada clique aplica exatamente uma e o mapa recolore quando a rede muda
     fluxo.passos = [];
     const n = fluxo.proposta.manobras.length;
@@ -244,10 +278,12 @@ if (process.env.SMOKE_FLUXO) {
     fluxo.aprovadaPor = ultimo.aprovadaPor ?? null;
     if (fluxo.cliques !== n) fluxo.erro = fluxo.erro ?? `${fluxo.cliques} cliques para ${n} manobras`;
     else if (fluxo.passos.some((r, i) => r.executadas !== i + 1)) fluxo.erro = fluxo.erro ?? "um clique não aplicou exatamente uma manobra";
-  } else if (!fluxo.erro) {
+  } else if (!fluxo.erro && eventoEsperado === "falta_permanente") {
     const ap = await ler(ETAPA_APROVAR);
     Object.assign(fluxo, { executada: ap.executada, aprovadaPor: ap.aprovadaPor, erro: ap.erro });
     fluxo.desenergizados.depois = ap.depois;
+  } else if (!fluxo.erro) {
+    fluxo.executada = false;
   }
   if (fluxo.ativo) {
     await capturar("3-executada");
@@ -263,8 +299,13 @@ let falhou = !dados.pronto || dados.erro || erros.length || dados.feicoes === 0;
 if (fluxo) {
   const d = fluxo.desenergizados ?? {};
   const recoloriu = d.durante > 0 && d.depois !== null && d.depois < d.durante;
-  if (!fluxo.executada || fluxo.erro || !recoloriu) {
-    console.error("fluxo do COD falhou:", fluxo.erro ?? (fluxo.executada ? "mapa não recoloriu" : "proposta não executada"));
+  if (eventoEsperado === "falta_permanente") {
+    if (!fluxo.executada || fluxo.erro || !recoloriu) {
+      console.error("fluxo do COD falhou:", fluxo.erro ?? (fluxo.executada ? "mapa não recoloriu" : "proposta não executada"));
+      falhou = true;
+    }
+  } else if (fluxo.erro || fluxo.proposta || !fluxo.semManobra) {
+    console.error("fluxo do COD falhou:", fluxo.erro ?? "cartão sem veredito 'sem manobra'");
     falhou = true;
   }
 }

@@ -12,10 +12,11 @@ hospedagem estática (GitHub Pages inclusive). Decisões de projeto em
 [`docs/adr/ADR-002-console-maplibre-pmtiles.md`](../docs/adr/ADR-002-console-maplibre-pmtiles.md).
 
 Com o backend `bdgd-light serve` (issue #35) o console ganha o painel **COD · fila e aprovação**:
-injetar a falta do cenário, acompanhar o agente, ler a proposta (manobras, clientes, veredito do
-gêmeo e do verificador, alternativas), **Aprovar e executar** / **Rejeitar** e ver a auditoria; o
-mapa passa a mostrar o estado vivo do gêmeo (`/api/estado.geojson`). Sem backend (GitHub Pages,
-`vite dev` sozinho) o painel fica oculto. Ver [`docs/console.md`](../docs/console.md).
+injetar **falta permanente**, **pico de carga** ou **chave indisponível**, acompanhar o agente, ler
+a proposta (manobras, clientes, veredito do gêmeo e do verificador, alternativas) ou o cartão
+**sem manobra**, e ver a auditoria; o mapa passa a mostrar o estado vivo do gêmeo
+(`/api/estado.geojson`). Sem backend (GitHub Pages, `vite dev` sozinho) o painel fica oculto. Ver
+[`docs/console.md`](../docs/console.md).
 
 ## Rodar
 
@@ -36,20 +37,26 @@ Com a fila e a aprovação (backend na porta 8000; `npm run dev` faz proxy de `/
 BDGD_CONSOLE_TOKEN=demo uv run bdgd-light serve --cluster tijuca --provider fake     # ou --provider gemini
 npm run dev                                   # http://localhost:5173/?cenario=tijuca → painel COD ativo
 npm run build                                 # `serve` publica dist/ em http://127.0.0.1:8000/
-SMOKE_FLUXO=1 SMOKE_TOKEN=demo npm run smoke -- "http://127.0.0.1:8000/?cenario=tijuca"
+SMOKE_FLUXO=1 SMOKE_EVENTO=falta_permanente SMOKE_TOKEN=demo npm run smoke -- "http://127.0.0.1:8000/?cenario=tijuca"
 #   demo ponta a ponta headless: injeta a falta, espera a proposta, aprova e confere o mapa recolorido
+SMOKE_FLUXO=1 SMOKE_EVENTO=pico_carga SMOKE_TOKEN=demo npm run smoke -- "http://127.0.0.1:8000/?cenario=tijuca"
+#   injeta pico de carga e exige o cartão "sem manobra" no painel
+SMOKE_FLUXO=1 SMOKE_EVENTO=chave_indisponivel SMOKE_TOKEN=demo npm run smoke -- "http://127.0.0.1:8000/?cenario=tijuca"
+#   injeta chave indisponível e exige o cartão "sem manobra" no painel
 SMOKE_FLUXO=1 SMOKE_PASSOS=1 SMOKE_TOKEN=demo SMOKE_BASE=base-nenhuma SMOKE_CAPTURAS=../docs/img \
   npm run smoke -- "http://127.0.0.1:8000/?cenario=tijuca"
 #   idem no modo passo a passo (falha se cliques != manobras) e grava as capturas do README por etapa
 ```
 
 No painel, **operador** (cabeçalho `X-Operador`, vai para a auditoria) e **token**
-(`BDGD_CONSOLE_TOKEN` do backend; vazio se `serve --sem-segredo`) ficam no `localStorage`.
-"injetar falta" manda o cenário nomeado do simulador (`tijuca_cabofrio_tronco`, `ipanema_9210`,
-`taquara_bocari`); com uma falta já tratada vira "reiniciar e injetar falta" (recarrega o cluster).
-Na proposta, **Aprovar e executar** aplica todas as manobras; **Próxima manobra (k/n)** aplica uma
-por clique (modo passo a passo, para aula) — a lista marca ✓ as feitas e ▶ a atual, e o mapa recolore
-a cada passo.
+(`BDGD_CONSOLE_TOKEN` do backend; vazio se `serve --sem-segredo`) ficam no `localStorage`. O seletor
+de evento usa o mesmo `POST /api/eventos`: a falta manda o cenário nomeado do simulador
+(`tijuca_cabofrio_tronco`, `ipanema_9210`, `taquara_bocari`), e pico/chave usam alvos padrão do
+cluster quando eles existem. Com uma falta já tratada, a reinjeção recarrega o cluster. Na proposta,
+**Aprovar e executar** aplica todas as manobras; **Próxima manobra (k/n)** aplica uma por clique
+(modo passo a passo, para aula) — a lista marca ✓ as feitas e ▶ a atual, e o mapa recolore a cada
+passo. No pico de carga, os trechos em sobrecarga podem ser destacados no mapa a partir do cartão
+final **sem manobra**.
 
 ## Cenários da demo
 
