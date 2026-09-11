@@ -8,7 +8,7 @@
  */
 import type { Map as MapaLibre } from "maplibre-gl";
 import type { Cenario } from "./cenarios";
-import { carregarEstado } from "./estado";
+import { carregarEstado, destacarTrechos } from "./estado";
 
 interface Clientes {
   ucbt: number;
@@ -21,10 +21,43 @@ interface Clientes {
 interface Score {
   viavel: boolean;
   convergiu: boolean;
+  iteracoes?: number;
+  controle_iteracoes?: number | null;
+  i_disjuntor_a?: number | null;
+  i_nominal_a?: number | null;
   margem_disjuntor: number | null;
   vmin_mt_pu: number | null;
+  vmin_mt_barra?: string | null;
+  vmax_mt_pu?: number | null;
+  vmax_mt_barra?: string | null;
   carregamento_max_mt_pct: number | null;
+  trechos_carregados_mt?: TrechoCarregado[];
+  perfil_tensao_mt?: PontoPerfilTensao[];
+  convergencia?: ConvergenciaEletrica | null;
+  perdas_kw?: number | null;
   motivos: string[];
+}
+
+interface TrechoCarregado {
+  elemento: string;
+  cod_id: string | null;
+  i_max_a: number | null;
+  i_nominal_a: number | null;
+  carregamento_pct: number | null;
+}
+
+interface PontoPerfilTensao {
+  barra: string;
+  distancia_m: number | null;
+  v_pu: number | null;
+}
+
+interface ConvergenciaEletrica {
+  convergiu: boolean;
+  iteracoes: number;
+  controle_iteracoes: number | null;
+  ajustes: string[];
+  tempo_s: number;
 }
 
 interface ImpactoDECConjunto {
@@ -168,6 +201,22 @@ interface RejeicaoResposta {
   };
 }
 
+interface DetalhesEletricosResposta {
+  proposta_id: string;
+  status: string;
+  falta: string | null;
+  escolhida: string | null;
+  opcoes: {
+    chave: string;
+    fonte: string;
+    tlcd: boolean;
+    externa: boolean;
+    clientes: Clientes;
+    escolhida: boolean;
+    score: Score;
+  }[];
+}
+
 /** Cenário do console → cenário nomeado do simulador (`bdgd_light.sim.CENARIOS`). */
 export const CENARIO_SIM: Record<string, string> = {
   tijuca: "tijuca_cabofrio_tronco",
@@ -231,8 +280,20 @@ function pct(v: number | null | undefined): string {
   return v === null || v === undefined ? "—" : `${Math.round(v * 100)}%`;
 }
 
+function pctDireto(v: number | null | undefined): string {
+  return v === null || v === undefined || Number.isNaN(v) ? "—" : `${Math.round(v)}%`;
+}
+
 function pu(v: number | null | undefined): string {
   return v === null || v === undefined ? "—" : `${v.toFixed(3)} pu`;
+}
+
+function ampere(v: number | null | undefined): string {
+  return v === null || v === undefined || Number.isNaN(v) ? "—" : `${Math.round(v)} A`;
+}
+
+function kw(v: number | null | undefined): string {
+  return v === null || v === undefined || Number.isNaN(v) ? "—" : `${v.toFixed(1)} kW`;
 }
 
 function hora(iso: string | null | undefined): string {
@@ -262,6 +323,58 @@ function resumoImpacto(impacto: ImpactoEstimado | null | undefined): string | nu
   return partes.join(" · ");
 }
 
+function sparklinePerfil(perfil: PontoPerfilTensao[]): SVGSVGElement | null {
+  const pontos = perfil.filter((p) => p.v_pu != null && p.distancia_m != null);
+  if (pontos.length < 2) return null;
+  const svgNs = "http://www.w3.org/2000/svg";
+  const largura = 260;
+  const altura = 84;
+  const padX = 10;
+  const padY = 10;
+  const distMax = Math.max(...pontos.map((p) => p.distancia_m ?? 0), 1);
+  const vMin = Math.min(...pontos.map((p) => p.v_pu ?? 1));
+  const vMax = Math.max(...pontos.map((p) => p.v_pu ?? 1));
+  const baseMin = Math.min(0.93, vMin);
+  const baseMax = Math.max(1.05, vMax);
+  const x = (distancia: number) => padX + ((largura - 2 * padX) * distancia) / distMax;
+  const y = (tensao: number) =>
+    altura -
+    padY -
+    ((altura - 2 * padY) * (tensao - baseMin)) / Math.max(baseMax - baseMin, 0.001);
+  const polilinha = pontos.map((p) => `${x(p.distancia_m ?? 0)},${y(p.v_pu ?? 1)}`).join(" ");
+
+  const svg = document.createElementNS(svgNs, "svg");
+  svg.setAttribute("viewBox", `0 0 ${largura} ${altura}`);
+  svg.setAttribute("class", "cod-sparkline");
+
+  for (const ref of [0.93, 1.0, 1.05]) {
+    if (ref < baseMin || ref > baseMax) continue;
+    const linha = document.createElementNS(svgNs, "line");
+    linha.setAttribute("x1", String(padX));
+    linha.setAttribute("x2", String(largura - padX));
+    linha.setAttribute("y1", String(y(ref)));
+    linha.setAttribute("y2", String(y(ref)));
+    linha.setAttribute("class", ref === 1.0 ? "referencia" : "limite");
+    svg.append(linha);
+  }
+
+  const curva = document.createElementNS(svgNs, "polyline");
+  curva.setAttribute("points", polilinha);
+  curva.setAttribute("fill", "none");
+  curva.setAttribute("class", "perfil");
+  svg.append(curva);
+
+  for (const p of [pontos[0], pontos[pontos.length - 1]]) {
+    const no = document.createElementNS(svgNs, "circle");
+    no.setAttribute("cx", String(x(p.distancia_m ?? 0)));
+    no.setAttribute("cy", String(y(p.v_pu ?? 1)));
+    no.setAttribute("r", "3");
+    no.setAttribute("class", "ponto");
+    svg.append(no);
+  }
+  return svg;
+}
+
 function rotuloTipo(tipo: string): string {
   return (
     {
@@ -271,6 +384,10 @@ function rotuloTipo(tipo: string): string {
       chave_indisponivel: "chave indisponível",
     }[tipo] ?? tipo
   );
+}
+
+function resumoTrecho(t: TrechoCarregado): string {
+  return `${t.cod_id ?? t.elemento} · ${pctDireto(t.carregamento_pct)}`;
 }
 
 /** Resolve a base da API: `?api=` explícito ou `api/` relativo à base do site. */
@@ -323,6 +440,12 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
   let mapaDesenhado = false;
   let ocupado = false; // ação humana em curso
   let atualizando = false; // leitura em curso (evita sobrepor polls lentos)
+  let propostaEletricaAberta: string | null = null;
+  let trechoDestaque: string | null = null;
+  let detalheAtual: Proposta | null = null;
+  let auditoriaAtual: Auditoria | null = null;
+  const detalhesEletricos = new Map<string, DetalhesEletricosResposta>();
+  const carregandoDetalhes = new Set<string>();
 
   function cabecalhos(): Record<string, string> {
     const h: Record<string, string> = {
@@ -391,8 +514,23 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
     try {
       if (!mapa.isStyleLoaded()) await new Promise<void>((r) => mapa.once("idle", () => r()));
       await carregarEstado(mapa, api + "estado.geojson");
+      destacarTrechos(mapa, trechoDestaque ? [trechoDestaque] : []);
     } catch (e) {
       mostrarErro(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function carregarDetalhesEletricos(propostaId: string): Promise<void> {
+    if (detalhesEletricos.has(propostaId) || carregandoDetalhes.has(propostaId)) return;
+    carregandoDetalhes.add(propostaId);
+    try {
+      const resposta = await chamar<DetalhesEletricosResposta>(`propostas/${propostaId}/eletrico`);
+      detalhesEletricos.set(propostaId, resposta);
+    } catch (e) {
+      mostrarErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      carregandoDetalhes.delete(propostaId);
+      if (cod.estado) render(cod.estado, detalheAtual, auditoriaAtual);
     }
   }
 
@@ -431,6 +569,8 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
     } catch (e) {
       mostrarErro(e instanceof Error ? e.message : String(e));
     }
+    detalheAtual = detalhe;
+    auditoriaAtual = auditoria;
     render(estado, detalhe, auditoria);
     await redesenharMapa(estado);
   }
@@ -523,6 +663,152 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
     raiz.append(blocoAuditoria(auditoria, estado));
   }
 
+  function blocoDetalhesEletricos(p: Proposta, estado: Estado): HTMLElement {
+    const det = el("details", { class: "cod-eletrico" });
+    if (propostaEletricaAberta === p.id) det.open = true;
+    const cache = detalhesEletricos.get(p.id);
+    const nOpcoes = cache?.opcoes.length ?? p.alternativas?.filter((a) => a.score).length ?? 0;
+    det.append(
+      el(
+        "summary",
+        {},
+        `detalhes elétricos${nOpcoes ? ` (${nOpcoes} opção${nOpcoes > 1 ? "ões" : ""})` : ""}`,
+      ),
+    );
+    det.addEventListener("toggle", () => {
+      propostaEletricaAberta = det.open ? p.id : null;
+      if (!det.open) {
+        trechoDestaque = null;
+        destacarTrechos(mapa, []);
+        return;
+      }
+      void carregarDetalhesEletricos(p.id);
+    });
+
+    if (propostaEletricaAberta === p.id && carregandoDetalhes.has(p.id) && !cache) {
+      det.append(el("div", { class: "dica" }, "carregando visão do OpenDSS…"));
+      return det;
+    }
+    if (!cache) {
+      det.append(el("div", { class: "dica" }, "abra para carregar corrente, tensão, perdas e convergência."));
+      return det;
+    }
+
+    const tabela = el("table", { class: "cod-tabela-eletrica" });
+    tabela.append(
+      el(
+        "thead",
+        {},
+        el(
+          "tr",
+          {},
+          el("th", {}, "opção"),
+          el("th", {}, "fonte"),
+          el("th", {}, "margem"),
+          el("th", {}, "I disj."),
+          el("th", {}, "Vmin"),
+          el("th", {}, "Vmax"),
+          el("th", {}, "trecho crítico"),
+          el("th", {}, "perdas"),
+          el("th", {}, "conv."),
+        ),
+      ),
+    );
+    const corpo = el("tbody");
+    for (const opcao of cache.opcoes) {
+      const score = opcao.score;
+      const pior = score.trechos_carregados_mt?.[0];
+      corpo.append(
+        el(
+          "tr",
+          { class: opcao.escolhida ? "escolhida" : score.viavel ? "viavel" : "inviavel" },
+          el("td", {}, `${opcao.chave}${opcao.escolhida ? " ← escolhida" : ""}`),
+          el("td", {}, `${opcao.fonte}${opcao.tlcd ? "" : " · manual"}`),
+          el("td", {}, pct(score.margem_disjuntor)),
+          el("td", {}, ampere(score.i_disjuntor_a)),
+          el("td", {}, `${pu(score.vmin_mt_pu)}${score.vmin_mt_barra ? ` · ${score.vmin_mt_barra}` : ""}`),
+          el("td", {}, `${pu(score.vmax_mt_pu)}${score.vmax_mt_barra ? ` · ${score.vmax_mt_barra}` : ""}`),
+          el("td", {}, pior ? resumoTrecho(pior) : "—"),
+          el("td", {}, kw(score.perdas_kw)),
+          el("td", {}, score.convergiu ? `${score.iteracoes ?? score.convergencia?.iteracoes ?? 0} it.` : "não"),
+        ),
+      );
+    }
+    tabela.append(corpo);
+    det.append(tabela);
+
+    const escolhida = cache.opcoes.find((o) => o.escolhida) ?? cache.opcoes[0];
+    const score = escolhida.score;
+    const painel = el("div", { class: "cod-eletrico-escolhida" });
+    painel.append(
+      el("div", { class: "rotulo" }, `opção escolhida · ${escolhida.chave} → ${escolhida.fonte}`),
+      el(
+        "div",
+        { class: score.viavel ? "ok" : "erro" },
+        `${score.viavel ? "viável" : "inviável"} · perdas ${kw(score.perdas_kw)} · ` +
+          `ajustes ${score.convergencia?.ajustes?.length ? score.convergencia.ajustes.join(", ") : "nenhum"}`,
+      ),
+    );
+    const spark = sparklinePerfil(score.perfil_tensao_mt ?? []);
+    if (spark) painel.append(spark);
+    const perfil = score.perfil_tensao_mt ?? [];
+    if (perfil.length) {
+      const primeiro = perfil[0];
+      const ultimo = perfil[perfil.length - 1];
+      painel.append(
+        el(
+          "div",
+          { class: "dica" },
+          `perfil MT da fonte até a ponta: ${primeiro.barra} (${pu(primeiro.v_pu)}) → ` +
+            `${ultimo.barra} (${pu(ultimo.v_pu)}) · ${ultimo.distancia_m?.toFixed(0) ?? "0"} m`,
+        ),
+      );
+    }
+
+    const trechos = el("table", { class: "cod-tabela-eletrica cod-trechos-carregados" });
+    trechos.append(
+      el(
+        "thead",
+        {},
+        el(
+          "tr",
+          {},
+          el("th", {}, "trecho"),
+          el("th", {}, "carga"),
+          el("th", {}, "corrente"),
+          el("th", {}, "limite"),
+        ),
+      ),
+    );
+    const linhas = el("tbody");
+    for (const trecho of score.trechos_carregados_mt ?? []) {
+      const tr = el(
+        "tr",
+        {
+          class: trecho.cod_id === trechoDestaque ? "selecionado" : "",
+          title: trecho.cod_id ? `destacar ${trecho.cod_id} no mapa` : trecho.elemento,
+        },
+        el("td", {}, trecho.cod_id ?? trecho.elemento),
+        el("td", {}, pctDireto(trecho.carregamento_pct)),
+        el("td", {}, ampere(trecho.i_max_a)),
+        el("td", {}, ampere(trecho.i_nominal_a)),
+      );
+      if (trecho.cod_id) {
+        tr.classList.add("clicavel");
+        tr.addEventListener("click", () => {
+          trechoDestaque = trechoDestaque === trecho.cod_id ? null : trecho.cod_id;
+          destacarTrechos(mapa, trechoDestaque ? [trechoDestaque] : []);
+          render(estado, detalheAtual, auditoriaAtual);
+        });
+      }
+      linhas.append(tr);
+    }
+    trechos.append(linhas);
+    painel.append(el("div", { class: "rotulo" }, "trechos mais carregados (clique para destacar no mapa)"), trechos);
+    det.append(painel);
+    return det;
+  }
+
   function cartaoProposta(p: Proposta, estado: Estado): HTMLElement {
     const card = el("div", { class: `cod-proposta status-${p.status}`, id: "cod-proposta" });
     card.append(
@@ -605,6 +891,7 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
       det.append(ul);
       card.append(det);
     }
+    if (p.score) card.append(blocoDetalhesEletricos(p, estado));
     if (emCurso) {
       const bloqueado = estado.autorizacao === "bloqueado";
       const restantes = p.manobras.length - feitas;

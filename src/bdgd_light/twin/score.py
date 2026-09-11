@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import networkx as nx
+
 from bdgd_light.grid.rede import CHAVE, TRECHO, OpcaoRestauracao, Rede
 from bdgd_light.twin.cluster import comandos_manobras
 from bdgd_light.twin.powerflow import PowerFlowResult, _dss, no_motor, run_powerflow
@@ -43,13 +45,19 @@ class ScoreEletrico:
     chave: str
     fonte: str
     convergiu: bool
+    iteracoes: int
+    controle_iteracoes: int | None
     i_disjuntor_a: float  # corrente máxima de fase na Vsource da fonte (NaN se não simulado)
     i_nominal_a: float  # referência: tronco a jusante do disjuntor ou ``nominais`` (NaN se ignota)
     margem_disjuntor: float  # (i_nominal - i_disjuntor) / i_nominal; NaN se sem referência
     vmin_mt_pu: float
+    vmin_mt_barra: str | None
     vmax_mt_pu: float
+    vmax_mt_barra: str | None
     sobrecargas_mt: list[str]  # elementos MT (fonte + zona transferida) acima de 100 %
     carregamento_max_mt_pct: float
+    trechos_carregados_mt: list[dict[str, Any]]
+    perfil_tensao_mt: list[dict[str, Any]]
     perdas_kw: float
     viavel: bool
     motivos: list[str]  # por que não é viável (vazio se viável)
@@ -67,17 +75,48 @@ class ScoreEletrico:
             "chave": self.chave,
             "fonte": self.fonte,
             "convergiu": self.convergiu,
+            "iteracoes": self.iteracoes,
+            "controle_iteracoes": self.controle_iteracoes,
             "i_disjuntor_a": num(self.i_disjuntor_a),
             "i_nominal_a": num(self.i_nominal_a),
             "margem_disjuntor": num(self.margem_disjuntor),
             "vmin_mt_pu": num(self.vmin_mt_pu),
+            "vmin_mt_barra": self.vmin_mt_barra,
             "vmax_mt_pu": num(self.vmax_mt_pu),
+            "vmax_mt_barra": self.vmax_mt_barra,
+            "vmin_mt": {"barra": self.vmin_mt_barra, "pu": num(self.vmin_mt_pu)},
+            "vmax_mt": {"barra": self.vmax_mt_barra, "pu": num(self.vmax_mt_pu)},
             "sobrecargas_mt": list(self.sobrecargas_mt),
             "carregamento_max_mt_pct": num(self.carregamento_max_mt_pct),
+            "trechos_carregados_mt": [
+                {
+                    "elemento": t.get("elemento"),
+                    "cod_id": t.get("cod_id"),
+                    "i_max_a": num(t.get("i_max_a")),
+                    "i_nominal_a": num(t.get("i_nominal_a")),
+                    "carregamento_pct": num(t.get("carregamento_pct")),
+                }
+                for t in self.trechos_carregados_mt
+            ],
+            "perfil_tensao_mt": [
+                {
+                    "barra": p.get("barra"),
+                    "distancia_m": num(p.get("distancia_m")),
+                    "v_pu": num(p.get("v_pu")),
+                }
+                for p in self.perfil_tensao_mt
+            ],
             "perdas_kw": num(self.perdas_kw),
             "viavel": self.viavel,
             "motivos": list(self.motivos),
             "ajustes": list(self.ajustes),
+            "convergencia": {
+                "convergiu": self.convergiu,
+                "iteracoes": self.iteracoes,
+                "controle_iteracoes": self.controle_iteracoes,
+                "ajustes": list(self.ajustes),
+                "tempo_s": self.tempo_s,
+            },
             "tempo_s": self.tempo_s,
             "clientes": self.opcao.clientes.to_dict(),
             "tlcd": self.opcao.tlcd,
@@ -161,6 +200,98 @@ def _fmt(x: float, casas: int = 3) -> str:
     return f"{x:.{casas}f}".replace(".", ",")
 
 
+def _aresta_passavel(d: Mapping[str, Any]) -> bool:
+    return d["tipo"] != CHAVE or not d["aberta"]
+
+
+def _peso_aresta(d: Mapping[str, Any]) -> float:
+    return float(d.get("comp") or 0.0)
+
+
+def _extremo_tensao(sel, *, maior: bool) -> tuple[float, str | None]:
+    if len(sel) == 0:
+        return _NAN, None
+    idx = sel["v_pu"].idxmax() if maior else sel["v_pu"].idxmin()
+    linha = sel.loc[idx]
+    return float(linha["v_pu"]), str(linha["barra"])
+
+
+def _cod_id_trecho(elemento: str) -> str | None:
+    prefixo = "line.smt_"
+    nome = elemento.lower()
+    if not nome.startswith(prefixo):
+        return None
+    return nome.split(prefixo, 1)[1].upper()
+
+
+def _trechos_carregados_mt(
+    rede: Rede, fonte: str, nos: Iterable[str], correntes, *, limite: int = 5
+) -> list[dict[str, Any]]:
+    c = correntes
+    c = c[c["elemento"].str.lower().isin(_elementos_mt(rede, fonte, nos))]
+    c = c.dropna(subset=["carregamento_pct"]).sort_values("carregamento_pct", ascending=False)
+    return [
+        {
+            "elemento": str(r.elemento),
+            "cod_id": _cod_id_trecho(str(r.elemento)),
+            "i_max_a": float(r.i_max_a),
+            "i_nominal_a": float(r.i_nominal_a),
+            "carregamento_pct": float(r.carregamento_pct),
+        }
+        for r in c.head(limite).itertuples(index=False)
+    ]
+
+
+def _perfil_tensao_mt(
+    opcao: OpcaoRestauracao, rede: Rede, resultado: PowerFlowResult
+) -> list[dict]:
+    depois = rede.copy()
+    for passo in opcao.manobras:
+        if passo["acao"] == "abrir":
+            depois.open_switch(passo["chave"])
+        elif passo["acao"] == "fechar":
+            depois.close_switch(passo["chave"])
+    inicio = depois.fontes.get(opcao.fonte)
+    if inicio is None:
+        return []
+
+    grafo = nx.Graph()
+    for u, v, d in depois.grafo.edges(data=True):
+        if _aresta_passavel(d):
+            grafo.add_edge(u, v, peso=_peso_aresta(d))
+    if inicio not in grafo:
+        return []
+
+    candidatos = [n for n in opcao.nos if n in grafo and not str(n).startswith("EXT:")]
+    if not candidatos:
+        return []
+    comprimentos, caminhos = nx.single_source_dijkstra(grafo, inicio, weight="peso")
+    alcançados = [n for n in candidatos if n in caminhos]
+    if not alcançados:
+        return []
+    ponta = max(alcançados, key=lambda n: (comprimentos[n], str(n)))
+    caminho = caminhos[ponta]
+
+    mt = resultado.tensoes_mt()
+    por_barra = mt.groupby("barra", as_index=False)["v_pu"].min()
+    tensoes = {str(r.barra).lower(): float(r.v_pu) for r in por_barra.itertuples(index=False)}
+    perfil: list[dict[str, Any]] = []
+    distancia = 0.0
+    for i, barra in enumerate(caminho):
+        if not str(barra).startswith("EXT:"):
+            perfil.append(
+                {
+                    "barra": str(barra),
+                    "distancia_m": round(distancia, 1),
+                    "v_pu": tensoes.get(str(barra).lower(), _NAN),
+                }
+            )
+        if i + 1 < len(caminho):
+            aresta = depois.grafo.edges[caminho[i], caminho[i + 1]]
+            distancia += _peso_aresta(aresta)
+    return perfil
+
+
 def _avaliar(
     opcao: OpcaoRestauracao,
     rede: Rede,
@@ -178,13 +309,14 @@ def _avaliar(
     mt = resultado.tensoes_mt()
     nos_lower = {n.lower() for n in opcao.nos}
     sel = mt[(mt["ctmt"] == fonte.upper()) | mt["barra"].str.lower().isin(nos_lower)]
-    v_min = float(sel["v_pu"].min()) if len(sel) else _NAN
-    v_max = float(sel["v_pu"].max()) if len(sel) else _NAN
+    v_min, barra_vmin = _extremo_tensao(sel, maior=False)
+    v_max, barra_vmax = _extremo_tensao(sel, maior=True)
     if not math.isnan(v_min) and v_min < vmin:
         motivos.append(f"Vmin MT {_fmt(v_min)} pu < {_fmt(vmin, 2)}")
     if not math.isnan(v_max) and v_max > vmax:
         motivos.append(f"Vmax MT {_fmt(v_max)} pu > {_fmt(vmax, 2)}")
 
+    trechos_carregados = _trechos_carregados_mt(rede, fonte, opcao.nos, resultado.correntes)
     c = resultado.correntes
     c = c[c["elemento"].str.lower().isin(_elementos_mt(rede, fonte, opcao.nos))]
     c = c.dropna(subset=["carregamento_pct"])
@@ -207,13 +339,21 @@ def _avaliar(
         chave=opcao.chave,
         fonte=fonte,
         convergiu=resultado.convergiu,
+        iteracoes=resultado.iteracoes,
+        controle_iteracoes=int(resultado.extra.get("controle_iteracoes"))
+        if resultado.extra.get("controle_iteracoes") is not None
+        else None,
         i_disjuntor_a=i_disj,
         i_nominal_a=i_nominal,
         margem_disjuntor=margem,
         vmin_mt_pu=v_min,
+        vmin_mt_barra=barra_vmin,
         vmax_mt_pu=v_max,
+        vmax_mt_barra=barra_vmax,
         sobrecargas_mt=sobrecargas["elemento"].tolist(),
         carregamento_max_mt_pct=carregamento_max,
+        trechos_carregados_mt=trechos_carregados,
+        perfil_tensao_mt=_perfil_tensao_mt(opcao, rede, resultado),
         perdas_kw=resultado.perdas_kw,
         viavel=not motivos,
         motivos=motivos,
@@ -228,13 +368,19 @@ def _nao_simulado(opcao: OpcaoRestauracao, motivo: str) -> ScoreEletrico:
         chave=opcao.chave,
         fonte=opcao.fonte,
         convergiu=False,
+        iteracoes=0,
+        controle_iteracoes=None,
         i_disjuntor_a=_NAN,
         i_nominal_a=_NAN,
         margem_disjuntor=_NAN,
         vmin_mt_pu=_NAN,
+        vmin_mt_barra=None,
         vmax_mt_pu=_NAN,
+        vmax_mt_barra=None,
         sobrecargas_mt=[],
         carregamento_max_mt_pct=_NAN,
+        trechos_carregados_mt=[],
+        perfil_tensao_mt=[],
         perdas_kw=_NAN,
         viavel=False,
         motivos=[motivo],

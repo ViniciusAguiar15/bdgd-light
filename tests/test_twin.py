@@ -615,8 +615,11 @@ def test_cli_dss_cluster_com_falha_e_restauracao(grafos, tmp_path):
 
 CHAVES_SCORE = {
     "chave", "fonte", "convergiu", "i_disjuntor_a", "i_nominal_a", "margem_disjuntor",
-    "vmin_mt_pu", "vmax_mt_pu", "sobrecargas_mt", "carregamento_max_mt_pct", "perdas_kw",
-    "viavel", "motivos", "ajustes", "tempo_s", "clientes", "tlcd",
+    "iteracoes", "controle_iteracoes",
+    "vmin_mt_pu", "vmin_mt_barra", "vmin_mt",
+    "vmax_mt_pu", "vmax_mt_barra", "vmax_mt",
+    "sobrecargas_mt", "carregamento_max_mt_pct", "trechos_carregados_mt", "perfil_tensao_mt",
+    "perdas_kw", "viavel", "motivos", "ajustes", "convergencia", "tempo_s", "clientes", "tlcd",
 }  # fmt: skip
 
 
@@ -650,9 +653,21 @@ def test_score_eletrico_viavel(cluster_mini: Cluster, master_base):
     assert s.margem_disjuntor == pytest.approx((200 - s.i_disjuntor_a) / 200)
     assert 1.03 < s.vmin_mt_pu <= s.vmax_mt_pu <= 1.045 + 1e-6
     assert s.sobrecargas_mt == [] and 5 < s.carregamento_max_mt_pct < 12
+    assert s.vmin_mt_barra and s.vmax_mt_barra
+    assert s.trechos_carregados_mt[0]["cod_id"] == "SEG005"
+    assert s.trechos_carregados_mt[0]["carregamento_pct"] == pytest.approx(
+        s.carregamento_max_mt_pct, rel=1e-4
+    )
+    assert s.perfil_tensao_mt[0]["barra"] == "RJO002_MT_0"
+    assert s.perfil_tensao_mt[-1]["barra"] in s.opcao.nos
+    assert s.perfil_tensao_mt[-1]["distancia_m"] and s.perfil_tensao_mt[-1]["distancia_m"] > 0
+    assert s.iteracoes > 0 and s.controle_iteracoes is not None
     assert 0 < s.perdas_kw < 10 and s.tempo_s > 0
     d = s.to_dict()
     assert set(d) == CHAVES_SCORE and d["clientes"]["ucbt"] == 3 and d["tlcd"] is True
+    assert d["convergencia"]["iteracoes"] == s.iteracoes
+    assert d["vmin_mt"]["barra"] == s.vmin_mt_barra
+    assert d["trechos_carregados_mt"][0]["cod_id"] == "SEG005"
     json.dumps(d)  # NaN nunca vaza para o JSON
 
 
@@ -665,6 +680,10 @@ def test_score_eletrico_inviavel_por_sobrecarga(cluster_mini: Cluster, master_ba
     assert p.convergiu and p.i_disjuntor_a > 200 and p.margem_disjuntor < 0
     assert p.sobrecargas_mt and all(e.startswith("Line.smt_") for e in p.sobrecargas_mt)
     assert p.carregamento_max_mt_pct > 100
+    assert p.trechos_carregados_mt[0]["cod_id"] == "SEG005"
+    assert p.trechos_carregados_mt[0]["carregamento_pct"] == pytest.approx(
+        p.carregamento_max_mt_pct, rel=1e-4
+    )
     assert any("acima de 100 %" in m and "Line.smt_" in m for m in p.motivos)
     assert any(m.startswith("I disjuntor") and "> 200 A" in m for m in p.motivos)
     # corrente nominal informada (CTMT → A) sobrepõe a ampacidade do tronco
@@ -690,7 +709,8 @@ def test_score_eletrico_ordenacao_e_fonte_externa(cluster_mini: Cluster, master_
         and not ext.viavel
         and ext.motivos == ["fonte URG999 fora do cluster (sem modelo)"]
     )
-    assert ext.to_dict()["i_disjuntor_a"] is None and ext.tempo_s == 0
+    assert ext.to_dict()["i_disjuntor_a"] is None and ext.to_dict()["perfil_tensao_mt"] == []
+    assert ext.tempo_s == 0
     # viável → maior margem → UCBT; sem referência (NaN) por último entre os inviáveis
     ordem = ordenar_scores([inviaveis[0], ext, viaveis[0], folgado])
     assert [o.chave for o in ordem] == ["CH005", "CH003", "CH003", "CH777"]

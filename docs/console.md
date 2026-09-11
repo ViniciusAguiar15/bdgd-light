@@ -61,6 +61,7 @@ Todas as rotas devolvem JSON; erros de domínio (`SessaoError`) viram **409** co
 | `POST /api/eventos` → **202** | `{evento, agente: iniciado\|ocupado\|desligado}` | corpo: `{cenario}` (nomeado, ex. `tijuca_cabofrio_tronco`) **ou** `{tipo?, trecho?, ctmt?, chave?, cluster?, seed?}` (sem `tipo`, o alvo decide: trecho → falta permanente, CTMT → pico, chave → indisponível); `recarregar: true` recarrega o cluster antes; `agente: false` só publica. Exige operador; **409** se o agente está ocupado; 404 se o recorte do cenário não existe |
 | `GET /api/propostas?status=` | lista sem token | |
 | `GET /api/propostas/{id}` | proposta + `alternativas` (opções de `restore_options` com o último score, a escolhida primeiro) + `verificador` (veredito da execução do agente que a gerou) | `alternativas = []` após executada |
+| `GET /api/propostas/{id}/eletrico` | detalhes elétricos por opção simulada (`score=true`): corrente/margem do disjuntor, Vmin/Vmax MT com barra, perdas, top 5 trechos carregados, convergência e perfil de tensão MT | o console usa no expansor **detalhes elétricos**; se a proposta já foi executada, devolve ao menos a opção escolhida gravada na proposta |
 | `POST /api/propostas/{id}/aprovar` | `{operador, proposta, execucao, erro}` | corpo `{executar?: true, validade_s?: 1800}`; aprova **e executa** por padrão (no transporte MCP http o padrão é só aprovar); grava `hitl.aprovacao` com `origem: console`. Com manobras já aplicadas pelo modo passo a passo, executa só as restantes |
 | `POST /api/propostas/{id}/passo` | `{operador, passo, erro, proposta}` | **modo passo a passo**: aprova a proposta se ainda pendente (`hitl.aprovacao` com `executar: "passo"`) e aplica **só a próxima manobra** (`Proposta.proximo_passo`) com `set_switch` + token da proposta; grava `hitl.passo` (`manobra`, `passo`, `n_passos`). Uma chamada por manobra; a n-ésima marca a proposta `executada`; a seguinte responde 409 |
 | `POST /api/propostas/{id}/rejeitar` | `{operador, proposta, replanejamento}` | corpo `{motivo?}`; rejeita a proposta, registra `hitl.rejeicao` e, se houver agente e o limite de 3 não tiver sido atingido, dispara um replanejamento para a mesma falta com a restrição derivada do motivo |
@@ -96,6 +97,11 @@ ou `X-Console-Token` com `compare_digest` (401 se errado; 503 se o servidor não
   `replanejamento.status = limite`, mostra a mensagem de intervenção humana. Enquanto as alternativas
   replanejadas aparecem, as opções vetadas continuam visíveis em `alternativas`, mas com
   `bloqueada: <motivo>` para o operador entender por que foram descartadas.
+- **Detalhes elétricos** (issue #63): o cartão da proposta ganhou um expansor com a visão do
+  OpenDSS por opção simulada. A tabela compara margem no disjuntor, Vmin/Vmax MT, perdas,
+  convergência e o trecho mais carregado; para a opção escolhida o console desenha um sparkline
+  simples do perfil de tensão MT da fonte até a ponta e a tabela dos top 5 trechos carregados
+  permite clicar num `COD_ID` para destacá-lo no mapa.
 - `window.cod` expõe `estado`, `atualizar()`, `injetar()`, `aprovar(id)`, `passo(id)`,
   `rejeitar(id, motivo)` para depuração e para o smoke.
 - Smoke ponta a ponta: `SMOKE_FLUXO=1 SMOKE_TOKEN=demo node scripts/smoke.mjs

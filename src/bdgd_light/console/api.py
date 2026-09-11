@@ -319,6 +319,53 @@ def criar_app(
         p["verificador"] = _veredito(agente, proposta_id)
         return p
 
+    @app.get("/api/propostas/{proposta_id}/eletrico")
+    def proposta_eletrica(proposta_id: str) -> dict[str, Any]:
+        """Detalhes elétricos por opção simulada para a proposta.
+
+        Reaproveita os scores do gêmeo OpenDSS já calculados em ``restore_options(score=true)``:
+        corrente/margem no disjuntor, extremos de tensão MT com barra, perdas, trechos mais
+        carregados, convergência e perfil de tensão da opção escolhida.
+        """
+        p = sessao.propostas.obter(proposta_id).to_dict(com_token=False)
+        opcoes = [
+            {
+                "chave": a.get("chave"),
+                "fonte": a.get("fonte"),
+                "tlcd": a.get("tlcd"),
+                "externa": a.get("externa"),
+                "clientes": a.get("clientes"),
+                "escolhida": bool(a.get("escolhida")),
+                "score": a.get("score"),
+            }
+            for a in sessao.alternativas(proposta_id)
+            if isinstance(a.get("score"), Mapping)
+        ]
+        if not opcoes and isinstance(p.get("score"), Mapping):
+            opcoes = [
+                {
+                    "chave": p.get("chave"),
+                    "fonte": p.get("fonte"),
+                    "tlcd": p.get("score", {}).get("tlcd"),
+                    "externa": False,
+                    "clientes": p.get("clientes"),
+                    "escolhida": True,
+                    "score": p.get("score"),
+                }
+            ]
+        if not opcoes:
+            raise HTTPException(
+                409,
+                "proposta sem detalhes elétricos disponíveis; gere alternativas com score=true",
+            )
+        return {
+            "proposta_id": p["id"],
+            "status": p["status"],
+            "falta": p["falta"],
+            "escolhida": p["chave"],
+            "opcoes": opcoes,
+        }
+
     @app.post("/api/propostas/{proposta_id}/aprovar")
     def aprovar(request: Request, proposta_id: str, corpo: Corpo = None) -> dict[str, Any]:
         corpo = corpo or {}

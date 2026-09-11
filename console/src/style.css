@@ -381,6 +381,83 @@ label.item small {
   font-size: 11px;
 }
 
+.cod-eletrico {
+  margin-top: 10px;
+}
+
+.cod-tabela-eletrica {
+  width: 100%;
+  margin-top: 6px;
+  border-collapse: collapse;
+  font-size: 11px;
+  table-layout: fixed;
+}
+
+.cod-tabela-eletrica th,
+.cod-tabela-eletrica td {
+  padding: 4px 5px;
+  border-top: 1px solid var(--borda);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.cod-tabela-eletrica th {
+  color: var(--fg-2);
+  text-align: left;
+  font-weight: 600;
+}
+
+.cod-tabela-eletrica tr.escolhida td {
+  color: var(--fg);
+  background: rgba(255, 159, 28, 0.08);
+}
+
+.cod-tabela-eletrica tr.inviavel td {
+  color: #ffd1d1;
+}
+
+.cod-eletrico-escolhida {
+  margin-top: 8px;
+}
+
+.cod-trechos-carregados tr.clicavel {
+  cursor: pointer;
+}
+
+.cod-trechos-carregados tr.selecionado td {
+  background: rgba(255, 213, 79, 0.16);
+  color: #fff4c2;
+}
+
+.cod-sparkline {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 6px;
+  background: #11161f;
+  border: 1px solid var(--borda);
+  border-radius: 4px;
+}
+
+.cod-sparkline .limite {
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 1;
+}
+
+.cod-sparkline .referencia {
+  stroke: rgba(255, 255, 255, 0.2);
+  stroke-width: 1.2;
+}
+
+.cod-sparkline .perfil {
+  stroke: var(--acento);
+  stroke-width: 2.5;
+}
+
+.cod-sparkline .ponto {
+  fill: #ffd54f;
+}
+
 .cod-auditoria {
   margin-top: 10px;
   font-size: 12px;
