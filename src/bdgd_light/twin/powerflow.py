@@ -5,9 +5,8 @@ snapshot (patamar de pico das curvas CRVCRG, ``kw`` = demanda máxima) e, se o m
 convergir, aplicamos uma cascata documentada de estabilizadores (ver ``ESTABILIZADORES``),
 registrando no resultado quais foram necessários.
 
-O motor (biblioteca DSS C-API) roda num **subprocesso** dedicado por padrão
-(``BDGD_MOTOR=processo``) ou numa thread única do próprio processo (``BDGD_MOTOR=thread``); ver
-``no_motor``.
+O motor (biblioteca DSS C-API) roda num **subprocesso reciclável** dedicado. Se o filho morrer
+durante uma chamada, a execução atual falha com ``MotorError`` e a próxima recria o processo.
 """
 
 from __future__ import annotations
@@ -20,11 +19,9 @@ import signal
 import socket
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from multiprocessing.connection import Client, Connection, answer_challenge, deliver_challenge
 from pathlib import Path
@@ -162,19 +159,12 @@ class PowerFlowResult:
 
 # O DSS C-API (Free Pascal) só tolera chamadas da thread que o inicializou — de outra thread o
 # processo morre com SIGILL — e a sua finalização na saída do processo derruba o Linux com SIGSEGV
-# (ver docs/console.md). Duas estratégias, escolhidas por ``BDGD_MOTOR``:
-#   processo (padrão): a biblioteca vive num subprocesso dedicado (``python -c`` que importa só este
-#       módulo; sem reexecutar o ``__main__`` do pai, ao contrário do ``multiprocessing`` spawn) e o
-#       processo pai nunca a carrega. Se o filho morrer (SIGILL/SIGSEGV) a chamada em curso levanta
-#       ``MotorError`` e a chamada seguinte recria o filho; a saída do pai é a normal.
-#   thread: ``ThreadPoolExecutor`` de uma thread no mesmo processo (estratégia anterior, mantida
-#       na transição); exige ``encerrar_processo`` na saída.
-MODOS_MOTOR = ("processo", "thread")
-_PREFIXO_MOTOR = "opendss"
-_MOTOR_THREAD: ThreadPoolExecutor | None = None
+# (ver docs/console.md). Por isso a biblioteca vive sempre num subprocesso dedicado (``python -c``
+# que importa só este módulo; sem reexecutar o ``__main__`` do pai, ao contrário do
+# ``multiprocessing`` spawn) e o processo pai nunca a carrega. Se o filho morrer (SIGILL/SIGSEGV) a
+# chamada em curso levanta ``MotorError`` e a chamada seguinte recria o filho.
 _MOTOR_PROCESSO: MotorProcesso | None = None
 _TRAVA = threading.Lock()
-_motor_usado = False
 _sou_motor = False  # True dentro do subprocesso do motor
 
 
@@ -183,11 +173,8 @@ class MotorError(ErroOpenDSS):
 
 
 def modo_motor() -> str:
-    """Modo do motor (``BDGD_MOTOR``): ``processo`` (padrão) ou ``thread``."""
-    modo = os.environ.get("BDGD_MOTOR", MODOS_MOTOR[0]).strip().lower() or MODOS_MOTOR[0]
-    if modo not in MODOS_MOTOR:
-        raise ValueError(f"BDGD_MOTOR={modo!r} inválido; use {' ou '.join(MODOS_MOTOR)}")
-    return modo
+    """Modo do motor OpenDSS usado pelo projeto atual."""
+    return "processo"
 
 
 def _exportavel(exc: BaseException) -> BaseException:
@@ -286,7 +273,8 @@ class MotorProcesso:
         return max(self.inicios - 1, 0)
 
     def _iniciar(self) -> None:
-        self._pasta = tempfile.mkdtemp(prefix="bdgd-motor-")
+        self._pasta = os.path.abspath(f".bdgd-motor-{os.getpid()}-{id(self):x}")
+        os.makedirs(self._pasta, exist_ok=True)
         endereco = os.path.join(self._pasta, "motor.sock")
         chave = os.urandom(_TAMANHO_CHAVE)
         ouvinte = socket.socket(socket.AF_UNIX)
@@ -419,43 +407,22 @@ def _motor_processo() -> MotorProcesso:
         return _MOTOR_PROCESSO
 
 
-def _motor_thread() -> ThreadPoolExecutor:
-    global _MOTOR_THREAD
-    with _TRAVA:
-        if _MOTOR_THREAD is None:
-            _MOTOR_THREAD = ThreadPoolExecutor(max_workers=1, thread_name_prefix=_PREFIXO_MOTOR)
-        return _MOTOR_THREAD
-
-
 def no_motor(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
-    """Executa ``fn`` no motor OpenDSS: no subprocesso (``BDGD_MOTOR=processo``, padrão) ou na
-    thread única do motor (``BDGD_MOTOR=thread``); direto, se já estivermos dentro dele.
+    """Executa ``fn`` no subprocesso do motor; direto, se já estivermos dentro dele.
 
-    ``fn`` e os argumentos precisam ser serializáveis (pickle) no modo processo — funções de módulo
-    com caminhos, listas e escalares, como ``_run_powerflow``.
+    ``fn`` e os argumentos precisam ser serializáveis (pickle) — funções de módulo com caminhos,
+    listas e escalares, como ``_run_powerflow``.
     """
-    global _motor_usado
-    if _sou_motor or threading.current_thread().name.startswith(_PREFIXO_MOTOR):
+    if _sou_motor:
         return fn(*args, **kwargs)
-    if modo_motor() == "thread":
-        _motor_usado = True
-        return _motor_thread().submit(fn, *args, **kwargs).result()
     return _motor_processo().chamar(fn, *args, **kwargs)
-
-
-def motor_usado() -> bool:
-    """``True`` se a biblioteca DSS C-API foi carregada **neste** processo (modo ``thread``)."""
-    return _motor_usado
 
 
 def estado_motor() -> dict[str, Any]:
     """Modo, pid, número de chamadas e reinícios do motor — diagnóstico (``/api/estado``)."""
-    modo = modo_motor()
-    if modo == "thread":
-        return {"modo": modo, "carregado": _motor_usado}
     m = _MOTOR_PROCESSO
     return {
-        "modo": modo,
+        "modo": modo_motor(),
         "ativo": bool(m and m.ativo),
         "pid": m.pid if m else None,
         "chamadas": m.chamadas if m else 0,
@@ -465,33 +432,9 @@ def estado_motor() -> dict[str, Any]:
 
 def simular_falha_do_motor(sinal: int = signal.SIGSEGV) -> None:
     """Mata o subprocesso do motor no meio de uma chamada (para testar a resiliência do console):
-    levanta ``MotorError``; a chamada seguinte recria o motor. Só no modo ``processo``."""
-    if modo_motor() != "processo":
-        raise RuntimeError("simular_falha_do_motor só existe no modo BDGD_MOTOR=processo")
+    levanta ``MotorError``; a chamada seguinte recria o motor."""
     no_motor(_abortar, int(sinal))
     raise MotorError("o motor sobreviveu ao sinal")  # pragma: no cover
-
-
-def encerrar_processo(codigo: int = 0) -> None:
-    """Termina o processo sem a finalização da biblioteca DSS C-API quando ela foi carregada aqui
-    (modo ``thread``); no modo ``processo`` (padrão) é um ``sys.exit`` normal.
-
-    No Linux (glibc 2.39, CI) a finalização da biblioteca Free Pascal roda na thread principal
-    depois que a thread do motor — dona do heap e dos threadvars dela — já saiu, e o processo morre
-    com SIGSEGV *depois* de todo o trabalho feito (``pytest`` verde, código 139). Aqui esvaziamos
-    stdout/stderr, rodamos os ``atexit`` e saímos com ``os._exit``.
-    """
-    if not _motor_usado:
-        sys.exit(codigo)
-    import atexit
-
-    for fluxo in (sys.stdout, sys.stderr):
-        try:
-            fluxo.flush()
-        except Exception:  # noqa: BLE001 - saída já pode estar fechada
-            pass
-    atexit._run_exitfuncs()
-    os._exit(codigo)
 
 
 def _dss():

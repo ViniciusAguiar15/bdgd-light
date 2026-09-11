@@ -353,6 +353,41 @@ def test_openai_compat_client_repete_resposta_vazia_malformed_function_call():
     assert all("temperature" not in json.loads(p.content) for p in pedidos3)
 
 
+def test_openai_compat_client_repete_read_timeout():
+    pedidos: list[httpx.Request] = []
+    n = 0
+
+    def handler(pedido: httpx.Request) -> httpx.Response:
+        nonlocal n
+        pedidos.append(pedido)
+        n += 1
+        if n == 1:
+            raise httpx.ReadTimeout("Operation timed out")
+        return httpx.Response(200, json=payload_texto("ok"))
+
+    pausas: list[float] = []
+    cliente = OpenAICompatClient(
+        ENDPOINT,
+        token="t",
+        max_tentativas=2,
+        dormir=pausas.append,
+        transporte=httpx.MockTransport(handler),
+    )
+    assert cliente.chat([Message.user("x")]).content == "ok"
+    assert len(pedidos) == 2 and pausas == [1.0]
+    assert [json.loads(p.content)["temperature"] for p in pedidos] == [0.0, 0.5]
+
+    falha = OpenAICompatClient(
+        ENDPOINT,
+        token="t",
+        max_tentativas=2,
+        dormir=lambda _s: None,
+        transporte=httpx.MockTransport(lambda _p: (_ for _ in ()).throw(httpx.ReadTimeout("fim"))),
+    )
+    with pytest.raises(ServicoIndisponivelError, match="ReadTimeout: fim"):
+        falha.chat([Message.user("x")])
+
+
 def test_conversar_anexa_parcial_quando_o_provedor_falha_no_meio():
     class Cai:
         modelo = "m"

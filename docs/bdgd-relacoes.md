@@ -43,7 +43,7 @@ Regra usada pelo recorte (`recortar`) para decidir o que pertence a um CTMT, e c
 | `UCBT_tab`, `UGBT_tab` | tabela | `UNI_TR_MT` ∈ UNTRMT do CTMT (**não** pela coluna `CTMT` da tabela, ver abaixo) | `UNI_TR_MT`, `CTMT`, `PAC`, `PN_CON`, `TIP_CC`, `ENE_01..12` / `POT_INST` |
 | `PIP` | tabela (Light) | `UNI_TR_MT` ∈ UNTRMT do CTMT (iluminação pública; o bdgd2opendss a modela como carga `BT_IP<COD_ID>`) | `UNI_TR_MT`, `CTMT`, `PAC`, `PN_CON`, `TIP_CC`, `ENE_01..12` |
 | `UCBT`, `UCMT`, `UGBT`, `UGMT` | (inexistentes na Light 2025) | mesmas regras das `*_tab`, se existirem | — |
-| `PONNOT` | ponto | `COD_ID` ∈ união de `PN_CON`, `PN_CON_1`, `PN_CON_2` de todas as camadas já selecionadas (não tem `CTMT`), dentro do *bbox* da rede do recorte + 500 m | `COD_ID` |
+| `PONNOT` | ponto | `COD_ID` ∈ união de `PN_CON`, `PN_CON_1`, `PN_CON_2` de todas as camadas já selecionadas (não tem `CTMT`); quando a referência vem de `UCBT`/`UCBT_tab`, o poste precisa ficar a até 2 km do transformador da UC; o *bbox* da rede + 500 m segue como rede de segurança | `COD_ID` |
 | `EQTRMT` | tabela | `UNI_TR_MT` ∈ UNTRMT do CTMT | `UNI_TR_MT`, `POT_NOM`, `TEN_PRI` |
 | `EQSE` | tabela | `UN_SE` ∈ UNSEMT ∪ UNSEBT do CTMT | `UN_SE` |
 | `EQRE`, `EQCR` | tabela | `UN_RE` ∈ UNREMT / `UN_CR` ∈ UNCRMT | `UN_RE`, `UN_CR` |
@@ -101,11 +101,13 @@ Resolver não quer dizer estar perto: na Light 2025 parte dos `UCBT_tab.PN_CON` 
 dezenas de km do alimentador (22 dos 1.908 postes do cluster Tijuca, a 5–84 km da rede — sete em
 Paraíba do Sul e um em Nova Iguaçu, pelo `MUN`; 5 em Ipanema, um deles em Paracambi, referenciado por
 149 UCs; 13 em TQR), o que fazia o *bbox* do recorte e dos tiles cobrir meia região metropolitana
-(issue #40). Por isso `PONNOT` — e `UCBT` com geometria, quando existir — fica restrita ao *bbox* da
-união de `SSDMT`, `SSDBT`, `UNSEMT`, `UNSEBT`, `UNTRMT`, `UNREMT`, `UNCRMT` e `RAMLIG` do recorte, com
-`--folga-bbox` (500 m) de margem; a UC continua em `UCBT_tab` (é carga do transformador), e o
-`meta.json` registra em `avisos` quantos postes saíram. `bdgd-light tiles` aplica o mesmo filtro ao
-ler o GPKG, para recortes gerados antes.
+(issue #40). Agora o recorte trata isso primeiro pela **ligação topológica** da UC: um poste puxado
+só por `UCBT`/`UCBT_tab` precisa ficar a até **2 km do transformador `UNI_TR_MT`**; se não houver
+dados suficientes para medir, entra a rede de segurança geométrica anterior (`--folga-bbox`, 500 m,
+sobre a união de `SSDMT`, `SSDBT`, `UNSEMT`, `UNSEBT`, `UNTRMT`, `UNREMT`, `UNCRMT` e `RAMLIG`). A
+UC continua em `UCBT_tab` (é carga do transformador), e o `meta.json` registra em `avisos` quantos
+postes saíram. `bdgd-light tiles` aplica o mesmo filtro por *bbox* ao ler o GPKG, para recortes
+gerados antes.
 
 ### Equipamentos e catálogos
 

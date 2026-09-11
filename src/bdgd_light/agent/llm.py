@@ -381,9 +381,10 @@ class OpenAICompatClient:
     Foundry, OpenAI, Ollama ``http://localhost:11434/v1/chat/completions``, LM Studio…).
 
     ``token`` vem por parâmetro ou de ``BDGD_LLM_TOKEN``; ``modelo`` de ``BDGD_LLM_MODEL``. Com
-    ``max_tentativas > 1`` repete em 429 respeitando ``Retry-After`` e em resposta vazia
-    (``RespostaVaziaError``, ex.: ``MALFORMED_FUNCTION_CALL`` do Gemini); ``dormir`` é injetável
-    para testes. ``transporte`` aceita um ``httpx.MockTransport`` para exercitar o cliente sem rede.
+    ``max_tentativas > 1`` repete em 429 respeitando ``Retry-After``, em resposta vazia
+    (``RespostaVaziaError``, ex.: ``MALFORMED_FUNCTION_CALL`` do Gemini) e em ``ReadTimeout``;
+    ``dormir`` é injetável para testes. ``transporte`` aceita um ``httpx.MockTransport`` para
+    exercitar o cliente sem rede.
     """
 
     MODELO_PADRAO = "gpt-4.1-mini"
@@ -464,12 +465,25 @@ class OpenAICompatClient:
         return min(1.0, self.temperatura + 0.5 * (tentativa - 1))
 
     def chat(self, messages: Sequence[Message], tools: Sequence[ToolSpec] = ()) -> Resposta:
+        import httpx
+
         payload = self.montar_payload(messages, tools)
         tentativa = 0
         usos_falhos: list[Uso] = []
         while True:
             tentativa += 1
-            dados = self._post(payload)
+            try:
+                dados = self._post(payload)
+            except httpx.ReadTimeout as exc:
+                if tentativa >= self.max_tentativas:
+                    raise ServicoIndisponivelError(f"ReadTimeout: {exc}") from exc
+                self._dormir(1.0)
+                payload = self.montar_payload(
+                    [*messages, Message.user(LEMBRETE_CHAMADA)],
+                    tools,
+                    temperatura=self.temperatura_da_tentativa(tentativa + 1),
+                )
+                continue
             try:
                 resposta = interpretar_resposta(dados)
             except RespostaVaziaError as exc:
@@ -646,7 +660,7 @@ def cliente_por_perfil(
         cliente: LLMClient = fake_soma()
     else:
         token = os.environ.get(perfil.env_token) or perfil.token_padrao
-        # provedores reais: 3 tentativas em 429 e em resposta vazia (MALFORMED_FUNCTION_CALL)
+        # provedores reais: 3 tentativas em 429, resposta vazia e ReadTimeout transitório
         opcoes.setdefault("max_tentativas", 3)
         cliente = OpenAICompatClient(
             perfil.endpoint,

@@ -22,6 +22,7 @@ from bdgd_light.ingest.recorte import (
     CAMADA_INTERLIGACOES,
     CAMADAS_POR_CTMT,
     CAMADAS_POR_TRAFO,
+    DIST_MAX_POSTE_TRAFO_UC_M,
     FOLGA_BBOX_M,
     CtmtInexistenteError,
     FonteMemoria,
@@ -218,7 +219,7 @@ def test_meta_json(recorte_cluster):
     assert "gerado_em" in meta and meta["bdgd_light"]
     assert meta["bbox_folga_m"] == FOLGA_BBOX_M == 500.0
     assert meta["avisos"] == [
-        "PONNOT: 1 feição(ões) fora do bbox da rede (folga 500 m) descartada(s)"
+        "PONNOT: 1 poste(s) de UCBT/UCBT_tab a mais de 2000 m do trafo da UC descartado(s)"
     ]
     meta_cluster = json.loads(recorte_cluster.cluster.meta.read_text(encoding="utf-8"))
     assert [c["COD_ID"] for c in meta_cluster["ctmt"]] == CLUSTER
@@ -258,18 +259,23 @@ def test_referencias_em_branco_nao_puxam_postes(parquet_mini):
 
 
 def test_postes_longe_da_rede_ficam_fora_do_recorte(parquet_mini):
-    # UCBT_tab.PN_CON de UC00007 aponta para PN107, a ~40 km da rede (como na Light 2025)
+    # UCBT_tab.PN_CON de UC00007 aponta para PN107, a ~46 km do trafo TR003 (como na Light 2025)
     fonte = DiretorioParquet(parquet_mini)
     avisos: list[str] = []
     com_filtro = selecionar(fonte, ["RJO001"], avisos=avisos)
-    sem_filtro = selecionar(fonte, ["RJO001"], folga_bbox_m=None)
-    assert "PN107" in set(sem_filtro["PONNOT"]["COD_ID"])
-    assert set(sem_filtro["PONNOT"]["COD_ID"]) - set(com_filtro["PONNOT"]["COD_ID"]) == {"PN107"}
-    assert avisos == ["PONNOT: 1 feição(ões) fora do bbox da rede (folga 500 m) descartada(s)"]
+    bruto = selecionar(fonte, ["RJO001"], folga_bbox_m=None, filtrar_postes_uc=False)
+    assert "PN107" in set(bruto["PONNOT"]["COD_ID"])
+    assert set(bruto["PONNOT"]["COD_ID"]) - set(com_filtro["PONNOT"]["COD_ID"]) == {"PN107"}
+    assert avisos == [
+        "PONNOT: 1 poste(s) de UCBT/UCBT_tab a mais de 2000 m do trafo da UC descartado(s)"
+    ]
     # a UC continua em UCBT_tab (carga do trafo), só o poste sai
     assert "UC00007" in set(com_filtro["UCBT_tab"]["COD_ID"])
-    # folga enorme mantém o poste; UCBT com geometria também passa pelo filtro
-    assert "PN107" in set(selecionar(fonte, ["RJO001"], folga_bbox_m=100_000)["PONNOT"]["COD_ID"])
+    assert DIST_MAX_POSTE_TRAFO_UC_M == 2000.0
+    # nem com folga enorme o poste inválido volta; o bbox vira fallback, não filtro principal
+    assert "PN107" not in set(
+        selecionar(fonte, ["RJO001"], folga_bbox_m=100_000)["PONNOT"]["COD_ID"]
+    )
     ucbt = com_filtro["UCBT"].copy()
     ucbt.loc[ucbt["COD_ID"] == "UC00007", "geometry"] = gpd.points_from_xy([-43.6], [-23.0])[0]
     ucbt.loc[ucbt["COD_ID"] == "UC00001", "geometry"] = None
@@ -363,10 +369,10 @@ def test_cli_recortar_varios_ctmt(parquet_mini, tmp_path):
     texto = saida(resultado)
     assert "Feições por camada e recorte" in texto and "meu_cluster" in texto
     assert "INTERLIGACOES" in texto
-    assert "⚠ RJO001: PONNOT: 1 feição(ões) fora do bbox da rede" in texto
+    assert "⚠ RJO001: PONNOT: 1 poste(s) de UCBT/UCBT_tab a mais de 2000 m do trafo" in texto
     assert pyogrio.read_info(out / "RJO001.gpkg", layer="PONNOT")["features"] == 14
 
-    # --folga-bbox negativo desliga o filtro (comportamento anterior à issue #40)
+    # --folga-bbox negativo desliga só o fallback geométrico; o filtro poste↔trafo segue ativo
     out2 = tmp_path / "sem_filtro"
     resultado = runner.invoke(
         app,
@@ -375,9 +381,13 @@ def test_cli_recortar_varios_ctmt(parquet_mini, tmp_path):
     )
     assert resultado.exit_code == 0, saida(resultado)
     assert "fora do bbox" not in saida(resultado)
-    assert pyogrio.read_info(out2 / "RJO001.gpkg", layer="PONNOT")["features"] == 15
+    assert "trafo da UC" in saida(resultado)
+    assert pyogrio.read_info(out2 / "RJO001.gpkg", layer="PONNOT")["features"] == 14
     meta = json.loads((out2 / "RJO001.meta.json").read_text(encoding="utf-8"))
-    assert meta["bbox_folga_m"] is None and meta["avisos"] == []
+    assert meta["bbox_folga_m"] is None
+    assert meta["avisos"] == [
+        "PONNOT: 1 poste(s) de UCBT/UCBT_tab a mais de 2000 m do trafo da UC descartado(s)"
+    ]
 
 
 def test_cli_recortar_um_ctmt_com_out_gpkg(parquet_mini, tmp_path):

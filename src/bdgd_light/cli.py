@@ -2331,20 +2331,13 @@ def _fmt_int(n: int) -> str:
 
 
 def main() -> None:
-    """Entry point ``bdgd-light``: roda o Typer e, se a biblioteca OpenDSS foi carregada neste
-    processo (``BDGD_MOTOR=thread``), encerra sem a finalização dela
-    (``twin.powerflow.encerrar_processo``; SIGSEGV na saída em Linux). No modo padrão
-    (``processo``) a saída é a normal."""
+    """Entry point ``bdgd-light``: roda o Typer e sai com o código retornado pelo aplicativo."""
     codigo = 0
     try:
         app()
     except SystemExit as exc:
         codigo = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
-    try:
-        from bdgd_light.twin.powerflow import encerrar_processo
-    except ImportError:  # sem o extra twin nada foi carregado
-        sys.exit(codigo)
-    encerrar_processo(codigo)
+    sys.exit(codigo)
 
 
 if __name__ == "__main__":

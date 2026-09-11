@@ -189,20 +189,18 @@ na CH003.
   verde, de forma não determinística (2/2 no Actions, 1/3 em contêiner limpo, 0/4 em imagem com venv
   pré-construído; nunca no macOS). Como o gêmeo é chamado de threads diferentes (agente, handlers
   HTTP), `twin.powerflow.no_motor` encaminha toda chamada (`_run_powerflow`, `_ampacidade_tronco`:
-  funções de módulo com argumentos serializáveis) para um **subprocesso `spawn` dedicado**
-  (`MotorProcesso`): o processo pai nunca carrega a biblioteca, a saída é a normal e não há mais
-  `os._exit` em `tests/conftest.py` nem no `serve`. Uma chamada por vez (trava), resultado e exceções
-  voltam por `Pipe` (pickle; exceções sem construtor compatível viram `ErroOpenDSS` com o mesmo
-  texto). Se o filho morrer no meio de uma chamada (`SIGILL`/`SIGSEGV`/sem resposta em
-  `BDGD_MOTOR_TIMEOUT`, padrão 600 s) a chamada levanta `MotorError`, que o agente registra como erro
-  da ferramenta (`{"erro": …}` para o modelo) e a **chamada seguinte recria o motor**; `/api/estado`
-  expõe `motor` (`modo`, `pid`, `chamadas`, `reinicios`) e `twin.powerflow.simular_falha_do_motor`
+  funções de módulo com argumentos serializáveis) para um **subprocesso reciclável dedicado**
+  (`MotorProcesso`): o processo pai nunca carrega a biblioteca, a saída é a normal e o entry point
+  voltou a ser um `sys.exit` simples. Uma chamada por vez (trava), resultado e exceções voltam por
+  `Pipe` (pickle; exceções sem construtor compatível viram `ErroOpenDSS` com o mesmo texto). Se o
+  filho morrer no meio de uma chamada (`SIGILL`/`SIGSEGV`/sem resposta em `BDGD_MOTOR_TIMEOUT`,
+  padrão 600 s) a chamada levanta `MotorError`, que o agente registra como erro da ferramenta
+  (`{"erro": …}` para o modelo) e a **chamada seguinte recria o motor**; `/api/estado` expõe
+  `motor` (`modo`, `pid`, `chamadas`, `reinicios`) e `twin.powerflow.simular_falha_do_motor`
   reproduz a falha nos testes (`test_motor_morre_durante_o_agente_e_o_console_sobrevive`). Custo:
   ~0,8 s para criar o filho na 1ª chamada (importa pandas + opendssdirect) e ~1 ms por chamada
-  (pickle do `PowerFlowResult`); o fluxo em si (2–3 s no cluster Tijuca) não muda. `BDGD_MOTOR=thread`
-  volta à estratégia anterior (`ThreadPoolExecutor` de uma thread no mesmo processo; exige
-  `twin.powerflow.encerrar_processo` na saída, que o entry point ainda chama). Os testes continuam
-  proibidos de importar `opendssdirect` na coleta (`importlib.util.find_spec` no lugar de
+  (pickle do `PowerFlowResult`); o fluxo em si (2–3 s no cluster Tijuca) não muda. Os testes
+  continuam proibidos de importar `opendssdirect` na coleta (`importlib.util.find_spec` no lugar de
   `importorskip`; `tests/conftest.py` falha a coleta se isso voltar a acontecer).
 - **Aprovar = executar** no console (o operador vê e decide num clique); no MCP http o padrão
   continua "aprovar e devolver o token" para o agente/cliente executar. O **passo a passo** reutiliza
