@@ -23,7 +23,14 @@ from bdgd_light.twin.gpkg2dss import (
     dias_por_tipo,
     listar_ctmts,
 )
-from bdgd_light.twin.powerflow import ESTABILIZADORES, PowerFlowResult, run_powerflow
+from bdgd_light.twin.powerflow import (
+    ESTABILIZADORES,
+    ErroOpenDSS,
+    MotorError,
+    PowerFlowResult,
+    estado_motor,
+    run_powerflow,
+)
 from bdgd_light.twin.score import (
     ScoreEletrico,
     ampacidade_tronco,
@@ -36,7 +43,9 @@ __all__ = [
     "DIAS",
     "ESTABILIZADORES",
     "ConversaoGpkg",
+    "ErroOpenDSS",
     "GpkgInvalidoError",
+    "MotorError",
     "PowerFlowResult",
     "ScoreEletrico",
     "ampacidade_tronco",
@@ -47,6 +56,7 @@ __all__ = [
     "corrigir_bancos_monofasicos",
     "dias_por_tipo",
     "escolher_master",
+    "estado_motor",
     "listar_ctmts",
     "listar_masters",
     "localizar_pasta",

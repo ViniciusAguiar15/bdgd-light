@@ -8,6 +8,8 @@ import json
 import os
 import re
 import shutil
+import signal
+import time
 from pathlib import Path
 
 import pytest
@@ -161,6 +163,105 @@ def test_comando_invalido_da_erro_claro():
 
     with pytest.raises(ErroOpenDSS, match="xyz"):
         run_powerflow(IEEE13, comandos_extra=["xyz comando inexistente"])
+
+
+# --- motor em subprocesso (issue #48) -----------------------------------------------------------
+
+
+def test_motor_roda_em_subprocesso_e_o_pai_nao_carrega_a_biblioteca(ieee13):
+    import sys
+
+    from bdgd_light.twin.powerflow import estado_motor, modo_motor
+
+    assert modo_motor() == "processo"
+    e = estado_motor()
+    assert e["modo"] == "processo" and e["ativo"] is True and e["chamadas"] >= 1
+    assert e["pid"] not in (None, os.getpid())
+    assert "opendssdirect" not in sys.modules  # ver tests/conftest.py
+
+
+def test_motor_recria_o_subprocesso_depois_de_morrer():
+    from bdgd_light.twin.powerflow import MotorError, MotorProcesso, _abortar, _run_powerflow
+
+    kw = dict(vmin=0.93, vmax=1.05, modo="snapshot", estabilizar=True, comandos_extra=())
+    motor = MotorProcesso()
+    try:
+        assert motor.chamar(_run_powerflow, IEEE13, **kw).convergiu
+        pid1 = motor.pid
+        # morte no meio da chamada: MotorError com o sinal, próxima chamada num filho novo
+        with pytest.raises(MotorError, match="SIGSEGV"):
+            motor.chamar(_abortar, signal.SIGSEGV)
+        assert motor.ativo is False
+        assert motor.chamar(_run_powerflow, IEEE13, **kw).convergiu
+        assert motor.pid != pid1 and motor.reinicios == 1
+        # morte entre chamadas: recriado em silêncio
+        os.kill(motor.pid, signal.SIGKILL)
+        motor._proc.join(5)
+        assert motor.chamar(_run_powerflow, IEEE13, **kw).convergiu
+        assert motor.reinicios == 2 and motor.chamadas == 4
+    finally:
+        motor.fechar()
+    assert motor.ativo is False and motor.pid is None
+
+
+def test_motor_excecao_do_filho_e_relancada_no_pai():
+    from bdgd_light.twin.powerflow import MotorProcesso, _exportavel, _run_powerflow
+
+    motor = MotorProcesso()
+    try:
+        with pytest.raises(FileNotFoundError):
+            motor.chamar(
+                _run_powerflow,
+                Path("nao_existe.dss"),
+                vmin=0.93,
+                vmax=1.05,
+                modo=None,
+                estabilizar=False,
+                comandos_extra=(),
+            )
+        assert motor.ativo  # exceção normal não derruba o filho
+    finally:
+        motor.fechar()
+
+    class SemConstrutorCompativel(Exception):
+        def __init__(self, numero: int, texto: str):
+            super().__init__(f"(#{numero}) {texto}")
+
+    exc = _exportavel(SemConstrutorCompativel(302, "Unknown Command"))
+    assert type(exc).__name__ == "ErroOpenDSS" and "(#302) Unknown Command" in str(exc)
+    assert _exportavel(ValueError("x")).__class__ is ValueError
+
+
+def test_motor_timeout_mata_o_filho():
+    from bdgd_light.twin.powerflow import MotorError, MotorProcesso
+
+    motor = MotorProcesso(timeout_s=0.5)
+    try:
+        with pytest.raises(MotorError, match="sem resposta em 0.5 s"):
+            motor.chamar(time.sleep, 5)
+        assert motor.ativo is False
+    finally:
+        motor.fechar()
+
+
+def test_simular_falha_do_motor_e_estado():
+    from bdgd_light.twin.powerflow import MotorError, estado_motor, simular_falha_do_motor
+
+    antes = estado_motor()["reinicios"]
+    with pytest.raises(MotorError, match="será recriado"):
+        simular_falha_do_motor()
+    assert run_powerflow(IEEE13).convergiu
+    assert estado_motor()["reinicios"] == antes + 1
+
+
+def test_modo_motor_invalido(monkeypatch):
+    from bdgd_light.twin.powerflow import modo_motor
+
+    monkeypatch.setenv("BDGD_MOTOR", "gpu")
+    with pytest.raises(ValueError, match="BDGD_MOTOR='gpu'"):
+        modo_motor()
+    monkeypatch.setenv("BDGD_MOTOR", "")
+    assert modo_motor() == "processo"
 
 
 # --- convert -------------------------------------------------------------------------------------

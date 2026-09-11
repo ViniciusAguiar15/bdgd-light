@@ -95,6 +95,15 @@ class AgenteEmSegundoPlano:
         }
 
 
+def _estado_motor() -> dict[str, Any] | None:
+    """Modo/pid/reinícios do motor OpenDSS (``None`` sem o extra twin)."""
+    try:
+        from bdgd_light.twin.powerflow import estado_motor
+    except ImportError:  # pragma: no cover - depende do extra
+        return None
+    return estado_motor()
+
+
 def _resumo_execucao(d: Mapping[str, Any]) -> dict[str, Any]:
     chaves = (
         "evento_id",
@@ -185,6 +194,7 @@ def criar_app(
         e = sessao.estado()
         e["eventos_n"] = len(fila)
         e["agente"] = None if agente is None else agente.estado()
+        e["motor"] = _estado_motor()
         e["autorizacao"] = autorizador.modo
         e["hora"] = _agora()
         return e

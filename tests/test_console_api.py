@@ -270,6 +270,46 @@ def test_agente_em_thread_registra_erro(sessao: SessaoCOD):
     assert agente.estado()["erro"] == "RuntimeError: sem LLM" and agente.ocupado is False
 
 
+def test_motor_morre_durante_o_agente_e_o_console_sobrevive(
+    cliente: TestClient, recorte: Path, monkeypatch
+):
+    """Issue #48: o subprocesso do motor OpenDSS morre no meio de uma execução do agente; a falha
+    vira erro da ferramenta (registrado na execução), a API continua respondendo e o evento
+    seguinte roda num motor novo."""
+    import bdgd_light.twin as twin
+    from bdgd_light.twin.powerflow import simular_falha_do_motor
+
+    original = twin.run_powerflow
+    falhas = []
+
+    def run_powerflow_com_falha(*args, **kwargs):
+        if not falhas:
+            falhas.append(1)
+            simular_falha_do_motor()  # mata o filho no meio da chamada → MotorError
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(twin, "run_powerflow", run_powerflow_com_falha)
+    corpo = {"cluster": str(recorte), "tipo": "pico_carga", "ctmt": "RJO001"}
+    r = cliente.post("/api/eventos", json=corpo, headers=OP)
+    assert r.status_code == 202, r.text
+    e = cliente.get("/api/estado").json()
+    assert e["agente"]["erro"] is None and e["agente"]["n_execucoes"] == 1
+    assert e["motor"]["modo"] == "processo" and e["motor"]["ativo"] is False
+    ultima = e["agente"]["ultima"]
+    assert "NÃO convergiu" in ultima["resposta"]
+    execucao = cliente.app.state.agente.execucoes[-1]
+    [chamada] = [c for c in execucao["ferramentas"] if c["ferramenta"] == "run_powerflow"]
+    assert chamada["ok"] is False and "morreu durante _abortar (SIGSEGV)" in chamada["erro"]
+
+    # o servidor segue vivo e o próximo evento roda num motor recriado
+    r = cliente.post("/api/eventos", json=corpo, headers=OP)
+    assert r.status_code == 202, r.text
+    e = cliente.get("/api/estado").json()
+    assert e["agente"]["n_execucoes"] == 2 and "convergiu" in e["agente"]["ultima"]["resposta"]
+    assert "NÃO convergiu" not in e["agente"]["ultima"]["resposta"]
+    assert e["motor"]["ativo"] is True and e["motor"]["reinicios"] >= 1
+
+
 def test_cli_serve_erros(tmp_path):
     r = runner.invoke(cli, ["serve", "--cluster", "nao_existe", "--feeders", str(tmp_path)])
     assert r.exit_code == 1 and "não encontrado" in r.output
