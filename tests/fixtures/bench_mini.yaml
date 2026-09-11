@@ -67,6 +67,28 @@ tarefas:
     unidade: UCBT
     tolerancia_abs: 0
     esperado: 3
+  - id: M04
+    nivel: medium
+    cluster: cluster_RJO001-RJO002
+    evento: chave_indisponivel
+    chave: CH009
+    referencia: []
+    gabarito: {ferramenta: downstream_customers, argumentos: {chave: CH009}, campo: clientes.ucbt}
+    verificar: sem_manobra
+    unidade: UCBT
+    tolerancia_abs: 0
+    esperado: 2
+  - id: M05
+    nivel: medium
+    cluster: cluster_RJO001-RJO002
+    evento: falta_transitoria
+    falta: SEG001
+    referencia: []
+    gabarito: {ferramenta: downstream_customers, argumentos: {chave: CH008}, campo: clientes.ucbt}
+    verificar: sem_manobra
+    unidade: UCBT
+    tolerancia_abs: 0
+    esperado: 4
   - id: H01
     nivel: hard
     cluster: cluster_RJO001-RJO002

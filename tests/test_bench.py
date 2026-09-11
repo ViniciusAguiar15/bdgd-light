@@ -25,9 +25,11 @@ from bdgd_light.bench import (  # noqa: E402
     Rodada,
     Tarefa,
     acerto_resposta,
+    acerto_sem_manobra,
     carregar_comparativo,
     carregar_tarefas,
     comparativo,
+    custo_usd,
     escrever_csv,
     extrair_numeros,
     filtrar,
@@ -37,6 +39,7 @@ from bdgd_light.bench import (  # noqa: E402
     nome_relatorio,
     ordenacao,
     pass_at_k,
+    preco_modelo,
     relatorio_markdown,
     resumir,
     tolerancias,
@@ -79,17 +82,22 @@ def _tarefa(**kw) -> Tarefa:
 # -- arquivos de tarefas ---------------------------------------------------------------------------
 
 
-def test_tarefas_padrao_sao_30_em_tres_niveis_com_ids_unicos():
+def test_tarefas_padrao_sao_34_em_tres_niveis_com_ids_unicos():
     tarefas = carregar_tarefas(TAREFAS_PADRAO)
-    assert len(tarefas) == 30
+    assert len(tarefas) == 34
     assert {n: sum(1 for t in tarefas if t.nivel == n) for n in ("simple", "medium", "hard")} == {
         "simple": 10,
-        "medium": 10,
-        "hard": 10,
+        "medium": 13,
+        "hard": 11,
     }
-    assert len({t.id for t in tarefas}) == 30
+    assert len({t.id for t in tarefas}) == 34
     assert {t.cluster for t in tarefas} == {"tijuca", "ipanema", "taquara"}
     for t in tarefas:
+        if t.verificar == "sem_manobra":
+            # eventos sem manobra: nenhuma ferramenta necessária; o gabarito vem do evento
+            assert t.evento in ("falta_transitoria", "chave_indisponivel") and not t.referencia
+            assert (t.falta or t.chave) and t.gabarito["ferramenta"] == "downstream_customers"
+            continue
         assert t.referencia, t.id
         assert t.gabarito["ferramenta"] in t.referencia or t.gabarito["campo"] == "melhor_opcao"
         if t.verificar == "proposta":
@@ -98,12 +106,18 @@ def test_tarefas_padrao_sao_30_em_tres_niveis_com_ids_unicos():
             assert t.pergunta, t.id
     # toda tarefa tem 'esperado' registrado para a conferência com --gabarito
     assert all(t.esperado is not None for t in tarefas)
+    # as 4 tarefas de Ipanema da issue #52 e os eventos novos do harness
+    por_id = {t.id: t for t in tarefas}
+    assert {por_id[i].cluster for i in ("M11", "M12", "M13", "H11")} == {"ipanema"}
+    assert por_id["M12"].evento == "chave_indisponivel" and por_id["M12"].chave == "10934177"
+    assert por_id["M13"].evento == "falta_transitoria" and por_id["M13"].falta == "11409068"
+    assert por_id["H11"].verificar == "proposta" and por_id["H11"].esperado == []
 
 
 def test_tarefas_mini_carregam_e_filtram():
     tarefas = carregar_tarefas(TAREFAS_MINI)
     assert [t.id for t in tarefas] == [
-        "S01", "S02", "S03", "S04", "M01", "M02", "M03", "H01", "H02", "H03",
+        "S01", "S02", "S03", "S04", "M01", "M02", "M03", "M04", "M05", "H01", "H02", "H03",
     ]  # fmt: skip
     assert [t.id for t in filtrar(tarefas, niveis=["hard"])] == ["H01", "H02", "H03"]
     assert [t.id for t in filtrar(tarefas, ids=["S02", "M01"])] == ["S02", "M01"]
@@ -125,6 +139,28 @@ def test_arquivo_de_tarefas_invalido(tmp_path):
     )
     with pytest.raises(BenchError):
         carregar_tarefas(ruim)
+    base = {
+        "id": "E",
+        "nivel": "medium",
+        "cluster": "c",
+        "gabarito": {"ferramenta": "downstream_customers", "campo": "clientes.ucbt"},
+    }
+    casos = [
+        ({"evento": "pico_carga", "referencia": ["run_powerflow"]}, "não suportado"),
+        ({"evento": "chave_indisponivel", "verificar": "sem_manobra"}, "exige 'chave'"),
+        ({"evento": "falta_transitoria", "verificar": "sem_manobra"}, "exige 'falta'"),
+        ({"pergunta": "?", "verificar": "sem_manobra", "referencia": []}, None),
+        ({"pergunta": "?", "referencia": []}, "referencia vazia"),
+        ({"evento": "falta_transitoria", "falta": "S", "verificar": "proposta"}, "só com evento"),
+        ({"pergunta": "?", "referencia": ["x"], "verificar": "tudo"}, "verificar"),
+    ]
+    for extra, erro in casos:
+        ruim.write_text(yaml.safe_dump({"tarefas": [base | extra]}), encoding="utf-8")
+        if erro is None:
+            assert carregar_tarefas(ruim)[0].referencia == ()
+        else:
+            with pytest.raises(BenchError, match=erro):
+                carregar_tarefas(ruim)
 
 
 # -- métricas --------------------------------------------------------------------------------------
@@ -176,6 +212,73 @@ def test_tolerancias_e_acerto_resposta():
     assert acerto_resposta("margem de 0,46", 45.98, pct)[0]
     assert not acerto_resposta("margem de 52 %", 45.98, pct)[0]
     assert acerto_resposta("a chave é 746851189", "746851189", contagem) == (True, "746851189")
+
+
+def test_acerto_sem_manobra():
+    from bdgd_light.agent.orquestrador import Execucao
+
+    def exec_(resposta: str, *ferramentas: str, proposta=None) -> Execucao:
+        return Execucao(
+            tipo="evento",
+            cluster="c",
+            evento=None,
+            pergunta=None,
+            provider="fake",
+            modelo=None,
+            ferramentas=[{"ferramenta": f} for f in ferramentas],
+            proposta=proposta,
+            resposta=resposta,
+        )
+
+    t = _tarefa(verificar="sem_manobra", referencia=(), evento="falta_transitoria", falta="S")
+    assert acerto_sem_manobra(exec_("religou; 1730 UCBT sem tensão no tempo morto"), 1730, t) == (
+        True,
+        1730.0,
+    )
+    # consultar é permitido; propor ou manobrar, não
+    assert acerto_sem_manobra(exec_("1730 UCBT", "downstream_customers"), 1730, t)[0]
+    assert acerto_sem_manobra(exec_("1730 UCBT", "locate_fault", "propose_plan"), 1730, t) == (
+        False,
+        "chamou propose_plan",
+    )
+    assert acerto_sem_manobra(exec_("1730", proposta={"id": "P-0001"}), 1730, t) == (
+        False,
+        "proposta P-0001",
+    )
+    assert acerto_sem_manobra(exec_("religou, sem manobra"), 1730, t) == (False, None)
+    # sem gabarito numérico basta uma resposta não vazia
+    assert acerto_sem_manobra(exec_("registrado"), None, t) == (True, None)
+    assert acerto_sem_manobra(exec_("  "), None, t) == (False, None)
+
+
+def test_custo_usd_por_preco_de_lista():
+    assert preco_modelo("gemini-2.5-flash") == (0.30, 2.50)
+    assert preco_modelo("gpt-4.1-mini-2025-04-14") == (0.40, 1.60)  # prefixo mais longo
+    assert preco_modelo("gpt-4.1-2025-04-14") == (2.00, 8.00)
+    assert preco_modelo("openai/gpt-4.1-mini") == (0.40, 1.60)  # GitHub Models
+    assert preco_modelo("fake-operador") is None and preco_modelo(None) is None
+    base = dict(
+        tarefa="S01", nivel="simple", cluster="c", repeticao=1, acerto=True, obtido=1, esperado=1,
+        sequencia=[], referencia=[], ordem=1.0, precisao=1.0, rodadas=2, chars_ferramentas=0,
+        segundos_llm=0.0, segundos_ferramentas=0.0, segundos_total=0.0, replanejamentos=0,
+        recusas=0, erro=None, resposta="", provider="gemini", exemplos=True, compactado=True,
+        seed=42, data="2026-09-11T00:00:00+00:00",
+    )  # fmt: skip
+    # Gemini: os tokens de raciocínio (total − prompt) contam como saída
+    r = Rodada(**base, modelo="gemini-2.5-flash", tokens_prompt=1_000_000, tokens_completion=1_000,
+               tokens_total=1_100_000, tokens_informados=True)  # fmt: skip
+    assert custo_usd(r) == pytest.approx(0.30 + 0.1 * 2.50)
+    r = Rodada(**base, modelo="gpt-4.1-mini", tokens_prompt=1_000_000, tokens_completion=500_000,
+               tokens_total=1_500_000, tokens_informados=True)  # fmt: skip
+    assert custo_usd(r) == pytest.approx(0.40 + 0.5 * 1.60)
+    sem_uso = Rodada(**base, modelo="gemini-2.5-flash", tokens_prompt=0, tokens_completion=0,
+                     tokens_total=0, tokens_informados=False)  # fmt: skip
+    assert custo_usd(sem_uso) is None
+    res = resumir([r, r], 1)
+    assert res["total"]["usd_medio"] == pytest.approx(1.2) and res["total"]["usd_por_pass1"] == 1.2
+    # execução sem uso informado (timeout) conta como 0; grupo só de fake/desconhecidos → None
+    assert resumir([r, sem_uso], 1)["total"]["usd_medio"] == pytest.approx(0.6)
+    assert resumir([sem_uso], 1)["total"]["usd_medio"] is None
 
 
 def test_melhor_opcao_equivalentes_dentro_da_tolerancia():
@@ -328,7 +431,7 @@ def test_benchmark_fake_acerta_todas_as_tarefas_mini(recorte, dss_out, tmp_path)
     tarefas = carregar_tarefas(TAREFAS_MINI)
     vistos: list[str] = []
     rodadas = bench.rodar(tarefas, progresso=lambda r, i, n: vistos.append(f"{i}/{n}"))
-    assert vistos[-1] == "10/10"
+    assert vistos[-1] == "12/12"
     erradas = [
         (r.tarefa, r.obtido, r.esperado, r.resposta, r.erro) for r in rodadas if not r.acerto
     ]
@@ -343,7 +446,12 @@ def test_benchmark_fake_acerta_todas_as_tarefas_mini(recorte, dss_out, tmp_path)
     assert por_id["H01"].obtido in ("CH003", "CH005")
     assert por_id["M03"].sequencia == ["locate_fault", "isolate_fault"]
     assert por_id["H03"].sequencia == ["run_powerflow"]
-    assert all(r.chars_ferramentas > 0 for r in rodadas)
+    # eventos sem manobra: nenhuma ferramenta, resposta cita os clientes do evento, sem proposta
+    for tid, texto in (("M04", "2 UCBT a jusante"), ("M05", "4 UCBT ficaram sem tensão")):
+        r = por_id[tid]
+        assert r.sequencia == [] and (r.ordem, r.precisao) == (1.0, 1.0) and r.obtido == r.esperado
+        assert texto in r.resposta, r.resposta
+    assert all(r.chars_ferramentas > 0 for r in rodadas if r.tarefa not in ("M04", "M05"))
     assert all(not r.tokens_informados or r.tokens_total == 0 for r in rodadas)
     # a mesma semente reproduz a ordem de execução
     ordem_a = [r.tarefa for r in rodadas]
@@ -378,7 +486,7 @@ def _args(recorte: Path, dss_out: Path, tmp_path: Path) -> list[str]:
 def test_cli_bench_gabarito_e_relatorio(recorte, dss_out, tmp_path):
     r = runner.invoke(app, ["bench", "--gabarito", *_args(recorte, dss_out, tmp_path)])
     assert r.exit_code == 0, r.output
-    assert "10 gabaritos conferem" in r.output
+    assert "12 gabaritos conferem" in r.output
     saida = tmp_path / "relatorios"
     r = runner.invoke(
         app,

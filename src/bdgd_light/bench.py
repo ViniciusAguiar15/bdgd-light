@@ -5,12 +5,16 @@ relatório Markdown com tabela comparativa entre provedores e modos (com/sem exe
 com/sem compactação).
 
 Tarefas (``bench/tarefas.yaml``): ``id``, ``nivel`` (simple/medium/hard), ``cluster``,
-``pergunta`` (ou ``evento: falta_permanente``), ``falta`` (trecho injetado antes da pergunta),
-``referencia`` (ferramentas na ordem esperada), ``gabarito`` (ferramenta + argumentos + ``campo``
-lido do retorno; ``melhor_opcao`` = conjunto de chaves eletricamente equivalentes à melhor de
-``restore_options``), ``verificar`` (``resposta`` numérica ou ``proposta``), tolerâncias, ``escala``
-e ``esperado`` (documental; ``bdgd-light bench --gabarito`` confere). O gabarito é **calculado** na
-hora chamando a ferramenta na sessão — o mesmo arquivo serve ao recorte real e ao cluster de teste.
+``pergunta`` (ou ``evento``: ``falta_permanente``, ``falta_transitoria`` ou ``chave_indisponivel``,
+gerado pelo ``Simulador`` e tratado por ``Orquestrador.executar_evento``), ``falta`` (trecho:
+injetado antes da pergunta; alvo do evento de falta), ``chave`` (alvo de ``chave_indisponivel``),
+``referencia`` (ferramentas na ordem esperada; vazia quando nenhuma é necessária), ``gabarito``
+(ferramenta + argumentos + ``campo`` lido do retorno; ``melhor_opcao`` = conjunto de chaves
+eletricamente equivalentes à melhor de ``restore_options``), ``verificar`` (``resposta`` numérica,
+``proposta`` ou ``sem_manobra`` — o agente não pode criar proposta nem chamar ferramentas de
+manobra, e a resposta deve citar o número do gabarito), tolerâncias, ``escala`` e ``esperado``
+(documental; ``bdgd-light bench --gabarito`` confere). O gabarito é **calculado** na hora chamando
+a ferramenta na sessão — o mesmo arquivo serve ao recorte real e ao cluster de teste.
 """
 
 from __future__ import annotations
@@ -38,10 +42,19 @@ from bdgd_light.agent.orquestrador import (
     fake_operador,
 )
 from bdgd_light.mcp_server.sessao import SessaoCOD, SessaoError, resolver_cluster
-from bdgd_light.sim.eventos import Simulador
+from bdgd_light.sim.eventos import (
+    CHAVE_INDISPONIVEL,
+    FALTA_PERMANENTE,
+    FALTA_TRANSITORIA,
+    Simulador,
+)
 
 TAREFAS_PADRAO = Path(__file__).resolve().parents[2] / "bench" / "tarefas.yaml"
 NIVEIS = ("simple", "medium", "hard")
+EVENTOS = (FALTA_PERMANENTE, FALTA_TRANSITORIA, CHAVE_INDISPONIVEL)
+VERIFICACOES = ("resposta", "proposta", "sem_manobra")
+FERRAMENTAS_DE_MANOBRA = ("propose_plan", "set_switch", "inject_fault")
+"""Chamadas que reprovam uma tarefa ``sem_manobra`` (falta transitória, chave indisponível)."""
 TOLERANCIA_REL_PADRAO = 0.02
 TOLERANCIA_ABS_PADRAO = 0.5
 RESPOSTA_MAX = 300
@@ -65,6 +78,7 @@ class Tarefa:
     verificar: str = "resposta"
     evento: str | None = None
     falta: str | None = None
+    chave: str | None = None
     unidade: str | None = None
     tolerancia_rel: float | None = None
     tolerancia_abs: float | None = None
@@ -75,7 +89,9 @@ class Tarefa:
     @property
     def gabarito_chave(self) -> str:
         return json.dumps(
-            [self.cluster, self.falta, dict(self.gabarito)], sort_keys=True, ensure_ascii=False
+            [self.cluster, self.falta, self.chave, self.evento, dict(self.gabarito)],
+            sort_keys=True,
+            ensure_ascii=False,
         )
 
 
@@ -120,8 +136,8 @@ def _tarefa(item: Mapping[str, Any]) -> Tarefa:
     if nivel not in NIVEIS:
         raise ValueError(f"nível {nivel!r}; use {', '.join(NIVEIS)}")
     verificar = str(item.get("verificar", "resposta"))
-    if verificar not in ("resposta", "proposta"):
-        raise ValueError(f"verificar {verificar!r}; use resposta ou proposta")
+    if verificar not in VERIFICACOES:
+        raise ValueError(f"verificar {verificar!r}; use {', '.join(VERIFICACOES)}")
     gabarito = dict(item["gabarito"])
     if "ferramenta" not in gabarito or "campo" not in gabarito:
         raise ValueError("gabarito precisa de 'ferramenta' e 'campo'")
@@ -130,12 +146,16 @@ def _tarefa(item: Mapping[str, Any]) -> Tarefa:
     evento = item.get("evento")
     if pergunta is None and evento is None:
         raise ValueError("informe 'pergunta' ou 'evento'")
-    if evento is not None and evento != "falta_permanente":
-        raise ValueError(f"evento {evento!r} não suportado (só falta_permanente)")
-    if evento is not None and not item.get("falta"):
-        raise ValueError("evento falta_permanente exige 'falta' (trecho)")
+    if evento is not None and evento not in EVENTOS:
+        raise ValueError(f"evento {evento!r} não suportado (use {', '.join(EVENTOS)})")
+    if evento in (FALTA_PERMANENTE, FALTA_TRANSITORIA) and not item.get("falta"):
+        raise ValueError(f"evento {evento} exige 'falta' (trecho)")
+    if evento == CHAVE_INDISPONIVEL and not item.get("chave"):
+        raise ValueError("evento chave_indisponivel exige 'chave'")
+    if verificar == "proposta" and evento != FALTA_PERMANENTE:
+        raise ValueError("verificar: proposta só com evento: falta_permanente")
     referencia = tuple(str(x) for x in item.get("referencia") or ())
-    if not referencia:
+    if not referencia and verificar != "sem_manobra":
         raise ValueError("referencia vazia")
     return Tarefa(
         id=str(item["id"]),
@@ -147,6 +167,7 @@ def _tarefa(item: Mapping[str, Any]) -> Tarefa:
         verificar=verificar,
         evento=evento,
         falta=None if item.get("falta") is None else str(item["falta"]),
+        chave=None if item.get("chave") is None else str(item["chave"]),
         unidade=item.get("unidade"),
         tolerancia_rel=_opcional_float(item.get("tolerancia_rel")),
         tolerancia_abs=_opcional_float(item.get("tolerancia_abs")),
@@ -249,7 +270,13 @@ class Gabarito:
         return self._cache[chave]
 
     def _calcular(self, tarefa: Tarefa) -> Any:
-        preparar_sessao(self.sessao, tarefa, self.feeders)
+        # falta transitória (o religador religou) e chave indisponível: rede no estado normal
+        preparar_sessao(
+            self.sessao,
+            tarefa,
+            self.feeders,
+            injetar_falta=tarefa.evento in (None, FALTA_PERMANENTE),
+        )
         nome = tarefa.gabarito["ferramenta"]
         metodo = getattr(self.sessao, nome, None)
         if metodo is None:
@@ -349,6 +376,20 @@ def acerto_proposta(execucao: Execucao, esperado: Any) -> tuple[bool, Any]:
     return chave in aceitos, chave
 
 
+def acerto_sem_manobra(execucao: Execucao, esperado: Any, tarefa: Tarefa) -> tuple[bool, Any]:
+    """Eventos sem manobra (falta transitória, chave indisponível): reprova se o agente criou
+    proposta ou chamou ferramenta de manobra; fora isso, a resposta tem de citar o gabarito
+    (número do evento, ex. clientes afetados) — ``None`` dispensa a citação."""
+    if execucao.proposta:
+        return False, f"proposta {execucao.proposta.get('id')}"
+    indevidas = [f for f in execucao.sequencia if f in FERRAMENTAS_DE_MANOBRA]
+    if indevidas:
+        return False, f"chamou {', '.join(indevidas)}"
+    if esperado is None:
+        return bool((execucao.resposta or "").strip()), None
+    return acerto_resposta(execucao.resposta, esperado, tarefa)
+
+
 # -- sequência de ferramentas ----------------------------------------------------------------------
 
 
@@ -423,9 +464,54 @@ class Rodada:
     data: str
 
 
+# Preços de lista (US$ por milhão de tokens: entrada, saída) das páginas de preços dos provedores —
+# Gemini conferido em 2026-09-11 (ai.google.dev/gemini-api/docs/pricing); OpenAI = preço de lista
+# dos modelos (platform.openai.com/docs/pricing). Só para a leitura de custo na apresentação: sem
+# cache de contexto, sem lote. Tokens de raciocínio (Gemini 2.5 conta os "thoughts" em ``total`` mas
+# não em ``completion``) são cobrados como saída.
+PRECOS_USD_MILHAO: dict[str, tuple[float, float]] = {
+    "gemini-2.5-flash": (0.30, 2.50),
+    "gemini-2.5-flash-lite": (0.10, 0.40),
+    "gemini-2.5-pro": (1.25, 10.00),
+    "gpt-4.1-mini": (0.40, 1.60),
+    "gpt-4.1-nano": (0.10, 0.40),
+    "gpt-4.1": (2.00, 8.00),
+    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-4o": (2.50, 10.00),
+    "gpt-5-mini": (0.25, 2.00),
+    "gpt-5-nano": (0.05, 0.40),
+    "gpt-5": (1.25, 10.00),
+}
+
+
+def preco_modelo(modelo: str | None) -> tuple[float, float] | None:
+    """Preço ``(entrada, saída)`` em US$/M tokens pelo prefixo mais longo do nome do modelo
+    (``gpt-4.1-mini-2025-04-14`` → ``gpt-4.1-mini``; ``openai/gpt-4.1-mini`` do GitHub Models
+    também); ``None`` para fake, ollama ou modelo fora da tabela."""
+    if not modelo:
+        return None
+    nome = modelo.rsplit("/", 1)[-1].lower()
+    candidatos = [prefixo for prefixo in PRECOS_USD_MILHAO if nome.startswith(prefixo)]
+    if not candidatos:
+        return None
+    return PRECOS_USD_MILHAO[max(candidatos, key=len)]
+
+
+def custo_usd(rodada: Rodada) -> float | None:
+    """Custo estimado da execução em US$ (preço de lista × tokens informados pelo provedor);
+    ``None`` quando não há uso informado ou preço conhecido."""
+    preco = preco_modelo(rodada.modelo)
+    if preco is None or not rodada.tokens_informados:
+        return None
+    entrada, saida = preco
+    tokens_saida = max(rodada.tokens_total - rodada.tokens_prompt, rodada.tokens_completion, 0)
+    return (rodada.tokens_prompt * entrada + tokens_saida * saida) / 1e6
+
+
 def resumir(rodadas: Sequence[Rodada], k: int) -> dict[str, dict[str, Any]]:
     """Métricas por nível e no total: tarefas, execuções, pass@1, pass@k (média por tarefa),
-    ordem, precisão, tokens por acerto (pass@1), chars de ferramenta, segundos."""
+    ordem, precisão, tokens por acerto (pass@1), custo em US$ (preço de lista), chars de
+    ferramenta, segundos."""
     saida: dict[str, dict[str, Any]] = {}
     for nivel in (*NIVEIS, "total"):
         grupo = [r for r in rodadas if nivel == "total" or r.nivel == nivel]
@@ -442,6 +528,9 @@ def resumir(rodadas: Sequence[Rodada], k: int) -> dict[str, dict[str, Any]]:
         )
         tokens = statistics.fmean(r.tokens_total for r in grupo)
         chars = statistics.fmean(r.chars_ferramentas for r in grupo)
+        # execução sem uso informado (ex.: timeout) entra como 0; grupo sem preço conhecido → None
+        custos = [custo_usd(r) for r in grupo]
+        usd = None if all(c is None for c in custos) else statistics.fmean(c or 0.0 for c in custos)
         saida[nivel] = {
             "tarefas": len(por_tarefa),
             "execucoes": n,
@@ -452,6 +541,8 @@ def resumir(rodadas: Sequence[Rodada], k: int) -> dict[str, dict[str, Any]]:
             "precisao": round(statistics.fmean(r.precisao for r in grupo), 4),
             "tokens_medio": round(tokens, 1),
             "tokens_por_pass1": None if p1 == 0 else round(tokens / p1, 1),
+            "usd_medio": None if usd is None else round(usd, 5),
+            "usd_por_pass1": None if usd is None or p1 == 0 else round(usd / p1, 5),
             "chars_ferramentas_medio": round(chars, 1),
             "segundos_medio": round(statistics.fmean(r.segundos_total for r in grupo), 2),
             "rodadas_medio": round(statistics.fmean(r.rodadas for r in grupo), 2),
@@ -562,11 +653,15 @@ class Benchmark:
         try:
             preparar_sessao(self.sessao, tarefa, self.feeders, injetar_falta=tarefa.evento is None)
             orq = self.orquestrador()
-            if tarefa.evento == "falta_permanente":
+            if tarefa.evento is not None:
                 seed = None if cfg.seed is None else cfg.seed + repeticao
-                ev = Simulador(self.sessao.rede, tarefa.cluster, seed=seed).falta_permanente(
-                    tarefa.falta
-                )
+                sim = Simulador(self.sessao.rede, tarefa.cluster, seed=seed)
+                if tarefa.evento == FALTA_PERMANENTE:
+                    ev = sim.falta_permanente(tarefa.falta)
+                elif tarefa.evento == FALTA_TRANSITORIA:
+                    ev = sim.falta_transitoria(tarefa.falta)
+                else:
+                    ev = sim.chave_indisponivel(tarefa.chave)
                 execucao = orq.executar_evento(ev)
             else:
                 execucao = orq.responder(tarefa.pergunta or "")
@@ -580,6 +675,8 @@ class Benchmark:
             return self._rodada_erro(tarefa, repeticao, esperado, erro, segundos)
         if tarefa.verificar == "proposta":
             acerto, obtido = acerto_proposta(execucao, esperado)
+        elif tarefa.verificar == "sem_manobra":
+            acerto, obtido = acerto_sem_manobra(execucao, esperado, tarefa)
         else:
             acerto, obtido = acerto_resposta(execucao.resposta, esperado, tarefa)
         ordem, precisao = ordenacao(execucao.sequencia, tarefa.referencia)
@@ -797,13 +894,13 @@ def _rotulo(r: Rodada) -> str:
 
 
 def comparativo(rodadas_por_rotulo: Mapping[str, Sequence[Rodada]], k: int) -> str:
-    """Tabela Markdown comparando provedores/modos: pass@1 por nível, pass@k, ordem, tokens e
-    chars por acerto, segundos por execução."""
+    """Tabela Markdown comparando provedores/modos: pass@1 por nível, pass@k, ordem, tokens por
+    acerto, custo em US$ por execução (preço de lista), chars por execução, segundos."""
     linhas = [
         f"| provedor · modo | modelo | tarefas | pass@1 simple | pass@1 medium | pass@1 hard | "
-        f"pass@1 total | pass@{k} total | ordem | precisão | tokens/pass@1 | chars ferr./exec. | "
-        f"s/exec. |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        f"pass@1 total | pass@{k} total | ordem | precisão | tokens/pass@1 | US$/exec. | "
+        f"chars ferr./exec. | s/exec. |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for rotulo in sorted(rodadas_por_rotulo):
         rs = rodadas_por_rotulo[rotulo]
@@ -819,7 +916,7 @@ def comparativo(rodadas_por_rotulo: Mapping[str, Sequence[Rodada]], k: int) -> s
             f"{_pct(res.get('hard', {}).get('pass@1'))} | {_pct(total.get('pass@1'))} | "
             f"{_pct(total.get(f'pass@{k}'))} | {_pct(total.get('ordem'))} | "
             f"{_pct(total.get('precisao'))} | {_num(total.get('tokens_por_pass1'), 0)} | "
-            f"{_num(total.get('chars_ferramentas_medio'), 0)} | "
+            f"{_usd(total.get('usd_medio'))} | {_num(total.get('chars_ferramentas_medio'), 0)} | "
             f"{_num(total.get('segundos_medio'))} |"
         )
     return "\n".join(linhas)
@@ -880,14 +977,15 @@ def relatorio_markdown(
         "## Métricas por nível",
         "",
         f"| nível | tarefas | exec. | pass@1 | pass@{k} | ordem | precisão | tokens médios | "
-        f"tokens/pass@1 | chars ferr. | s/exec. | rodadas |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+        f"tokens/pass@1 | US$/exec. | US$/pass@1 | chars ferr. | s/exec. | rodadas |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for nivel, m in res.items():
         linhas.append(
             f"| {nivel} | {m['tarefas']} | {m['execucoes']} | {_pct(m['pass@1'])} | "
             f"{_pct(m[f'pass@{k}'])} | {_pct(m['ordem'])} | {_pct(m['precisao'])} | "
             f"{_num(m['tokens_medio'], 0)} | {_num(m['tokens_por_pass1'], 0)} | "
+            f"{_usd(m['usd_medio'])} | {_usd(m['usd_por_pass1'])} | "
             f"{_num(m['chars_ferramentas_medio'], 0)} | {_num(m['segundos_medio'])} | "
             f"{_num(m['rodadas_medio'])} |"
         )
@@ -896,6 +994,14 @@ def relatorio_markdown(
         linhas.append(
             "> O provedor não informa uso de tokens (fake): `chars ferr.` (caracteres de JSON das "
             "respostas de ferramenta enviadas ao modelo) é o proxy de custo."
+        )
+    elif res.get("total", {}).get("usd_medio") is not None:
+        entrada, saida = preco_modelo(modelos[0]) or (0.0, 0.0)
+        linhas.append("")
+        linhas.append(
+            f"> US$ = preço de lista de `{modelos[0]}` (US$ {entrada:.2f}/M tokens de entrada, "
+            f"US$ {saida:.2f}/M de saída, raciocínio incluído) × tokens informados pelo provedor; "
+            "sem cache de contexto nem lote."
         )
     linhas += ["", "## Por tarefa", ""]
     linhas.append(
@@ -930,6 +1036,10 @@ def relatorio_markdown(
         linhas += ["", "## Comparativo (todos os CSVs de `docs/bench/`)", "", comparativo_md]
     linhas.append("")
     return "\n".join(linhas)
+
+
+def _usd(v: float | None) -> str:
+    return "—" if v is None else f"{v:.4f}"
 
 
 def _fmt_valor(v: Any) -> str:
