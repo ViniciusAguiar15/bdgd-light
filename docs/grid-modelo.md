@@ -143,6 +143,36 @@ que o servidor MCP (fase 3) devolve ao LLM.
 > [spike-opendss.md](spike-opendss.md)), que deve ler o estado `aberta` das chaves deste grafo e
 > resolver o fluxo depois da manobra.
 
+## Impacto estimado da manobra em consumidor-minutos e DEC
+
+Quando existe uma opção de restauração, o projeto também estima o **impacto potencial do evento**
+caso a manobra seja executada e o reparo da falta demore um certo tempo. A premissa entra como
+`tempo_reparo` (padrão **180 min**) e é tratada explicitamente como **hipótese operacional**, nunca
+como fato medido.
+
+Fórmulas:
+
+- **consumidor-minutos evitados** = `clientes_restaurados × max(tempo_reparo − tempo_manobra, 0)`
+- **clientes que seguem sem tensão até o reparo** = `clientes_desligados − clientes_restaurados`
+- se a camada `CONJ` estiver no recorte e o conjunto puder ser identificado:
+  **contribuição estimada ao DEC do conjunto (h)** =
+  `consumidor_minutos_evitados ÷ total_uc_do_conjunto ÷ 60`
+
+Premissas explícitas do MVP:
+
+- `tempo_manobra = 5 min` é um valor operacional fixo para traduzir a proposta em ordem de grandeza;
+- `tempo_reparo` é fornecido pelo operador/fluxo chamador e representa um **cenário hipotético**;
+- o total de UC do conjunto é contado no recorte (`UCBT_tab` + `UCMT_tab`) para o `CONJ` da área
+  restaurada.
+
+O que **não** se pode afirmar a partir desse número:
+
+- não é “redução de DEC realizada”;
+- não é medição regulatória oficial do evento;
+- não substitui apuração pós-operação, telemetria, OMS ou histórico real de recomposição;
+- não significa que todo o conjunto sofreu a interrupção — apenas estima o impacto da parcela de
+  clientes que a manobra conseguiria restaurar sob aquela hipótese de reparo.
+
 ## Exemplo real — falta no tronco de BOCARI (cluster TQR)
 
 ```bash

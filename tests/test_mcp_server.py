@@ -98,6 +98,8 @@ def test_fluxo_flisr_completo_com_hitl(sessao: SessaoCOD):
     melhor = ops["opcoes"][0]
     assert melhor["fonte"] == "RJO002" and melhor["score"]["viavel"] is True
     assert melhor["score"]["margem_disjuntor"] > 0.5
+    assert melhor["impacto"]["consumidor_minutos_evitados"] == 700.0
+    assert melhor["impacto"]["dec_conjunto"]["nome"] == "CONJUNTO SINTÉTICO"
     assert melhor["manobras"] == [
         {"acao": "abrir", "chave": "CH001"},
         {"acao": "fechar", "chave": "CH003"},
@@ -105,6 +107,7 @@ def test_fluxo_flisr_completo_com_hitl(sessao: SessaoCOD):
 
     prop = sessao.propose_plan(chave="CH003", justificativa="maior margem, telecomandada")
     assert prop["id"] == "P-0001" and prop["status"] == "pendente" and prop["token"] is None
+    assert prop["impacto"]["consumidor_minutos_evitados"] == 700.0
     assert prop["proximo_passo"] == {"acao": "abrir", "chave": "CH001"}
 
     # sem aprovação humana nada é executado
@@ -279,8 +282,10 @@ async def test_servidor_mcp_em_memoria(sessao: SessaoCOD):
         r = await cliente.call_tool("restore_options", {"score": False})
         opcoes = campo(r, "structured_content")["opcoes"]
         assert [o["chave"] for o in opcoes] == ["CH003", "CH005"]
+        assert opcoes[0]["impacto"]["consumidor_minutos_evitados"] == 700.0
         r = await cliente.call_tool("propose_plan", {"chave": "CH003"})
         pid = campo(r, "structured_content")["id"]
+        assert campo(r, "structured_content")["impacto"]["dec_conjunto"]["total_uc"] == 7
         recusa = await cliente.call_tool(
             "set_switch", {"chave": "CH001", "estado": "aberta", "approval_token": "x"}
         )

@@ -55,6 +55,7 @@ CAMADAS_POR_CTMT = [
     "UNTRMT",
     "UNREMT",
     "UNCRMT",
+    "CONJ",
     "UCMT",
     "UCMT_tab",
     "UGMT",
@@ -81,11 +82,12 @@ ORDEM_CAMADAS = [
     "CTMT",
     "SUB",
     "UNTRAT",
-    *CAMADAS_POR_CTMT,
+    *[c for c in CAMADAS_POR_CTMT if c != "CONJ"],
     *CAMADAS_POR_TRAFO,
     "PONNOT",
     *EQUIPAMENTOS,
     *CATALOGOS,
+    "CONJ",
     CAMADA_INTERLIGACOES,
 ]
 
@@ -280,7 +282,7 @@ def selecionar(
                 "UNTRAT", filtros=filtro_in("COD_ID", _valores(sel, ["CTMT"], ["UNI_TR_AT"]))
             )
 
-    for camada in CAMADAS_POR_CTMT:
+    for camada in [c for c in CAMADAS_POR_CTMT if c != "CONJ"]:
         if fonte.tem(camada):
             sel[camada] = fonte.ler(camada, filtros=filtro_in("CTMT", ctmts))
 
@@ -308,6 +310,11 @@ def selecionar(
         if fonte.tem(camada):
             codigos = _valores(sel, usuarias, [coluna])
             sel[camada] = fonte.ler(camada, filtros=filtro_in("COD_ID", codigos))
+
+    if fonte.tem("CONJ"):
+        codigos = _valores(sel, list(sel), ["CONJ"])
+        if codigos:
+            sel["CONJ"] = fonte.ler("CONJ", filtros=filtro_in("COD_ID", codigos))
 
     if interligacoes is not None:
         alvo = set(ctmts)

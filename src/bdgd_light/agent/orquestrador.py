@@ -89,6 +89,8 @@ DESCRICAO_PARAMETROS: dict[str, str] = {
     "score": "true = veredito elétrico no gêmeo OpenDSS (recomendado)",
     "vmin": "limite inferior de tensão MT em pu (padrão 0,93)",
     "vmax": "limite superior de tensão MT em pu (padrão 1,05)",
+    "tempo_reparo": "tempo de reparo estimado (min) para calcular o impacto da manobra "
+    "(padrão 180; premissa, não fato)",
     "manobras": "manobras adicionais ao estado atual, na ordem",
     "loadmult": "multiplicador de carga (1,0 = caso base; 1,3 = pico de +30 %)",
     "justificativa": "por que esta opção (margem, tensão, clientes, alternativas descartadas)",
@@ -291,8 +293,10 @@ Regras:
    escolha outra opção, ou proponha só o isolamento.
 6. Termine com um resumo em português para o operador: falta (trecho, CTMT, religador), clientes
    sem tensão, isolamento (chaves a abrir), opção escolhida e por quê (margem em %, tensão em pu),
-   alternativas descartadas e por quê, e o que ele deve aprovar (id da proposta). Objetivo, com
-   unidades (A, pu, kW, clientes); sem inventar números que não vieram das ferramentas.
+   impacto estimado da manobra (consumidor-minutos e, se vier da ferramenta, DEC do conjunto sob a
+   premissa explícita de tempo de reparo), alternativas descartadas e por quê, e o que ele deve
+   aprovar (id da proposta). Objetivo, com unidades (A, pu, kW, clientes); sem inventar números
+   que não vieram das ferramentas.
 7. Quando a pergunta pede um número (quantos, qual a tensão, quantas opções), a resposta final
    tem de trazer esse número escrito explicitamente, na unidade pedida ("existem 10 opções", "Vmin
    1,027 pu") — nunca só implícito ("a melhor e outras 9") nem um número de outra grandeza no lugar
@@ -944,8 +948,10 @@ class Orquestrador:
             return resultado
         return compactar(nome, resultado, top_n=self.top_n_opcoes)
 
-    def _propor(self, chave: str | None = None, justificativa: str = "") -> dict[str, Any]:
-        argumentos = {"chave": chave, "justificativa": justificativa}
+    def _propor(
+        self, chave: str | None = None, justificativa: str = "", tempo_reparo: float = 180.0
+    ) -> dict[str, Any]:
+        argumentos = {"chave": chave, "justificativa": justificativa, "tempo_reparo": tempo_reparo}
         inicio = time.perf_counter()
 
         def registrar(**campos: Any) -> None:
@@ -980,7 +986,9 @@ class Orquestrador:
                 "problemas": veredito.problemas,
                 "avisos": veredito.avisos,
             }
-        resultado = self.sessao.propose_plan(chave=chave, justificativa=justificativa)
+        resultado = self.sessao.propose_plan(
+            chave=chave, justificativa=justificativa, tempo_reparo=tempo_reparo
+        )
         resultado["verificador"] = veredito.to_dict()
         self._proposta, self._veredito = resultado, veredito
         registrar(
@@ -1602,6 +1610,9 @@ def _resumo_falta(feitas: Sequence[tuple[str, dict, Any]]) -> str:
             )
     else:
         linhas.append("Nenhuma proposta criada.")
+    impacto = prop.get("impacto") if isinstance(prop, Mapping) else None
+    if isinstance(impacto, Mapping):
+        linhas.append(_resumo_impacto(impacto))
     if descartadas:
         linhas.append("Alternativas descartadas: " + "; ".join(descartadas) + ".")
     if prop is not None:
@@ -1615,3 +1626,23 @@ def _sequencia_texto(manobras: Any) -> str:
     return ", ".join(
         m if isinstance(m, str) else f"{m.get('acao')} {m.get('chave')}" for m in manobras
     )
+
+
+def _resumo_impacto(impacto: Mapping[str, Any]) -> str:
+    cm = _numero(impacto.get("consumidor_minutos_evitados"))
+    tempo = _numero(impacto.get("tempo_reparo_min"))
+    if cm is None:
+        return "Impacto estimado: indisponível."
+    partes = [f"Impacto estimado: {_fmt_int(round(cm))} consumidor-minutos evitados"]
+    dec = impacto.get("dec_conjunto")
+    if isinstance(dec, Mapping):
+        valor = _numero(dec.get("dec_minutos"))
+        nome = dec.get("nome") or dec.get("codigo") or "?"
+        if valor is not None:
+            partes.append(f"{_fmt(valor)} min de DEC no conjunto {nome}")
+    clientes = impacto.get("clientes_sem_tensao_ate_reparo")
+    if clientes is not None:
+        partes.append(f"{_fmt_int(clientes)} clientes seguem sem tensão até o reparo")
+    if tempo is not None:
+        partes.append(f"premissa: reparo em {_fmt_int(round(tempo))} min")
+    return " · ".join(partes) + "."

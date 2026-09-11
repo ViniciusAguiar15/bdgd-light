@@ -27,6 +27,13 @@ def _opcao(chave: str, margem: float | None, viavel: bool, motivos: list[str] | 
         "externa": False,
         "clientes": {"ucbt": 100, "ucmt": 2, "trafos": 5, "kva": 750.0, "total": 102, "extra": 1},
         "manobras": [{"acao": "abrir", "chave": "CH001"}, {"acao": "fechar", "chave": chave}],
+        "impacto": {
+            "tempo_reparo_min": 180.0,
+            "tempo_manobra_min": 5.0,
+            "clientes_sem_tensao_ate_reparo": 0,
+            "consumidor_minutos_evitados": 17_850.0,
+            "dec_conjunto": {"nome": "CONJ A", "dec_minutos": 3.57},
+        },
         "score": {
             "viavel": viavel,
             "convergiu": True,
@@ -102,6 +109,7 @@ def test_compactar_restore_options_top_n_e_resumo_das_demais():
         {"acao": "fechar", "chave": "CH010"},
     ]
     assert detalhada["score"]["margem_disjuntor_pct"] == 46.0
+    assert detalhada["impacto"]["consumidor_minutos_evitados"] == 17850.0
     assert "master" not in detalhada["score"] and "detalhe_interno" not in detalhada["score"]
     assert "extra" not in detalhada["clientes"] and detalhada["clientes"]["ucbt"] == 100
     resumidas = saida["outras_opcoes"]
@@ -110,6 +118,8 @@ def test_compactar_restore_options_top_n_e_resumo_das_demais():
         "chave": "CH012",
         "fonte": "RJO002",
         "clientes": 102,
+        "consumidor_minutos_evitados": 17850.0,
+        "dec_conjunto_min": 3.57,
         "viavel": True,
         "margem_disjuntor_pct": 20.0,
     }

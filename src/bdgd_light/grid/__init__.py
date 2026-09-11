@@ -1,6 +1,14 @@
 """Grafo do alimentador: rede MT de um ou mais CTMT como ``networkx.Graph`` com estado de chaves."""
 
 from bdgd_light.grid.geojson import estado_geojson
+from bdgd_light.grid.impacto import (
+    TEMPO_MANOBRA_PADRAO_MIN,
+    TEMPO_REPARO_PADRAO_MIN,
+    ImpactoDECConjunto,
+    ImpactoEstimado,
+    calcular_impacto_opcao,
+    premissa_impacto,
+)
 from bdgd_light.grid.rede import (
     ABRIR,
     CHAVE,
@@ -32,10 +40,16 @@ __all__ = [
     "Cluster",
     "Feeder",
     "Isolamento",
+    "ImpactoDECConjunto",
+    "ImpactoEstimado",
     "OpcaoRestauracao",
     "Rede",
+    "TEMPO_MANOBRA_PADRAO_MIN",
+    "TEMPO_REPARO_PADRAO_MIN",
     "TrechoInexistenteError",
+    "calcular_impacto_opcao",
     "estado_geojson",
     "ler_camadas",
     "manobra",
+    "premissa_impacto",
 ]

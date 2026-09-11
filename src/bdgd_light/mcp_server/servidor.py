@@ -102,9 +102,18 @@ def criar_servidor(sessao: SessaoCOD, autorizador: Autorizador | None = None) ->
 
     @srv.tool(name="restore_options", description=DESCRICOES["restore_options"])
     def restore_options(
-        score: bool = True, vmin: float = 0.93, vmax: float = 1.05
+        score: bool = True,
+        vmin: float = 0.93,
+        vmax: float = 1.05,
+        tempo_reparo: float = 180.0,
     ) -> dict[str, Any]:
-        return _executar(sessao.restore_options, score=score, vmin=vmin, vmax=vmax)
+        return _executar(
+            sessao.restore_options,
+            score=score,
+            vmin=vmin,
+            vmax=vmax,
+            tempo_reparo=tempo_reparo,
+        )
 
     @srv.tool(name="run_powerflow", description=DESCRICOES["run_powerflow"])
     def run_powerflow(
@@ -118,8 +127,15 @@ def criar_servidor(sessao: SessaoCOD, autorizador: Autorizador | None = None) ->
         )
 
     @srv.tool(name="propose_plan", description=DESCRICOES["propose_plan"])
-    def propose_plan(chave: str | None = None, justificativa: str = "") -> dict[str, Any]:
-        return _executar(sessao.propose_plan, chave=chave, justificativa=justificativa)
+    def propose_plan(
+        chave: str | None = None, justificativa: str = "", tempo_reparo: float = 180.0
+    ) -> dict[str, Any]:
+        return _executar(
+            sessao.propose_plan,
+            chave=chave,
+            justificativa=justificativa,
+            tempo_reparo=tempo_reparo,
+        )
 
     @srv.tool(name="get_proposal", description=DESCRICOES["get_proposal"])
     def get_proposal(proposta_id: str) -> dict[str, Any]:

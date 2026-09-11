@@ -34,6 +34,11 @@ from time import perf_counter
 from typing import Any
 
 from bdgd_light.agent.audit import AuditLog
+from bdgd_light.grid.impacto import (
+    TEMPO_REPARO_PADRAO_MIN,
+    calcular_impacto_opcao,
+    premissa_impacto,
+)
 from bdgd_light.grid.rede import (
     ABRIR,
     CHAVE,
@@ -182,6 +187,7 @@ class Proposta:
     manobras: list[dict]  # sequência completa e ordenada: abrir…, [fechar religador], [fechar NA]
     clientes: dict
     score: dict | None = None
+    impacto: dict | None = None
     ja_satisfeitas: list[str] = field(default_factory=list)
     status: str = "pendente"  # pendente | aprovada | rejeitada | executada | expirada
     token: str | None = None
@@ -879,10 +885,17 @@ class SessaoCOD:
         "Opções de restauração para a falta simulada: chaves NA que, fechadas após o isolamento, "
         "reenergizam os nós desligados — com fonte, clientes recuperados, manobras ordenadas e, "
         "com score=true (gêmeo OpenDSS), veredito elétrico (I do disjuntor × nominal em A, "
-        "Vmin/Vmax MT em pu, sobrecargas, perdas em kW). Ordem: viáveis → maior margem → clientes."
+        "Vmin/Vmax MT em pu, sobrecargas, perdas em kW). Também devolve o impacto estimado da "
+        "manobra em consumidor-minutos e, se a camada CONJ estiver no recorte, no DEC do "
+        "conjunto, sempre sob a premissa explícita de tempo de reparo. Ordem: viáveis → maior "
+        "margem → clientes."
     )
     def restore_options(
-        self, score: bool = True, vmin: float = 0.93, vmax: float = 1.05
+        self,
+        score: bool = True,
+        vmin: float = 0.93,
+        vmax: float = 1.05,
+        tempo_reparo: float = TEMPO_REPARO_PADRAO_MIN,
     ) -> dict[str, Any]:
         rede, trecho = self._com_falta()
         plano = self._plano()
@@ -897,6 +910,11 @@ class SessaoCOD:
             },
             "n_opcoes": len(opcoes),
             "score": None,
+            "impacto": {
+                "tempo_reparo_min": float(tempo_reparo),
+                "tempo_manobra_min": 5.0,
+                "premissa": premissa_impacto(float(tempo_reparo)),
+            },
             "opcoes": [],
         }
         scores: dict[str, dict] = {}
@@ -928,6 +946,12 @@ class SessaoCOD:
             d["n_nos"] = len(d.pop("nos"))
             d["manobras"] = self._sequencia(rede, iso, religar, fechar=o.chave)
             d["score"] = scores.get(o.chave)
+            d["impacto"] = calcular_impacto_opcao(
+                plano,
+                o,
+                isolamento=iso,
+                tempo_reparo_min=tempo_reparo,
+            ).to_dict()
             d["bloqueada"] = self.motivo_bloqueio_opcao(d)
             d["_ordem"] = pos
             saida["opcoes"].append(d)
@@ -976,14 +1000,22 @@ class SessaoCOD:
     @ferramenta(
         "Cria uma PROPOSTA de restauração a partir de uma opção (chave NA a fechar; sem chave, só "
         "isolar a falta e religar o tronco são): fica pendente de aprovação humana e devolve id e "
-        "sequência de manobras. Sem aprovação nada é executado."
+        "sequência de manobras. Quando houver opção, inclui o impacto estimado em "
+        "consumidor-minutos e, se possível, no DEC do conjunto sob a premissa explícita de tempo "
+        "de reparo. Sem aprovação nada é executado."
     )
-    def propose_plan(self, chave: str | None = None, justificativa: str = "") -> dict[str, Any]:
+    def propose_plan(
+        self,
+        chave: str | None = None,
+        justificativa: str = "",
+        tempo_reparo: float = TEMPO_REPARO_PADRAO_MIN,
+    ) -> dict[str, Any]:
         rede, trecho = self._com_falta()
         plano = self._plano()
         iso = plano.isolate_segment(trecho)
         religar = self._religar(iso)
         u, v = rede.trechos[trecho]
+        impacto = None
         if chave is None:
             fonte = rede.grafo.edges[u, v]["ctmt"]
             sequencia = self._sequencia(rede, iso, religar)
@@ -1004,6 +1036,12 @@ class SessaoCOD:
                 )
             fonte, clientes = opcao.fonte, opcao.clientes
             sequencia = self._sequencia(rede, iso, religar, fechar=chave)
+            impacto = calcular_impacto_opcao(
+                plano,
+                opcao,
+                isolamento=iso,
+                tempo_reparo_min=tempo_reparo,
+            ).to_dict()
         p = self.propostas.criar(
             cluster=self.nome or "",
             falta=trecho,
@@ -1012,6 +1050,7 @@ class SessaoCOD:
             manobras=sequencia,
             clientes=clientes.to_dict(),
             score=None if chave is None else self._scores.get(chave),
+            impacto=impacto,
             ja_satisfeitas=[c for c in iso.chaves if rede.is_open(c)],
             motivo=justificativa or None,
             replanejada_apos_rejeicao=self.ultima_rejeicao,
@@ -1136,6 +1175,16 @@ class SessaoCOD:
         saida = []
         for o in opcoes:
             sc = self._scores.get(o.chave)
+            impacto = None
+            if p.impacto and isinstance(p.impacto, Mapping):
+                impacto = calcular_impacto_opcao(
+                    plano,
+                    o,
+                    isolamento=iso,
+                    tempo_reparo_min=float(
+                        p.impacto.get("tempo_reparo_min", TEMPO_REPARO_PADRAO_MIN)
+                    ),
+                ).to_dict()
             saida.append(
                 {
                     "chave": o.chave,
@@ -1145,6 +1194,7 @@ class SessaoCOD:
                     "clientes": o.clientes.to_dict(),
                     "escolhida": o.chave == p.chave,
                     "score": sc,
+                    "impacto": impacto,
                     "bloqueada": self.motivo_bloqueio_opcao(
                         {
                             "chave": o.chave,

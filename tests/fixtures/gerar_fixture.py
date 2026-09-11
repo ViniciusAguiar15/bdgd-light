@@ -133,11 +133,30 @@ def ctmt() -> pd.DataFrame:
                 "RECONFIG": 0,
                 "DIST": DIST,
                 "UNI_TR_AT": trat,
+                "CONJ": 1,
                 **_energia_mensal(1_500_000.0 * i),
                 "DESCR": nome,
             }
         )
-    return _int32(pd.DataFrame(linhas), ["ATIP", "RECONFIG", "DIST"])
+    return _int32(pd.DataFrame(linhas), ["ATIP", "RECONFIG", "DIST", "CONJ"])
+
+
+def conj() -> pd.DataFrame:
+    return _int32(
+        pd.DataFrame(
+            [
+                {
+                    "COD_ID": 1,
+                    "DIST": DIST,
+                    "NOME": "CONJUNTO SINTÉTICO",
+                    "SIST_INTE": 1,
+                    "SIST_SUBT": 0,
+                    "DESCR": "fixture_sintetica",
+                }
+            ]
+        ),
+        ["COD_ID", "DIST", "SIST_INTE", "SIST_SUBT"],
+    )
 
 
 def sub() -> gpd.GeoDataFrame:
@@ -716,6 +735,7 @@ def eqse() -> pd.DataFrame:
 
 CAMADAS = {
     "CTMT": ctmt,
+    "CONJ": conj,
     "SUB": sub,
     "UNTRAT": untrat,
     "SSDMT": ssdmt,

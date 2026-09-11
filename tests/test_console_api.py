@@ -101,6 +101,8 @@ def test_fluxo_injetar_propor_aprovar(cliente: TestClient, sessao: SessaoCOD, re
     alternativas = detalhe["alternativas"]
     assert [a["chave"] for a in alternativas] == ["CH003", "CH005"]
     assert alternativas[0]["escolhida"] is True and alternativas[0]["score"]["viavel"] is True
+    assert detalhe["impacto"]["consumidor_minutos_evitados"] == 700.0
+    assert alternativas[0]["impacto"]["dec_conjunto"]["nome"] == "CONJUNTO SINTÉTICO"
     assert detalhe["verificador"]["ok"] is True and detalhe["verificador"]["eletrico"] is True
     assert cliente.get("/api/propostas", params={"status": "pendente"}).json()[0]["id"] == "P-0001"
     assert cliente.get("/api/eventos", params={"desde": 0}).json()[0]["trecho"] == "SEG001"

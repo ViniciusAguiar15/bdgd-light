@@ -42,12 +42,12 @@ PREFIXO_EXTERNO = "EXT:"
 
 # colunas lidas de cada camada do GeoPackage (as demais são ignoradas para o grafo ficar leve)
 COLUNAS_GRAFO: dict[str, list[str]] = {
-    "CTMT": ["COD_ID", "NOME", "SUB", "PAC_INI", "TEN_NOM"],
-    "SSDMT": ["COD_ID", "CTMT", "PAC_1", "PAC_2", "COMP", "TIP_CND"],
-    "UNSEMT": ["COD_ID", "CTMT", "PAC_1", "PAC_2", "P_N_OPE", "TLCD", "TIP_UNID"],
-    "UNTRMT": ["COD_ID", "CTMT", "PAC_1", "POT_NOM"],
-    "UCBT_tab": ["COD_ID", "UNI_TR_MT"],
-    "UCMT_tab": ["COD_ID", "PAC"],
+    "CTMT": ["COD_ID", "NOME", "SUB", "PAC_INI", "TEN_NOM", "CONJ"],
+    "SSDMT": ["COD_ID", "CTMT", "PAC_1", "PAC_2", "COMP", "TIP_CND", "CONJ"],
+    "UNSEMT": ["COD_ID", "CTMT", "PAC_1", "PAC_2", "P_N_OPE", "TLCD", "TIP_UNID", "CONJ"],
+    "UNTRMT": ["COD_ID", "CTMT", "PAC_1", "POT_NOM", "CONJ"],
+    "UCBT_tab": ["COD_ID", "UNI_TR_MT", "CTMT", "CONJ"],
+    "UCMT_tab": ["COD_ID", "PAC", "CTMT", "CONJ"],
     "INTERLIGACOES": [
         "COD_ID",
         "CTMT",
@@ -60,6 +60,7 @@ COLUNAS_GRAFO: dict[str, list[str]] = {
         "EM_SUB",
     ],
     "SUB": ["COD_ID"],
+    "CONJ": ["COD_ID", "NOME", "DESCR"],
 }
 OBRIGATORIAS = ("CTMT", "SSDMT", "UNSEMT")
 
@@ -197,6 +198,7 @@ class Camadas:
     ucmt_tab: pd.DataFrame | None = None
     interligacoes: gpd.GeoDataFrame | None = None
     sub: gpd.GeoDataFrame | None = None
+    conj: pd.DataFrame | None = None
 
     @classmethod
     def de_dict(cls, camadas: Mapping[str, pd.DataFrame]) -> Camadas:
@@ -212,6 +214,7 @@ class Camadas:
             ucmt_tab=camadas.get("UCMT_tab"),
             interligacoes=camadas.get("INTERLIGACOES"),
             sub=camadas.get("SUB"),
+            conj=camadas.get("CONJ"),
         )
 
 

@@ -27,6 +27,25 @@ interface Score {
   motivos: string[];
 }
 
+interface ImpactoDECConjunto {
+  codigo: string;
+  nome: string;
+  total_uc: number;
+  ucs_restauradas_no_conjunto: number;
+  dec_horas: number;
+  dec_minutos: number;
+}
+
+interface ImpactoEstimado {
+  tempo_reparo_min: number;
+  tempo_manobra_min: number;
+  clientes_restaurados: number;
+  clientes_sem_tensao_ate_reparo: number;
+  consumidor_minutos_evitados: number;
+  premissa: string;
+  dec_conjunto: ImpactoDECConjunto | null;
+}
+
 interface Verificador {
   ok: boolean;
   eletrico: boolean;
@@ -52,6 +71,7 @@ export interface Proposta {
   proximo_passo: { acao: string; chave: string } | null;
   clientes: Clientes | null;
   score: Score | null;
+  impacto?: ImpactoEstimado | null;
   status: "pendente" | "aprovada" | "executada" | "rejeitada" | "expirada" | string;
   aprovada_por: string | null;
   motivo: string | null;
@@ -68,6 +88,7 @@ interface Alternativa {
   clientes: Clientes;
   escolhida: boolean;
   score: Score | null;
+  impacto?: ImpactoEstimado | null;
   bloqueada?: string | null;
 }
 
@@ -218,6 +239,27 @@ function hora(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleTimeString("pt-BR");
+}
+
+function milConsumidorMinutos(valor: number | null | undefined): string {
+  if (valor === null || valor === undefined || Number.isNaN(valor)) return "—";
+  if (Math.abs(valor) >= 1000) return `${(valor / 1000).toFixed(1).replace(".", ",")} mil`;
+  return Math.round(valor).toLocaleString("pt-BR");
+}
+
+function resumoImpacto(impacto: ImpactoEstimado | null | undefined): string | null {
+  if (!impacto) return null;
+  const partes = [
+    `≈ ${milConsumidorMinutos(impacto.consumidor_minutos_evitados)} consumidor-minutos evitados`,
+  ];
+  if (impacto.dec_conjunto?.nome && impacto.dec_conjunto.dec_minutos !== undefined)
+    partes.push(
+      `≈ ${impacto.dec_conjunto.dec_minutos.toFixed(1).replace(".", ",")} min de DEC no conjunto ${impacto.dec_conjunto.nome}`,
+    );
+  else
+    partes.push(`${impacto.clientes_sem_tensao_ate_reparo} clientes seguem sem tensão até o reparo`);
+  partes.push(`premissa: reparo em ${impacto.tempo_reparo_min} min`);
+  return partes.join(" · ");
 }
 
 function rotuloTipo(tipo: string): string {
@@ -509,6 +551,8 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
             `${p.clientes.trafos} trafos (${p.clientes.kva.toFixed(0)} kVA)`,
         ),
       );
+    const impacto = resumoImpacto(p.impacto);
+    if (impacto) card.append(el("div", { class: "dica" }, impacto));
     if (p.score)
       card.append(
         el(

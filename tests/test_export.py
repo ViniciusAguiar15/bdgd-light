@@ -30,6 +30,7 @@ from bdgd_light.ingest.export import (
 
 CAMADAS_FIXTURE = {
     "CTMT": 3,
+    "CONJ": 1,
     "SUB": 2,
     "UNTRAT": 3,
     "SSDMT": 9,

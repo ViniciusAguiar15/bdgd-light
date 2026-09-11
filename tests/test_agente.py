@@ -105,6 +105,7 @@ def test_especificacoes_nao_expoem_set_switch():
     assert "required" not in fluxo or "loadmult" not in fluxo["required"]
     assert por_nome["get_proposal"].parameters["required"] == ["proposta_id"]
     assert por_nome["restore_options"].parameters["properties"]["score"]["type"] == "boolean"
+    assert por_nome["restore_options"].parameters["properties"]["tempo_reparo"]["type"] == "number"
     for s in specs:
         assert s.description, s.name
         for prop in s.parameters["properties"].values():
@@ -380,6 +381,7 @@ def test_fake_operador_falta_permanente(sessao, simulador):
     assert ex.proposta["chave"] == "CH003" and ex.proposta["fonte"] == "RJO002"
     assert ex.veredito["ok"] is True and ex.veredito["eletrico"] is True
     assert "Proposta P-0001" in ex.resposta and "bdgd-light aprovar P-0001" in ex.resposta
+    assert "consumidor-minutos evitados" in ex.resposta
     assert "Alternativas descartadas: CH005" in ex.resposta
 
 
