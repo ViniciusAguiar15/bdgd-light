@@ -11,11 +11,16 @@
  *   SMOKE_FLUXO=1 (com `bdgd-light serve` atrás da URL) roda a demo ponta a ponta no painel do COD:
  *     injetar falta → esperar a proposta → aprovar e executar → conferir o mapa recolorido.
  *     SMOKE_TOKEN=<BDGD_CONSOLE_TOKEN> se o backend exige segredo; SMOKE_OPERADOR (padrão "smoke").
+ *   SMOKE_PASSOS=1 (com SMOKE_FLUXO) usa o modo passo a passo: clica "próxima manobra" até a
+ *     proposta ficar executada e exige exatamente n cliques para n manobras.
+ *   SMOKE_CAPTURAS=<pasta> salva uma captura por etapa (1-evento, 2-proposta, [2b-passo,] 3-executada)
+ *     — são as imagens do README; SMOKE_BASE=base-nenhuma troca a base para o fundo escuro (PNG menor).
  * Sai com código 1 se houver erro de estilo/JS, nenhuma feição vetorial renderizada ou, com
  * SMOKE_FLUXO, se a proposta não for executada em até 60 s após o agente concluir / o mapa não mudar.
  */
 import { spawn } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const url = process.argv[2] ?? "http://localhost:5173/?cenario=tijuca";
 const saida = process.argv[3] ?? "smoke.png";
@@ -132,48 +137,124 @@ const dados = JSON.parse(info ?? "{}");
 
 if (process.env.SMOKE_EXPR) console.log("SMOKE_EXPR →", await avaliar(process.env.SMOKE_EXPR));
 
-// demo ponta a ponta no painel do COD (precisa do backend `bdgd-light serve` na mesma origem/?api=)
-const FLUXO = `(async () => {
-  const t0 = performance.now();
-  const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+// demo ponta a ponta no painel do COD (precisa do backend `bdgd-light serve` na mesma origem/?api=),
+// em etapas para poder fotografar cada tela: 1 injetar → proposta; 2 agente ocioso (alternativas
+// abertas); 3 aprovar e executar (ou n cliques de "próxima manobra") → mapa recolorido.
+const PASSOS = !!process.env.SMOKE_PASSOS;
+const CAPTURAS = process.env.SMOKE_CAPTURAS;
+const capturar = async (nome) => {
+  if (!CAPTURAS) return;
+  mkdirSync(CAPTURAS, { recursive: true });
+  // deixa o cartão da proposta (com os botões) visível no painel antes de fotografar
+  await avaliar(`(async () => { document.querySelector("#cod-proposta .cod-acoes:last-of-type, #cod-proposta, #cod-evento")?.scrollIntoView({ block: "end" }); await new Promise((r) => setTimeout(r, 400)); })()`);
+  const shot = await enviar("Page.captureScreenshot", { format: "png" });
+  if (shot.result?.data) writeFileSync(join(CAPTURAS, `${nome}.png`), Buffer.from(shot.result.data, "base64"));
+};
+const PREPARO = `(() => {
+  window.__smoke = { t0: performance.now(), dormir: (ms) => new Promise((r) => setTimeout(r, ms)),
+    apagados: () => window.mapa.getSource("estado")
+      ? window.mapa.querySourceFeatures("estado").filter((f) => f.properties.camada === "SSDMT" && f.properties.energizado === false).length
+      : null,
+    s: () => +((performance.now() - window.__smoke.t0) / 1000).toFixed(1) };
   const cod = window.cod;
-  const apagados = () => window.mapa.getSource("estado")
-    ? window.mapa.querySourceFeatures("estado").filter((f) => f.properties.camada === "SSDMT" && f.properties.energizado === false).length
-    : null;
   const out = { ativo: cod?.ativo ?? false, cluster: cod?.estado?.cluster ?? null };
   if (!out.ativo) return JSON.stringify({ ...out, erro: "painel do COD inativo: backend não respondeu em " + (cod?.api ?? "?") });
+  const base = ${JSON.stringify(process.env.SMOKE_BASE ?? "")};
+  if (base) document.querySelector('input[name="base"][value="' + base + '"]')?.click();
   document.getElementById("cod-operador").value = ${JSON.stringify(process.env.SMOKE_OPERADOR ?? "smoke")};
   document.getElementById("cod-token").value = ${JSON.stringify(process.env.SMOKE_TOKEN ?? "")};
-  out.desenergizados = { antes: apagados() };
+  out.desenergizados = { antes: window.__smoke.apagados() };
+  return JSON.stringify(out);
+})()`;
+const ETAPA_EVENTO = `(async () => {
+  const { dormir } = window.__smoke; const cod = window.cod;
   document.getElementById("cod-injetar").click();
+  // espera o evento aparecer em curso (tela 1) — ou a proposta, se o agente for muito rápido
+  for (let i = 0; i < 40 && !cod.estado?.agente?.ocupado && !cod.estado?.propostas.some((x) => x.status === "pendente"); i++) { await dormir(250); await cod.atualizar(); }
+  return JSON.stringify({ evento: document.getElementById("cod-evento")?.textContent ?? null, tEvento_s: window.__smoke.s() });
+})()`;
+const ETAPA_PROPOSTA = `(async () => {
+  const { dormir } = window.__smoke; const cod = window.cod;
   let p = null;
   for (let i = 0; i < 200 && !p; i++) { await dormir(300); await cod.atualizar(); p = cod.estado?.propostas.find((x) => x.status === "pendente"); }
-  out.tProposta_s = +((performance.now() - t0) / 1000).toFixed(1);
+  const out = { tProposta_s: window.__smoke.s() };
   if (!p) return JSON.stringify({ ...out, erro: cod.ultimoErro ?? "sem proposta pendente em 60 s" });
   out.proposta = { id: p.id, falta: p.falta, chave: p.chave, fonte: p.fonte, manobras: p.manobras.map((m) => m.acao + " " + m.chave), viavel: p.score?.viavel ?? null };
-  out.cartao = document.getElementById("cod-proposta")?.textContent.slice(0, 200) ?? null;
   // o botão fica desabilitado enquanto o agente termina a resposta final (provedores reais levam segundos)
   for (let i = 0; i < 200 && cod.estado?.agente?.ocupado; i++) { await dormir(300); await cod.atualizar(); }
-  out.tAgente_s = +((performance.now() - t0) / 1000).toFixed(1);
+  out.tAgente_s = window.__smoke.s();
   await dormir(500);
-  out.desenergizados.durante = apagados();
+  const det = document.querySelector("#cod-proposta details"); if (det) det.open = true; // tela 2: alternativas e motivos
+  out.cartao = document.getElementById("cod-proposta")?.textContent.slice(0, 200) ?? null;
+  out.durante = window.__smoke.apagados();
+  return JSON.stringify(out);
+})()`;
+const ETAPA_PASSO = `(async () => {
+  const { dormir } = window.__smoke; const cod = window.cod;
+  const p = cod.estado?.propostas.find((x) => x.status === "pendente" || x.status === "aprovada");
+  const antes = p?.executadas ?? 0;
+  const btn = document.getElementById("cod-passo");
+  if (!btn) return JSON.stringify({ erro: "botão cod-passo ausente" });
+  const rotulo = btn.textContent; btn.click();
+  let q = null;
+  for (let i = 0; i < 100 && !q; i++) { await dormir(300); await cod.atualizar(); q = cod.estado?.propostas.find((x) => x.id === p.id && (x.executadas > antes || x.status === "executada")); }
+  await dormir(800);
+  return JSON.stringify({ rotulo, executadas: q?.executadas ?? null, status: q?.status ?? null, aprovadaPor: q?.aprovada_por ?? null, apagados: window.__smoke.apagados(), erro: cod.ultimoErro });
+})()`;
+const ETAPA_APROVAR = `(async () => {
+  const { dormir } = window.__smoke; const cod = window.cod;
+  const p = cod.estado?.propostas.find((x) => x.status === "pendente");
   document.getElementById("cod-aprovar").click();
   let exec = null;
   for (let i = 0; i < 200 && !exec; i++) { await dormir(300); await cod.atualizar(); exec = cod.estado?.propostas.find((x) => x.id === p.id && x.status === "executada"); }
   await dormir(1500);
-  out.desenergizados.depois = apagados();
-  out.executada = !!exec; out.aprovadaPor = exec?.aprovada_por ?? null;
-  out.auditoria = document.getElementById("cod-auditoria")?.firstChild?.textContent ?? null;
-  out.tTotal_s = +((performance.now() - t0) / 1000).toFixed(1);
-  out.erro = cod.ultimoErro;
-  return JSON.stringify(out);
+  return JSON.stringify({ executada: !!exec, aprovadaPor: exec?.aprovada_por ?? null, depois: window.__smoke.apagados(), erro: cod.ultimoErro });
 })()`;
+const ETAPA_FIM = `JSON.stringify({ auditoria: document.getElementById("cod-auditoria")?.firstChild?.textContent ?? null, tTotal_s: window.__smoke.s(), erro: window.cod.ultimoErro })`;
+
 let fluxo = null;
 if (process.env.SMOKE_FLUXO) {
-  fluxo = JSON.parse((await avaliar(FLUXO)) ?? "{}");
+  const ler = async (expr) => JSON.parse((await avaliar(expr)) ?? "{}");
+  fluxo = await ler(PREPARO);
+  if (!fluxo.erro) {
+    Object.assign(fluxo, await ler(ETAPA_EVENTO));
+    await capturar("1-evento");
+    const prop = await ler(ETAPA_PROPOSTA);
+    Object.assign(fluxo, prop);
+    fluxo.desenergizados.durante = prop.durante;
+    delete fluxo.durante;
+    await capturar("2-proposta");
+  }
+  if (!fluxo.erro && PASSOS) {
+    // n cliques = n manobras; cada clique aplica exatamente uma e o mapa recolore quando a rede muda
+    fluxo.passos = [];
+    const n = fluxo.proposta.manobras.length;
+    for (let k = 0; k < n + 1; k++) {
+      const st = fluxo.passos.at(-1)?.status;
+      if (st === "executada") break;
+      const r = await ler(ETAPA_PASSO);
+      fluxo.passos.push(r);
+      if (r.erro) break;
+      if (k === 0) await capturar("2b-passo");
+    }
+    const ultimo = fluxo.passos.at(-1) ?? {};
+    fluxo.cliques = fluxo.passos.length;
+    fluxo.executada = ultimo.status === "executada";
+    fluxo.desenergizados.depois = ultimo.apagados ?? null;
+    fluxo.aprovadaPor = ultimo.aprovadaPor ?? null;
+    if (fluxo.cliques !== n) fluxo.erro = fluxo.erro ?? `${fluxo.cliques} cliques para ${n} manobras`;
+    else if (fluxo.passos.some((r, i) => r.executadas !== i + 1)) fluxo.erro = fluxo.erro ?? "um clique não aplicou exatamente uma manobra";
+  } else if (!fluxo.erro) {
+    const ap = await ler(ETAPA_APROVAR);
+    Object.assign(fluxo, { executada: ap.executada, aprovadaPor: ap.aprovadaPor, erro: ap.erro });
+    fluxo.desenergizados.depois = ap.depois;
+  }
+  if (fluxo.ativo) {
+    await capturar("3-executada");
+    Object.assign(fluxo, await ler(ETAPA_FIM), { erro: fluxo.erro ?? null });
+  }
   console.log("SMOKE_FLUXO →", JSON.stringify(fluxo));
 }
-
 const shot = await enviar("Page.captureScreenshot", { format: "png" });
 if (shot.result?.data) writeFileSync(saida, Buffer.from(shot.result.data, "base64"));
 
