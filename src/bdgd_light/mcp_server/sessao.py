@@ -197,6 +197,7 @@ class Proposta:
     motivo: str | None = None
     executadas: int = 0
     replanejada_apos_rejeicao: str | None = None
+    restricoes_resumo: list[str] = field(default_factory=list)
 
     @property
     def proximo_passo(self) -> dict | None:
@@ -485,12 +486,41 @@ class SessaoCOD:
         return linhas
 
     @staticmethod
-    def _match_alimentador(alvo: str, valor: str | None) -> bool:
+    def _normalizar_alimentador(valor: str | None) -> str:
+        return "".join(ch for ch in str(valor or "").upper() if ch.isalnum())
+
+    @classmethod
+    def _match_alimentador(cls, alvo: str, valor: str | None) -> tuple[bool, bool]:
         if not alvo or not valor:
-            return False
-        a = "".join(ch for ch in alvo.upper() if ch.isalnum())
-        b = "".join(ch for ch in valor.upper() if ch.isalnum())
-        return bool(a and b and (a == b or a in b or b in a))
+            return False, False
+        a = cls._normalizar_alimentador(alvo)
+        b = cls._normalizar_alimentador(valor)
+        if not a or not b:
+            return False, False
+        if a == b:
+            return True, False
+        return (a in b or b in a), True
+
+    @classmethod
+    def _descricao_match_alimentador(cls, alvo: str, valor: str) -> str:
+        a = cls._normalizar_alimentador(alvo)
+        b = cls._normalizar_alimentador(valor)
+        modo = "prefixo" if a.startswith(b) or b.startswith(a) else "substring"
+        return f"casamento aproximado: {alvo} casou com {valor} por {modo}"
+
+    @classmethod
+    def _restricao_alimentador(
+        cls, alvos: Sequence[str], *valores: str | None
+    ) -> tuple[str, str, bool] | None:
+        for alvo in alvos:
+            for valor in valores:
+                texto = str(valor or "").strip()
+                if not texto:
+                    continue
+                casou, aproximado = cls._match_alimentador(alvo, texto)
+                if casou:
+                    return alvo, texto, aproximado
+        return None
 
     def motivo_bloqueio_opcao(self, opcao: Mapping[str, Any]) -> str | None:
         """Explica por que a opção viola alguma restrição ativa; ``None`` se liberada."""
@@ -511,11 +541,15 @@ class SessaoCOD:
             if usadas:
                 motivos.append(f"{r.motivo}: usa chave proibida {', '.join(usadas)}")
             ctmt_chave = str(opcao.get("ctmt_chave") or "")
-            if r.alimentadores_evitar and any(
-                self._match_alimentador(alvo, fonte) or self._match_alimentador(alvo, ctmt_chave)
-                for alvo in r.alimentadores_evitar
-            ):
-                motivos.append(f"{r.motivo}: evita alimentar pela fonte {fonte or ctmt_chave}")
+            match_alimentador = self._restricao_alimentador(
+                r.alimentadores_evitar, fonte, ctmt_chave
+            )
+            if match_alimentador is not None:
+                alvo, valor, aproximado = match_alimentador
+                texto = f"{r.motivo}: evita alimentar pela fonte {fonte or ctmt_chave}"
+                if aproximado:
+                    texto += f" ({self._descricao_match_alimentador(alvo, valor)})"
+                motivos.append(texto)
             if r.somente_telecomandadas:
                 sem_telecom = []
                 if not bool(opcao.get("tlcd")):
@@ -553,10 +587,13 @@ class SessaoCOD:
             )
             if proibidas:
                 motivos.append(f"{r.motivo}: usa chave proibida {', '.join(proibidas)}")
-            if r.alimentadores_evitar and any(
-                self._match_alimentador(alvo, fonte) for alvo in r.alimentadores_evitar
-            ):
-                motivos.append(f"{r.motivo}: evita alimentar pelo alimentador {fonte}")
+            match_alimentador = self._restricao_alimentador(r.alimentadores_evitar, fonte)
+            if match_alimentador is not None:
+                alvo, valor, aproximado = match_alimentador
+                texto = f"{r.motivo}: evita alimentar pelo alimentador {fonte}"
+                if aproximado:
+                    texto += f" ({self._descricao_match_alimentador(alvo, valor)})"
+                motivos.append(texto)
             if r.somente_telecomandadas:
                 sem_telecom = [
                     c
@@ -1088,6 +1125,7 @@ class SessaoCOD:
             ja_satisfeitas=[c for c in iso.chaves if rede.is_open(c)],
             motivo=justificativa or None,
             replanejada_apos_rejeicao=self.ultima_rejeicao,
+            restricoes_resumo=self.resumo_restricoes(),
         )
         return p.to_dict(com_token=False)
 

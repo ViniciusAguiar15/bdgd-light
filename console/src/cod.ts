@@ -126,6 +126,7 @@ export interface Proposta {
   aprovada_por: string | null;
   motivo: string | null;
   replanejada_apos_rejeicao: string | null;
+  restricoes_resumo?: string[];
   verificador: Verificador | null;
   ja_satisfeitas: string[];
   alternativas?: Alternativa[];
@@ -361,7 +362,9 @@ function resumoImpacto(impacto: ImpactoEstimado | null | undefined): string | nu
     );
   else
     partes.push(`${impacto.clientes_sem_tensao_ate_reparo} clientes seguem sem tensão até o reparo`);
-  partes.push(`premissa: reparo em ${impacto.tempo_reparo_min} min`);
+  partes.push(
+    `premissa: reparo em ${impacto.tempo_reparo_min} min, manobra em ${impacto.tempo_manobra_min} min`,
+  );
   return partes.join(" · ");
 }
 
@@ -994,6 +997,8 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
           `replanejada após rejeição: ${p.replanejada_apos_rejeicao}`,
         ),
       );
+    if (p.restricoes_resumo?.length)
+      card.append(el("div", { class: "dica" }, `restrição aplicada: ${p.restricoes_resumo.join(" · ")}`));
     if (p.verificador) {
       const v = p.verificador;
       const n = Object.keys(v.checagens ?? {}).length;
