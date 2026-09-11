@@ -38,12 +38,18 @@ npm run dev                                   # http://localhost:5173/?cenario=t
 npm run build                                 # `serve` publica dist/ em http://127.0.0.1:8000/
 SMOKE_FLUXO=1 SMOKE_TOKEN=demo npm run smoke -- "http://127.0.0.1:8000/?cenario=tijuca"
 #   demo ponta a ponta headless: injeta a falta, espera a proposta, aprova e confere o mapa recolorido
+SMOKE_FLUXO=1 SMOKE_PASSOS=1 SMOKE_TOKEN=demo SMOKE_BASE=base-nenhuma SMOKE_CAPTURAS=../docs/img \
+  npm run smoke -- "http://127.0.0.1:8000/?cenario=tijuca"
+#   idem no modo passo a passo (falha se cliques != manobras) e grava as capturas do README por etapa
 ```
 
 No painel, **operador** (cabeçalho `X-Operador`, vai para a auditoria) e **token**
 (`BDGD_CONSOLE_TOKEN` do backend; vazio se `serve --sem-segredo`) ficam no `localStorage`.
 "injetar falta" manda o cenário nomeado do simulador (`tijuca_cabofrio_tronco`, `ipanema_9210`,
 `taquara_bocari`); com uma falta já tratada vira "reiniciar e injetar falta" (recarrega o cluster).
+Na proposta, **Aprovar e executar** aplica todas as manobras; **Próxima manobra (k/n)** aplica uma
+por clique (modo passo a passo, para aula) — a lista marca ✓ as feitas e ▶ a atual, e o mapa recolore
+a cada passo.
 
 ## Cenários da demo
 

@@ -155,6 +155,59 @@ def test_fluxo_injetar_propor_aprovar(cliente: TestClient, sessao: SessaoCOD, re
     assert [p["id"] for p in e["propostas"] if p["status"] == "pendente"] == ["P-0002"]
 
 
+def test_passo_a_passo_uma_manobra_por_chamada(cliente: TestClient, sessao: SessaoCOD, recorte):
+    r = cliente.post("/api/eventos", json={"cluster": str(recorte), "trecho": "SEG001"}, headers=OP)
+    assert r.status_code == 202
+    [p] = cliente.get("/api/estado").json()["propostas"]
+    assert p["status"] == "pendente" and p["executadas"] == 0 and p["n_passos"] == 2
+    assert p["proximo_passo"] == {"acao": "abrir", "chave": "CH001"}
+
+    def apagados() -> int:
+        gj = cliente.get("/api/estado.geojson").json()
+        return sum(
+            1
+            for f in gj["features"]
+            if f["properties"]["camada"] == "SSDMT" and f["properties"]["energizado"] is False
+        )
+
+    na_falta = apagados()
+    assert na_falta > 0
+    sem_segredo = cliente.post("/api/propostas/P-0001/passo", headers={"X-Operador": "ana"})
+    assert sem_segredo.status_code == 401
+
+    # 1º clique: aprova (token emitido) e executa só a primeira manobra
+    r = cliente.post("/api/propostas/P-0001/passo", headers=OP)
+    assert r.status_code == 200, r.text
+    c = r.json()
+    assert c["erro"] is None and c["passo"]["chave"] == "CH001" and c["passo"]["estado"] == "aberta"
+    assert c["passo"]["passo"] == 1 and c["passo"]["n_passos"] == 2
+    assert c["proposta"]["status"] == "aprovada" and c["proposta"]["executadas"] == 1
+    assert c["proposta"]["proximo_passo"] == {"acao": "fechar", "chave": "CH003"}
+    assert c["proposta"]["aprovada_por"] == "ana" and c["proposta"]["token"] == "***"
+    apos_1 = apagados()
+    assert apos_1 == na_falta  # abrir a chave de isolamento ainda não reenergiza nada
+
+    # 2º clique: última manobra → executada; mapa recolorido
+    c = cliente.post("/api/propostas/P-0001/passo", headers=OP).json()
+    assert c["passo"]["chave"] == "CH003" and c["passo"]["estado"] == "fechada"
+    assert c["proposta"]["status"] == "executada" and c["proposta"]["proximo_passo"] is None
+    assert apagados() < apos_1
+
+    # 3º clique: nada a executar (409, proposta concluída)
+    r = cliente.post("/api/propostas/P-0001/passo", headers=OP)
+    assert r.status_code == 409 and "executada" in r.json()["detail"]
+
+    # trilha: aprovação com executar="passo" e um hitl.passo por manobra; auditoria íntegra
+    hitl = [json.loads(x) for x in (sessao.estado_dir / "hitl.jsonl").read_text().splitlines()]
+    assert [h["tipo"] for h in hitl] == ["hitl.aprovacao", "hitl.passo", "hitl.passo"]
+    assert hitl[0]["dados"]["executar"] == "passo"
+    assert [h["dados"]["manobra"]["chave"] for h in hitl[1:]] == ["CH001", "CH003"]
+    assert [h["dados"]["passo"] for h in hitl[1:]] == [1, 2]
+    aud = cliente.get("/api/auditoria", params={"n": 3}).json()
+    assert aud["integra"] is True
+    assert [x.get("ferramenta") for x in aud["registros"]][-2:] == ["set_switch", "set_switch"]
+
+
 def test_rejeitar_e_erros(cliente: TestClient, recorte: Path):
     r = cliente.post("/api/eventos", json={"cluster": str(recorte), "trecho": "SEG001"}, headers=OP)
     assert r.status_code == 202

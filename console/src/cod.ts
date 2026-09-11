@@ -42,6 +42,10 @@ export interface Proposta {
   chave: string | null;
   fonte: string | null;
   manobras: { acao: string; chave: string }[];
+  /** manobras já aplicadas (modo passo a passo); `proximo_passo` é a manobras[executadas] */
+  executadas: number;
+  n_passos: number;
+  proximo_passo: { acao: string; chave: string } | null;
   clientes: Clientes | null;
   score: Score | null;
   status: "pendente" | "aprovada" | "executada" | "rejeitada" | "expirada" | string;
@@ -149,6 +153,8 @@ export interface EstadoCod {
   atualizar: () => Promise<void>;
   injetar: (cenario?: string) => Promise<unknown>;
   aprovar: (id: string) => Promise<unknown>;
+  /** modo passo a passo: aprova (se pendente) e executa só a próxima manobra */
+  passo: (id: string) => Promise<unknown>;
   rejeitar: (id: string, motivo?: string) => Promise<unknown>;
 }
 
@@ -243,6 +249,7 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
     atualizar,
     injetar,
     aprovar: (id) => acao(`propostas/${id}/aprovar`, {}),
+    passo: (id) => acao(`propostas/${id}/passo`, {}),
     rejeitar: (id, motivo = "") => acao(`propostas/${id}/rejeitar`, { motivo }),
   };
   (window as unknown as { cod: EstadoCod }).cod = cod;
@@ -452,10 +459,17 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
       el("h3", {}, `${p.id} · ${p.status}`),
       el("div", { class: "dica" }, `falta ${p.falta ?? "—"} · criada ${hora(p.criada_em)}`),
     );
+    // a sequência marca o que já foi aplicado (✓) e o próximo passo (▶) no modo passo a passo
+    const feitas = p.executadas ?? 0;
+    const emCurso = p.status === "pendente" || p.status === "aprovada";
     const seq = el("ol", { class: "cod-manobras" });
-    for (const m of p.manobras)
-      seq.append(el("li", {}, `${m.acao} ${m.chave}`));
-    card.append(el("div", { class: "rotulo" }, `manobras (→ ${p.fonte ?? "—"})`), seq);
+    p.manobras.forEach((m, i) => {
+      const classe = i < feitas ? "feita" : i === feitas && emCurso ? "atual" : "";
+      const marca = i < feitas ? "✓ " : i === feitas && emCurso && feitas > 0 ? "▶ " : "";
+      seq.append(el("li", { class: classe }, `${marca}${m.acao} ${m.chave}`));
+    });
+    const progresso = feitas ? ` · ${feitas}/${p.manobras.length} executadas` : "";
+    card.append(el("div", { class: "rotulo" }, `manobras (→ ${p.fonte ?? "—"})${progresso}`), seq);
     if (p.ja_satisfeitas?.length)
       card.append(el("div", { class: "dica" }, `já abertas: ${p.ja_satisfeitas.join(", ")}`));
     if (p.clientes)
@@ -511,19 +525,35 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
       det.append(ul);
       card.append(det);
     }
-    if (p.status === "pendente" || p.status === "aprovada") {
+    if (emCurso) {
       const bloqueado = estado.autorizacao === "bloqueado";
-      const aprovar = el("button", { type: "button", id: "cod-aprovar", class: "primario" }, "Aprovar e executar");
+      const restantes = p.manobras.length - feitas;
+      const aprovar = el(
+        "button",
+        { type: "button", id: "cod-aprovar", class: "primario" },
+        !feitas ? "Aprovar e executar" : restantes === 1 ? "Executar a última" : `Executar as ${restantes} restantes`,
+      );
+      // pedido 1 da revisão PR-15: uma manobra por clique (passo único do MCP), o mapa recolore a cada uma
+      const proximo = p.proximo_passo ?? p.manobras[feitas];
+      const passo = el(
+        "button",
+        { type: "button", id: "cod-passo" },
+        `${feitas ? "Próxima" : "Aprovar e executar a 1ª"} manobra` +
+          (proximo ? `: ${proximo.acao} ${proximo.chave}` : "") +
+          ` (${feitas + 1}/${p.manobras.length})`,
+      );
       const rejeitar = el("button", { type: "button", id: "cod-rejeitar" }, "Rejeitar");
-      aprovar.disabled = bloqueado || !!estado.agente?.ocupado;
-      if (estado.agente?.ocupado) aprovar.title = "aguarde o agente concluir a resposta";
-      rejeitar.disabled = bloqueado;
+      aprovar.disabled = passo.disabled = bloqueado || !!estado.agente?.ocupado;
+      if (estado.agente?.ocupado) aprovar.title = passo.title = "aguarde o agente concluir a resposta";
+      else passo.title = `POST api/propostas/${p.id}/passo — aprova (se pendente) e executa só a próxima manobra`;
+      rejeitar.disabled = bloqueado || feitas > 0; // com manobras já aplicadas não há mais o que rejeitar
       aprovar.addEventListener("click", () => void cod.aprovar(p.id).catch(() => undefined));
+      passo.addEventListener("click", () => void cod.passo(p.id).catch(() => undefined));
       rejeitar.addEventListener("click", () => {
         const motivo = prompt("Motivo da rejeição (opcional):", "") ?? "";
         void cod.rejeitar(p.id, motivo).catch(() => undefined);
       });
-      card.append(el("div", { class: "cod-acoes" }, aprovar, rejeitar));
+      card.append(el("div", { class: "cod-acoes" }, aprovar, rejeitar), el("div", { class: "cod-acoes" }, passo));
       if (bloqueado)
         card.append(
           el(

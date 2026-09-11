@@ -315,6 +315,15 @@ label.item small {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+.cod-manobras li.feita {
+  color: #00e676;
+}
+
+.cod-manobras li.atual {
+  color: var(--acento);
+  font-weight: 600;
+}
+
 .cod-proposta .ok {
   color: #00e676;
 }
