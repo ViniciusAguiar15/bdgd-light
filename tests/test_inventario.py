@@ -230,3 +230,76 @@ def test_cli_vizinhos(parquet_mini):
     assert nenhum.exit_code == 0 and "nenhuma interligação" in saida(nenhum)
     erro = runner.invoke(app, ["vizinhos", "--ctmt", "XXX", "--parquet", str(parquet_mini)])
     assert erro.exit_code == 1 and "Erro" in saida(erro) and "XXX" in saida(erro)
+
+
+def _carregar_script_regioes():
+    import importlib.util
+    from pathlib import Path
+
+    caminho = Path("scripts/regioes_inventario.py")
+    spec = importlib.util.spec_from_file_location("regioes_inventario", caminho)
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+def test_script_regioes_inventario_agrupa_por_bairro_e_compara(tmp_path, capsys, monkeypatch):
+    modulo = _carregar_script_regioes()
+
+    def linha(cod, lat, lon, tipo, campo_tlcd, se, mun="3304557"):
+        return {
+            "COD_ID": cod,
+            "tipo": tipo,
+            "MUN": mun,
+            "km_MT": 3.0,
+            "n_UCBT": 1000,
+            "NA_interligacao_campo_telecomandada": campo_tlcd,
+            "NA_interligacao_campo": campo_tlcd + 1,
+            "NA_interligacao_SE": se,
+            "lat_min": lat - 0.001,
+            "lat_max": lat + 0.001,
+            "lon_min": lon - 0.001,
+            "lon_max": lon + 0.001,
+        }
+
+    antes = pd.DataFrame(
+        [
+            linha("PTS0001", -22.984, -43.205, "LDS", 31, 0),  # Ipanema: ties no pátio da SE
+            linha("ALC9925", -22.925, -43.235, "LDA", 4, 0),  # Tijuca
+            linha("LONGE", -22.80, -43.60, "LDA", 9, 0),  # fora de todas as referências
+            linha("OUTRO", -22.984, -43.205, "LDS", 5, 0, mun="3303500"),  # outro município
+        ]
+    )
+    depois = antes.copy()
+    depois.loc[depois["COD_ID"] == "PTS0001", ["NA_interligacao_campo_telecomandada"]] = 0
+    depois.loc[depois["COD_ID"] == "PTS0001", ["NA_interligacao_campo"]] = 0
+    depois.loc[depois["COD_ID"] == "PTS0001", ["NA_interligacao_SE"]] = 31
+    antes.to_csv(tmp_path / "antes.csv", index=False)
+    depois.to_csv(tmp_path / "depois.csv", index=False)
+
+    regioes = modulo.classificar(depois)
+    assert regioes.to_dict() == {0: "Ipanema/Leblon", 1: "Tijuca", 2: None}  # OUTRO nem entra
+    tabela = modulo.resumo(depois)
+    assert tabela.index.tolist() == ["Ipanema/Leblon", "Tijuca"]  # ordem das referências
+    assert tabela.loc["Ipanema/Leblon", ["n", "LDS", "ties_TLCD", "ties_SE"]].tolist() == [
+        1,
+        1,
+        0,
+        31,
+    ]
+    assert tabela.loc["Tijuca", ["n", "LDA", "ties_TLCD", "ties_SE"]].tolist() == [1, 1, 4, 0]
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "regioes_inventario.py",
+            str(tmp_path / "depois.csv"),
+            "--antes",
+            str(tmp_path / "antes.csv"),
+        ],
+    )
+    modulo.main()
+    texto = capsys.readouterr().out
+    assert "| Ipanema/Leblon | 1 | 0 | 1 | 3,0 | 1.000 | 0 | 31 |" in texto
+    assert "| Ipanema/Leblon | 1 | 31 → 0 | 32 → 0 | 0 → 31 |" in texto
+    assert "total nas regiões: ties TLCD 35 → 4, de campo 37 → 5, em SE 0 → 31" in texto

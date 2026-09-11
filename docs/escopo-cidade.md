@@ -1,28 +1,34 @@
 # Escopo v3 — panorama da cidade do Rio e opções por bairro
 
-> **Tabela por região desatualizada para ties de SE.** Os números de "ties TLCD" abaixo foram calculados
-> antes da folga `EM_SUB` de 50 m (PR #37): chaves NA no pátio da SE (barras não modeladas) ainda contam
-> como ties de campo — Ipanema/Leblon, por exemplo, tinha 35/36 assim no LDS 9210. Regeneração do
-> inventário e da tabela: #39.
+Análise (2026-09-10; inventário regerado em 2026-09-11 com a folga `EM_SUB` de 50 m — #39) sobre
+`data/inventario_ctmt.csv` + interligações **de campo** (fora de SE). Cada um dos 1.406 alimentadores do
+município vai para o bairro de referência mais próximo do centro do seu bbox, a até 1–4 km dele
+(`uv run scripts/regioes_inventario.py` reproduz a tabela; alimentadores longe de todas as referências
+ficam de fora). Números: n = alimentadores, LDA = aéreos, LDS = subterrâneos, ties TLCD = interligações
+de campo telecomandadas, ties em SE = chaves NA de interligação no pátio da SE (`EM_SUB`, não contam
+como tie de campo).
 
-Análise (2026-09-10) sobre `data/inventario_ctmt.csv` + interligações **de campo** (fora de SE), agrupando os
-1.405 alimentadores do município por proximidade a bairros de referência. Números: n = alimentadores,
-LDA = aéreos, LDS = subterrâneos, ties = interligações de campo telecomandadas.
+| região | n | LDA | LDS | km mediana | UCBT mediana | ties TLCD | ties em SE | leitura |
+|---|---|---|---|---|---|---|---|---|
+| Centro | 190 | 2 | 185 | 2,8 | 150 | 6 | 369 | rede subterrânea **reticulada** (malha secundária, network protectors); não é cenário de FLISR por chaves |
+| Lapa/Glória | 36 | 0 | 36 | 3,4 | 384 | 7 | 51 | subterrânea |
+| Flamengo/Catete | 27 | 0 | 27 | 3,5 | 1.769 | 0 | 16 | subterrânea; as "ties TLCD" da v3 eram barras do pátio |
+| Laranjeiras/Cosme Velho | 6 | 0 | 6 | 3,9 | 2.022 | 3 | 27 | LDS 34707 (`BPD34707`, 20 chaves telecomandadas): as 16 interligações estão todas no pátio da SE (13 reclassificadas) |
+| Botafogo/Humaitá | 48 | 1 | 47 | 3,3 | 1.095 | 11 | 27 | subterrânea, poucas ties de campo |
+| Copacabana/Leme | 38 | 1 | 37 | 3,3 | 1.664 | 0 | 1 | subterrânea, sem ties de campo telecomandadas |
+| Ipanema/Leblon | 83 | 4 | 79 | 3,4 | 1.009 | **4** | **109** | subterrânea **radial com telecontrole na SE**: as "141 ties TLCD" da v3 eram barras do pátio (LDS 9210: 31 de 31) — o self-healing acontece dentro da SE Posto Seis, não em campo |
+| Tijuca | 49 | 28 | 21 | 3,6 | 2.194 | 25 | 9 | **aérea densa**, várias SEs vizinhas, estrelas de ties |
+| Vila Isabel/Grajaú | 22 | 16 | 6 | 5,1 | 3.165 | 16 | 11 | aérea, triângulo na SE Leopoldo |
+| Méier | 45 | 43 | 0 | 4,7 | 3.716 | 45 | 24 | aérea, estrelas de ties, único triângulo aéreo completo da cidade consolidada |
+| Jacarepaguá/Taquara | 38 | 34 | 0 | 10,9 | 4.224 | 65 | 44 | aérea suburbana, alimentadores longos (cluster TQR, regressão) |
+| Barra/Recreio | 100 | 36 | 64 | 8,3 | 1.151 | 72 | 46 | mista, alimentadores muito longos (até 22 km) |
 
-| região | n | LDA | LDS | km mediana | UCBT mediana | ties TLCD | leitura |
-|---|---|---|---|---|---|---|---|
-| Centro | 203 | 3 | 197 | 2,7 | 142 | 15 | rede subterrânea **reticulada** (malha secundária, network protectors); não é cenário de FLISR por chaves |
-| Ipanema/Leblon | 76 | 1 | 75 | 3,2 | 972 | **141** | subterrânea **radial com telecontrole** — ótima para self-healing subterrâneo |
-| Botafogo/Humaitá | 45 | 0 | 45 | 2,9 | 1.091 | 6 | subterrânea, poucas ties de campo |
-| Copacabana/Leme | 38 | 1 | 37 | 3,3 | 1.664 | 0 | subterrânea, sem ties de campo telecomandadas |
-| Flamengo/Catete | 27 | 0 | 27 | 3,5 | 1.584 | 6 | idem Botafogo |
-| Lapa/Glória | 36 | 1 | 35 | 3,5 | 456 | 10 | subterrânea |
-| Laranjeiras/Cosme Velho | 16 | 7 | 9 | 5,9 | 1.965 | 17 | mista; LDS 34707 com 20 chaves telecomandadas |
-| Tijuca | 37 | 24 | 13 | 3,6 | 2.197 | 25 | **aérea densa**, várias SEs vizinhas, estrelas de ties |
-| Vila Isabel/Grajaú | 24 | 18 | 6 | 5,0 | 3.474 | 15 | aérea, triângulo na SE Leopoldo |
-| Méier | 61 | 57 | 0 | 5,2 | 3.237 | 56 | aérea, 18 estrelas, único triângulo aéreo completo da cidade consolidada |
-| Jacarepaguá/Taquara | 27+ | 23 | 0 | 9,7 | 3.821 | 40 | aérea suburbana, alimentadores longos (cluster TQR atual) |
-| Barra / Recreio | 74 | 30 | 44 | 7–12 | ~1.000–3.700 | 64 | mista, alimentadores muito longos (até 22 km) |
+Com a folga `EM_SUB`, o município perdeu 148 "ties TLCD de campo" (962 → 814) e 362 ties de campo
+(6.135 → 5.773), reclassificadas como de SE (814 → 1.176); na Light toda foram 545 chaves (1.138 → 1.683
+em SE), em 282 alimentadores. O impacto concentra-se na Zona Sul subterrânea (Ipanema/Leblon 109 → 4
+TLCD, Laranjeiras 8 → 3, Flamengo 7 → 0); as regiões aéreas — Tijuca, Vila Isabel, Méier, Jacarepaguá —
+não mudam, e o ranking do `score` segue liderado pelos LSA de 25 kV (`ESP017`, `CEN002`, `SCI004`).
+Detalhe por região (antes → depois) em `docs/review/NOITE-3.md` §5.
 
 ## Recomendação: dois clusters, dois cenários
 
@@ -35,7 +41,8 @@ Conde de Bonfim). Cluster: `ALC9925,ALC9946,URG29983,RCP9882`.
 
 **Cenário B — self-healing subterrâneo (Zona Sul): Ipanema, SE Posto Seis.** `PTS0001` LDS 9210 (3,4 km, 1.730 UCBT,
 **63 chaves, 48 telecomandadas**) com 3–4 ties telecomandadas para cada vizinho `PTS9088`, `PTS9924`, `PTS4022`,
-`PTS9297`. Mostra que a mesma arquitetura opera rede subterrânea radial telecomandada — o "outro Rio". Cluster:
+`PTS9297` — todas no pátio da SE Posto Seis (`EM_SUB`, ver v3.1; no inventário regerado o LDS 9210 tem 0 ties de
+campo e 31 em SE). Mostra que a mesma arquitetura opera rede subterrânea radial telecomandada — o "outro Rio". Cluster:
 `PTS0001,PTS9088,PTS9924,PTS4022`. Ressalva: PTS4022/PTS9297 têm 0 UCBT (circuitos expressos/reserva); o OpenDSS
 precisa tratá-los como fonte sem carga.
 
