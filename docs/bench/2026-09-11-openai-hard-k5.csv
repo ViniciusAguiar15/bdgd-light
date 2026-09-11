@@ -1,0 +1,273 @@
+tarefa,nivel,cluster,repeticao,acerto,obtido,esperado,sequencia,referencia,ordem,precisao,rodadas,tokens_prompt,tokens_completion,tokens_total,tokens_informados,chars_ferramentas,segundos_llm,segundos_ferramentas,segundos_total,replanejamentos,recusas,erro,resposta,provider,modelo,exemplos,compactado,seed,data
+H01,hard,tijuca,1,1,"""974020904""","[""974020904"", ""529355823""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,25082,500,25582,1,24916,22.846,6.95,29.796,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11304252 do CTMT ALC9925, com religador 10927447 aberto.
+- Clientes sem tensão: 4042 (4036 UCBT, 6 UCMT, 63 trafos, 8960 kVA).
+- Isolamento da falta: abrir as chaves de fronteira 10927447 e 11035901; religador não religa após isolamento.
+- Opções",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H01,hard,tijuca,2,1,"""974020904""","[""974020904"", ""529355823""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,25145,533,25678,1,25052,20.934,7.22,28.155,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11304252 do CTMT ALC9925, com religador 10927447 aberto e 4042 clientes (4036 UCBT, 6 UCMT) sem tensão.
+- Isolamento da falta: abrir as chaves de fronteira 10927447 e 11035901; religador não pode religar após isolamento.
+- Foram encontradas 10 op",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H01,hard,tijuca,3,1,"""974020904""","[""974020904"", ""529355823""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,25062,547,25609,1,24928,22.229,7.191,29.421,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11304252 do CTMT ALC9925, religador 10927447 aberto, 4042 clientes (4036 UCBT, 6 UCMT) sem tensão.
+- Localização da falta indica zona com 35 nós e 356 nós sem tensão, chaves de fronteira a abrir: 10927447 (religador) e 11035901.
+- Isolamento da f",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H01,hard,tijuca,4,1,"""974020904""","[""974020904"", ""529355823""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,25097,507,25604,1,24964,19.89,7.411,27.302,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11304252 do CTMT ALC9925, religador 10927447 aberto.
+- Clientes sem tensão: 4042 (4036 UCBT, 6 UCMT, 63 trafos, 8960 kVA).
+- Isolamento: abrir as chaves de fronteira 10927447 e 11035901 para isolar a falta.
+- Opções de restauração: existem 10 opç",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H01,hard,tijuca,5,1,"""974020904""","[""974020904"", ""529355823""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,25175,530,25705,1,25124,21.453,7.128,28.581,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11304252 do CTMT ALC9925, com religador 10927447 aberto e 4042 clientes sem tensão (4036 UCBT e 6 UCMT).
+- Isolamento da falta: abrir as chaves de fronteira 10927447 e 11035901; religador não pode religar após isolamento.
+- Foram encontradas 10 o",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H02,hard,tijuca,1,1,46.0,45.978043127965336,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,3,10609,318,10927,1,6209,14.412,7.687,22.1,0,0,,"A margem do disjuntor da melhor opção viável de restauração, segundo o gêmeo elétrico, é de 46,0%. Essa opção corresponde à chave 974020904 no CTMT ALC9946, que recupera 4042 clientes (4036 UCBT e 6 UCMT) sem tensão, com tensão mínima de 1,0271 pu e sem sobrecargas. 
+
+Resumo para o operador:
+- Falta",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H02,hard,tijuca,2,1,46.0,45.978043127965336,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,3,10609,169,10778,1,6209,15.594,7.587,23.181,0,0,,"A margem do disjuntor da melhor opção viável de restauração, segundo o gêmeo elétrico, é de 46,0%. Essa opção corresponde à chave 974020904 no CTMT ALC9946, que recupera todos os 4042 clientes sem tensão, com tensão mínima em MT de 1,0271 pu e sem sobrecargas. Existem 10 opções de restauração, sendo",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H02,hard,tijuca,3,1,46.0,45.978043127965336,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,3,10609,331,10940,1,6209,15.11,8.203,23.313,0,0,,"A margem do disjuntor da melhor opção viável de restauração, segundo o gêmeo elétrico, é de 46,0%. 
+
+Resumo para o operador:
+- Falta registrada no trecho 11304252, religador 10927447 aberto.
+- Clientes sem tensão: 4042 (4036 UCBT e 6 UCMT).
+- Isolamento: abrir as chaves de fronteira 10927447 e 11035",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H02,hard,tijuca,4,1,46.0,45.978043127965336,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,3,10609,337,10946,1,6209,14.771,7.537,22.308,0,0,,"A margem do disjuntor da melhor opção viável de restauração, segundo o gêmeo elétrico, é de 46,0%. Essa opção corresponde à chave 974020904 no CTMT ALC9946, que recupera 4042 clientes (4036 UCBT e 6 UCMT) sem tensão, com tensão mínima em MT de 1,0271 pu e sem sobrecargas. 
+
+Resumo para o operador:
+-",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H02,hard,tijuca,5,1,46.0,45.978043127965336,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,3,10609,341,10950,1,6208,14.99,7.145,22.135,0,0,,"A margem do disjuntor da melhor opção viável de restauração, segundo o gêmeo elétrico, é de 46,0%. Essa opção corresponde à chave 974020904 no CTMT ALC9946, que recupera 4042 clientes (4036 UCBT e 6 UCMT) sem tensão, com tensão mínima em MT de 1,0271 pu e sem sobrecargas. 
+
+Resumo para o operador:
+-",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H03,hard,tijuca,1,1,4.0,4,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,2,7557,426,7983,1,6209,12.369,7.545,19.914,0,0,,"Existem 10 opções de restauração para a falta registrada no trecho 11304252. Dessas, 4 opções são eletricamente viáveis segundo o score do gêmeo OpenDSS.
+
+As 4 opções viáveis têm as seguintes características principais:
+- Margem no disjuntor entre 19,8% e 46,0%
+- Tensão mínima MT entre 1,0184 pu e 1",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H03,hard,tijuca,2,1,4.0,4,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,3,10456,424,10880,1,6209,9.999,7.349,17.348,0,0,,"Existem 10 opções de restauração para a falta no trecho 11304252, das quais 4 são eletricamente viáveis segundo o score do gêmeo OpenDSS.
+
+As 4 opções viáveis têm as seguintes características principais:
+- Margem no disjuntor entre 19,78% e 46,0%
+- Tensão mínima MT entre 1,0184 pu e 1,0271 pu
+- Clie",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H03,hard,tijuca,3,1,4.0,4,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,2,7557,341,7898,1,6209,8.799,6.942,15.741,0,0,,"Existem 10 opções de restauração para a falta registrada no trecho 11304252, das quais 4 são eletricamente viáveis segundo o score do gêmeo OpenDSS.
+
+Resumo das opções viáveis:
+1. Chave 974020904 (CTMT ALC9946): margem do disjuntor 46,0%, tensão mínima 1,0271 pu, recupera 4042 clientes.
+2. Chave 529",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H03,hard,tijuca,4,1,4.0,4,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,3,10456,305,10761,1,6209,6.991,7.295,14.286,0,0,,"Existem 4 opções de restauração eletricamente viáveis para a falta registrada no trecho 11304252, segundo o score do gêmeo OpenDSS.
+
+Resumo das opções viáveis:
+1. Chave 974020904 (CTMT ALC9946): margem do disjuntor 46,0 %, tensão mínima 1,0271 pu, recupera 4042 clientes.
+2. Chave 529355823 (CTMT ALC",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H03,hard,tijuca,5,1,4.0,4,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,2,7557,273,7830,1,6209,8.41,7.218,15.628,0,0,,"Existem 10 opções de restauração para a falta registrada no trecho 11304252. Dessas, 4 opções são eletricamente viáveis segundo o score do gêmeo OpenDSS.
+
+Resumo das opções viáveis:
+- As 4 opções viáveis têm margem no disjuntor entre 19,8% e 46,0%, tensão mínima MT entre 1,0184 pu e 1,0271 pu, e rec",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H04,hard,tijuca,1,1,"""746851189""","[""746851189""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,25211,571,25782,1,25213,16.766,4.116,20.882,0,0,,"Resumo para o operador:
+
+Falta permanente no trecho 1006470677 do CTMT ALC9925, religador 10927447 aberto, com 4042 clientes sem tensão (4036 UCBT e 6 UCMT). O religador abriu e não religa, conforme esperado.
+
+Localização da falta indicou zona com 16 nós e 15 trechos, com 356 nós e 4042 clientes sem",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H04,hard,tijuca,2,1,"""746851189""","[""746851189""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,25303,577,25880,1,25345,12.735,4.959,17.695,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 1006470677 do CTMT ALC9925, religador 10927447 aberto e não religando.
+- Clientes sem tensão: 4042 no total (4036 UCBT, 6 UCMT).
+- Zona de falta isolada com 16 nós e 15 trechos, 0 clientes na zona isolada, 1310 clientes desligados após isolamento",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H04,hard,tijuca,3,1,"""746851189""","[""746851189""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,25261,521,25782,1,25271,15.472,4.496,19.969,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 1006470677 do CTMT ALC9925, religador 10927447 aberto e não religa.
+- Clientes sem tensão: 4042 (4036 UCBT, 6 UCMT).
+- Isolamento da falta: abrir as chaves de fronteira 1006470683, 1007089101 e 11035943, religador pode religar após isolamento.
+- ",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H04,hard,tijuca,4,1,"""746851189""","[""746851189""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,25261,580,25841,1,25288,14.741,4.394,19.136,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 1006470677 do CTMT ALC9925, com religador 10927447 aberto e 4042 clientes sem tensão (4036 UCBT e 6 UCMT).
+- Localização da falta indica zona com 16 nós e 15 trechos, com 356 nós e 4042 clientes sem tensão no total.
+- Isolamento da falta requer a",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H04,hard,tijuca,5,1,"""746851189""","[""746851189""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,25215,518,25733,1,25218,10.764,5.313,16.078,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 1006470677 do CTMT ALC9925, religador 10927447 aberto e não religando.
+- Clientes sem tensão: 4042 no total (4036 UCBT, 6 UCMT).
+- Isolamento da falta: abrir as chaves de fronteira 1006470683, 1007089101 e 11035943 para isolar a zona da falta.
+- ",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H05,hard,tijuca,1,1,644.0,644,"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,0.75,3,19470,437,19907,1,22435,8.466,3.163,11.629,0,0,,"A melhor opção viável de restauração para a falta registrada no trecho 977464723 (URG29983) recupera 644 UCBT. 
+
+Resumo para o operador:
+- Falta no trecho 977464723 do CTMT URG29983, religador 10926271 aberto.
+- Clientes sem tensão: 3395 UCBT e 1 UCMT, totalizando 3396 clientes.
+- Isolamento da falt",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H05,hard,tijuca,2,1,644.0,644,"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,0.75,5,25225,437,25662,1,22430,10.861,3.236,14.097,0,0,,"A melhor opção viável de restauração para a falta registrada no trecho 977464723 (URG29983) recupera 644 UCBT. 
+
+Resumo para o operador:
+- Falta no trecho 977464723 do CTMT URG29983, com religador 10926271 aberto.
+- Clientes sem tensão: 3395 UCBT e 1 UCMT, totalizando 3396 clientes.
+- Isolamento da ",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H05,hard,tijuca,3,1,644.0,644,"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,0.75,4,22556,453,23009,1,22435,11.9,3.05,14.95,0,0,,"A melhor opção viável de restauração para a falta registrada no trecho 977464723 (URG29983) recupera 644 UCBT. 
+
+Resumo para o operador:
+- Falta no trecho 977464723 do CTMT URG29983, religador 10926271 aberto.
+- Clientes sem tensão: 3395 UCBT e 1 UCMT, totalizando 3396 clientes.
+- Isolamento da falt",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H05,hard,tijuca,4,1,644.0,644,"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,0.75,5,25217,413,25630,1,22419,11.345,4.525,15.87,0,0,,"A melhor opção viável de restauração para a falta registrada no trecho 977464723 (URG29983) recupera 644 UCBT. 
+
+Resumo para o operador:
+- Falta no trecho 977464723, religador 10926271 aberto.
+- Clientes sem tensão: 3396 (3395 UCBT e 1 UCMT).
+- Isolamento da falta: abrir as chaves 10915362, 11006780",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H05,hard,tijuca,5,1,644.0,644,"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,0.75,5,25155,399,25554,1,22352,12.085,3.549,15.634,0,0,,"A melhor opção viável de restauração para a falta registrada no trecho 977464723 (URG29983) recupera 644 UCBT. 
+
+Resumo para o operador:
+- Falta no trecho 977464723, religador 10926271 aberto.
+- Clientes sem tensão: 3396 (3395 UCBT e 1 UCMT).
+- Isolamento da falta: abrir as chaves 10915362, 11006780",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H06,hard,ipanema,1,1,null,[],"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,12809,358,13167,1,2286,11.156,0.082,11.238,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11409068 do CTMT PTS0001, religador 10933610 aberto.
+- Clientes sem tensão: 1730 UCBT, 0 UCMT, 6 trafos, total 1730 clientes.
+- Localização da falta indica zona com 298 nós e 1251 clientes na zona da falta.
+- Isolamento da falta propõe abrir as c",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H06,hard,ipanema,2,1,null,[],"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,12966,432,13398,1,2569,11.287,0.064,11.351,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11409068 do CTMT PTS0001, com religador 10933610 aberto e 1730 clientes UCBT sem tensão.
+- Localização da falta indica zona com 298 nós e 1251 clientes na zona isolada, total de 422 nós e 1730 clientes sem tensão.
+- Isolamento da falta propõe abr",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H06,hard,ipanema,3,1,null,[],"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,12960,408,13368,1,2582,10.155,0.08,10.235,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11409068 do CTMT PTS0001, com religador 10933610 aberto e não religando.
+- Clientes sem tensão: 1730 UCBT (clientes totais sem tensão).
+- Isolamento da falta: abrir as chaves de fronteira 505111870 e 561826961 para isolar o trecho com falta.
+- Op",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H06,hard,ipanema,4,1,null,[],"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,12940,432,13372,1,2516,12.162,0.09,12.252,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11409068 do CTMT PTS0001, com religador 10933610 aberto e 1730 clientes UCBT sem tensão.
+- Localização da falta indicou zona com 298 nós e 1251 clientes desligados na zona da falta.
+- Isolamento da falta propõe abrir as chaves de fronteira 109336",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H06,hard,ipanema,5,1,null,[],"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,12948,430,13378,1,2552,10.805,0.079,10.884,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11409068 do CTMT PTS0001, com religador 10933610 aberto e 1730 clientes UCBT sem tensão.
+- Localização da falta indica zona com 298 nós e 1251 clientes desligados na zona da falta, e 422 nós e 1730 clientes sem tensão no total.
+- Isolamento da fa",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H07,hard,ipanema,1,1,479.0,479,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,3,8175,294,8469,1,1407,8.163,0.029,8.192,0,0,,"Após isolar a zona em falta no trecho 11409068 do CTMT PTS0001, permanecem sem tensão 479 UCBT sãs (clientes) que não foram restaurados. Não existem opções de restauração viáveis para religar esses clientes automaticamente.
+
+Resumo para o operador:
+- Falta no trecho 11409068, CTMT PTS0001, religador",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H07,hard,ipanema,2,1,479.0,479,"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,0.75,4,11720,382,12102,1,2590,9.195,0.089,9.284,0,0,,"Resumo para o operador:
+
+- Falta registrada no trecho 11409068 do CTMT PTS0001, com religador 10933610 aberto.
+- Inicialmente, 1730 UCBT (clientes) ficaram sem tensão.
+- Após isolar a zona em falta, restam 479 UCBT sãs que continuam sem tensão.
+- Não existem opções viáveis de restauração que mantenh",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H07,hard,ipanema,3,1,479.0,479,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,3,8175,276,8451,1,1407,6.074,0.031,6.105,0,0,,"Após isolar a zona em falta no trecho 11409068 do CTMT PTS0001, permanecem sem tensão 479 UCBT sãs (clientes) que não foram restaurados. Não existem opções de restauração viáveis para religar esses clientes automaticamente.
+
+Resumo para o operador:
+- Falta no trecho 11409068, CTMT PTS0001, religador",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H07,hard,ipanema,4,1,479.0,479,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,3,8175,298,8473,1,1407,9.041,0.034,9.075,0,0,,"Após isolar a zona em falta no trecho 11409068 do CTMT PTS0001, permanecem sem tensão 479 UCBT sãs (clientes) que não foram restaurados. Não existem opções de restauração viáveis para religar esses clientes automaticamente.
+
+Resumo para o operador:
+- Falta no trecho 11409068, CTMT PTS0001, religador",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H07,hard,ipanema,5,1,479.0,479,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,3,8175,301,8476,1,1407,8.579,0.033,8.612,0,0,,"Após isolar a zona em falta no trecho 11409068 do CTMT PTS0001, permanecem sem tensão 479 UCBT sãs (clientes) que não foram afetadas pela falta inicialmente (que tinha 1730 UCBT sem tensão). 
+
+Não existem opções de restauração viáveis para religar esses clientes sem tensão após o isolamento da falta",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H08,hard,taquara,1,1,"""11056672""","[""11053620"", ""11056672"", ""789941518"", ""11053522"", ""11053627"", ""1007642983"", ""752622332"", ""11026494"", ""134733185"", ""258481641""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,32885,467,33352,1,40485,12.941,12.227,25.172,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11798327 do CTMT TQR33862, religador 10924213 aberto e não religa.
+- Clientes sem tensão: 4351 UCBT.
+- Isolamento da falta: abrir as chaves de fronteira 11026473, 22826994, 528574225 e 790615689, religador 10924213 pode religar após isolamento.
+-",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H08,hard,taquara,2,1,"""11056672""","[""11053620"", ""11056672"", ""789941518"", ""11053522"", ""11053627"", ""1007642983"", ""752622332"", ""11026494"", ""134733185"", ""258481641""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,33043,603,33646,1,40850,13.579,15.152,28.731,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11798327 do CTMT TQR33862, com religador 10924213 aberto e 4351 clientes sem tensão inicialmente.
+- Localização da falta identificou uma zona com 610 nós e 516 clientes na zona isolada, e 2023 clientes desligados após isolamento.
+- Isolamento da ",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H08,hard,taquara,3,1,"""11056672""","[""11053620"", ""11056672"", ""789941518"", ""11053522"", ""11053627"", ""1007642983"", ""752622332"", ""11026494"", ""134733185"", ""258481641""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,32913,460,33373,1,40526,14.952,12.713,27.665,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11798327 do CTMT TQR33862, religador 10924213 aberto.
+- Clientes sem tensão: 4351 UCBT.
+- Isolamento da falta: abrir as chaves de fronteira 11026473, 22826994, 528574225 e 790615689.
+- Após isolamento, religador 10924213 pode religar.
+- Opções de",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H08,hard,taquara,4,1,"""11056672""","[""11053620"", ""11056672"", ""789941518"", ""11053522"", ""11053627"", ""1007642983"", ""752622332"", ""11026494"", ""134733185"", ""258481641""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,32999,572,33571,1,40674,14.235,12.343,26.578,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11798327 do CTMT TQR33862, com religador 10924213 aberto e 4351 clientes UCBT sem tensão.
+- Localizada a falta: zona com 43 nós e 516 clientes, chaves de fronteira a abrir são 11026473, 22826994, 528574225 e 790615689.
+- Isolamento da falta: abri",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H08,hard,taquara,5,1,"""11056672""","[""11053620"", ""11056672"", ""789941518"", ""11053522"", ""11053627"", ""1007642983"", ""752622332"", ""11026494"", ""134733185"", ""258481641""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,32977,528,33505,1,40654,15.206,14.951,30.157,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11798327 do CTMT TQR33862, com religador 10924213 aberto.
+- Clientes sem tensão: 4351 UCBT no total, sendo que após isolamento ficam 2023 clientes desligados.
+- Isolamento da falta: abrir as chaves de fronteira 11026473, 22826994, 528574225 e 790",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H09,hard,taquara,1,1,10.0,10,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,3,11071,396,11467,1,7181,9.329,13.461,22.79,0,0,,"Existem 10 opções de restauração para a falta registrada no trecho 11798327. Todas as 10 opções são viáveis segundo o veredito elétrico do gêmeo digital OpenDSS, com tensão mínima em torno de 0,93 pu e margem no disjuntor variando em torno de 60% a 62%. As opções envolvem o fechamento de chaves NA q",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H09,hard,taquara,2,1,10.0,10,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,3,11071,297,11368,1,7181,7.827,12.307,20.134,0,0,,"Existe um total de 10 opções de restauração para a falta registrada no trecho 11798327. Essas opções correspondem a chaves NA que, ao serem fechadas após o isolamento da falta, reenergizam os nós desligados. Todas as 10 opções são viáveis segundo o veredito elétrico do gêmeo digital OpenDSS, com mar",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H09,hard,taquara,3,1,10.0,10,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,3,11071,369,11440,1,7181,7.346,12.634,19.98,0,0,,"Existe um total de 10 opções de restauração para a falta registrada no trecho 11798327. Essas opções correspondem a chaves NA que, ao serem fechadas após o isolamento da falta, reenergizam os nós desligados. Todas as 10 opções são viáveis segundo o veredito elétrico do gêmeo digital OpenDSS, com mar",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H09,hard,taquara,4,1,10.0,10,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,4,13727,340,14067,1,7181,8.501,14.061,22.562,0,0,,"Para a falta registrada no trecho 11798327, existem 10 opções de restauração viáveis, ou seja, 10 chaves NA que, ao serem fechadas após o isolamento da falta, reenergizam os nós desligados.
+
+Resumo:
+- Falta no trecho 11798327, CTMT TQR33862, religador 10924213 aberto.
+- Clientes sem tensão: 4351 UCB",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H09,hard,taquara,5,1,10.0,10,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,3,11071,376,11447,1,7180,11.862,12.556,24.418,0,0,,"Existem 10 opções de restauração para a falta registrada no trecho 11798327. Essas opções são chaves NA que, ao serem fechadas após o isolamento da falta, reenergizam os nós desligados. Todas as 10 opções são viáveis segundo o veredito elétrico do gêmeo digital, com margens de disjuntor acima de 60%",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H10,hard,taquara,1,1,"""11056672""","[""11053522"", ""11053620"", ""11056672"", ""752622332"", ""134733185"", ""258481641""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,31157,610,31767,1,37359,13.659,8.584,22.244,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 260547810 do CTMT TQR33862, com religador 10924213 aberto.
+- Clientes sem tensão: 4351 UCBT no total, sendo 1261 clientes diretamente afetados na zona isolada após abertura das chaves de fronteira.
+- Isolamento da falta: abrir as chaves de fronte",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H10,hard,taquara,2,1,"""11056672""","[""11053522"", ""11053620"", ""11056672"", ""752622332"", ""134733185"", ""258481641""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,31157,578,31735,1,37350,12.008,8.655,20.663,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 260547810 do CTMT TQR33862, com religador 10924213 aberto.
+- Clientes sem tensão: 4351 UCBT.
+- Isolamento da falta: abrir as chaves de fronteira 479996584, 536994950 e 57067405.
+- Opções de restauração: existem 6 opções viáveis, todas com tensão ",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H10,hard,taquara,3,1,"""11056672""","[""11053522"", ""11053620"", ""11056672"", ""752622332"", ""134733185"", ""258481641""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,31161,585,31746,1,37379,15.74,7.611,23.351,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 260547810 do CTMT TQR33862, com religador 10924213 aberto.
+- Clientes sem tensão: 4351 UCBT.
+- Isolamento da falta: abrir as chaves de fronteira 479996584, 536994950 e 57067405.
+- Opções de restauração: existem 6 opções viáveis, todas recuperando",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H10,hard,taquara,4,1,"""11056672""","[""11053522"", ""11053620"", ""11056672"", ""752622332"", ""134733185"", ""258481641""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,31143,578,31721,1,37342,24.409,7.642,32.051,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 260547810 do CTMT TQR33862, com religador 10924213 aberto.
+- Clientes sem tensão: 4351 UCBT.
+- Isolamento da falta: abrir as chaves de fronteira 479996584, 536994950 e 57067405, que isolam a zona da falta.
+- Opções de restauração: existem 6 opçõe",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H10,hard,taquara,5,1,"""11056672""","[""11053522"", ""11053620"", ""11056672"", ""752622332"", ""134733185"", ""258481641""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,31023,568,31591,1,37150,14.6,7.706,22.306,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 260547810 do CTMT TQR33862, com religador 10924213 aberto.
+- Clientes sem tensão: 4351 UCBT.
+- Localização da falta indicou zona com 12 nós e 610 nós sem tensão, com 4351 clientes afetados.
+- Isolamento da falta requer abertura das chaves de fron",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H11,hard,ipanema,1,1,null,[],"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,12988,422,13410,1,2508,12.017,0.145,12.162,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11730406 do CTMT PTS9924, com religador 10934149 aberto.
+- Clientes sem tensão: 1174 UCBT (clientes totais sem tensão).
+- Localização da falta indica zona com 6 nós e 163 clientes diretamente na zona isolada.
+- Isolamento da falta: abrir a chave ",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H11,hard,ipanema,2,1,null,[],"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,12990,397,13387,1,2526,10.446,0.09,10.536,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11730406 do CTMT PTS9924, com religador 10934149 aberto.
+- Clientes sem tensão: 1174 UCBT no total, sendo 163 clientes diretamente na zona da falta.
+- Isolamento da falta: abrir a chave de fronteira 449470191 para isolar o trecho com falta.
+- Opç",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H11,hard,ipanema,3,1,null,[],"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,12992,432,13424,1,2510,9.924,0.092,10.016,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11730406 do CTMT PTS9924, com religador 10934149 aberto.
+- Clientes sem tensão: 1174 UCBT (clientes) afetados inicialmente.
+- Localização da falta indica zona com 6 nós e 163 clientes diretamente na zona isolada.
+- Isolamento da falta: abrir a ch",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H11,hard,ipanema,4,1,null,[],"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,3,9895,507,10402,1,2722,12.028,0.142,12.17,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11730406 do CTMT PTS9924, com religador 10934149 aberto.
+- Clientes sem tensão: 1174 UCBT no total.
+- Localização da falta indica zona com 6 nós e 163 clientes (UCBT) diretamente na zona isolada.
+- Isolamento da falta: abrir a chave de fronteira ",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00
+H11,hard,ipanema,5,1,null,[],"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,4,12980,443,13423,1,2496,10.638,0.117,10.756,0,0,,"Resumo para o operador:
+
+- Falta permanente no trecho 11730406 do CTMT PTS9924, com religador 10934149 aberto.
+- Clientes sem tensão: 1174 UCBT (clientes) afetados inicialmente.
+- Localização da falta indica zona com 6 nós e 163 clientes diretamente na zona isolada.
+- Isolamento da falta: abrir a ch",openai,gpt-4.1-mini-2025-04-14,1,1,,2026-09-11T19:06:39+00:00

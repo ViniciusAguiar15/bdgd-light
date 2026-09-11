@@ -145,6 +145,27 @@ reconhecendo corretamente o caso **sem chave**; Taquara (`taquara_bocari`) em 4 
 tokens / ~US$ 0,0139, com chave equivalente `11056672` para `TQR33859`. Em todos: 0 recusas, 0
 replanejamentos e verificador aprovado.
 
+### A/B dos exemplos anotados (*hard*, k=5)
+
+Relatórios versionados desta rodada: `docs/bench/2026-09-11-gemini-hard-k5-sem-exemplos.*`,
+`docs/bench/2026-09-11-openai-hard-k5.*` e
+`docs/bench/2026-09-11-openai-hard-k5-sem-exemplos.*`. O braço Gemini **com** exemplos já estava
+em `docs/bench/2026-09-11-gemini.md` (55 execuções *hard*).
+
+| provedor | modo | n | pass@1 *hard* | erros | `MALFORMED_FUNCTION_CALL` | tokens/exec. | US$/exec. | s/exec. |
+|---|---|---|---|---|---|---|---|---|
+| Gemini 2.5 Flash | com exemplos | 55 | 47/55 = 85 % | 8 | 8/55 = 15 % | 19.234 | 0,0090 | 16,9 |
+| Gemini 2.5 Flash | sem exemplos | 55 | **55/55 = 100 %** | 0 | **0/55** | 25.401 | 0,0118 | 17,8 |
+| gpt-4.1-mini | com exemplos | 55 | 55/55 = 100 % | 0 | 0/55 | 18.897 | 0,0081 | 18,7 |
+| gpt-4.1-mini | sem exemplos | 55 | 55/55 = 100 % | 0 | 0/55 | 17.714 | 0,0075 | 16,4 |
+
+Conclusão: com **n = 55 por braço**, a correlação entre tirar os exemplos anotados e eliminar o
+`MALFORMED_FUNCTION_CALL` se confirma **no Gemini**, mas **não** se repete no OpenAI — que ficou em
+100 % com e sem exemplos e nunca produziu a chamada malformada. O efeito, portanto, parece ser
+**do provedor / do parser de tool call do Flash**, não uma evidência geral de que "exemplos
+anotados atrapalham". Por isso, **não** vale desligá-los por padrão sem uma decisão específica para
+o perfil Gemini (ou uma mudança no formato textual dos exemplos).
+
 ### Leitura para a apresentação
 
 1. **Acerto.** O Gemini 2.5 Flash acertou **todas** as execuções que chegaram a uma resposta: 30/30
@@ -173,16 +194,13 @@ replanejamentos e verificador aprovado.
    US$ 0,0157 → 0,0090, −43 %); nas *simple* 11,1 k → 5,8 k (−47 %), nas *medium* 6,8 k → 5,1 k
    (−25 %). Acerto e ordem não mudam (precisão até sobe a 100 %) — é ganho puro de custo, e afasta
    o contexto de qualquer limite prático.
-5. **Exemplos anotados: para o Gemini 2.5 Flash, não compram acerto.** Sem os 3 exemplos por
-   afinidade a execução gasta ~550 tokens a menos nas *simple* (−9 %) e ~1,7 k nas *hard* (−7 %),
-   o acerto fica igual (67/68; o único erro foi um `ReadTimeout` de 60 s da API) e a ordem sobe
-   (98 % vs 95 %: com exemplos o modelo pulou `locate_fault` e chamou `isolate_fault` direto nas 6
-   execuções de M07 e M09 — resposta certa, ordem 50 %; sem exemplos, 1 vez) — mas a precisão cai
-   (96 % vs 99 %: em 4 das 22 *hard* ele fez `propose_plan` quando a pergunta só pedia um número;
-   precisão *hard* 91 %). Os exemplos, portanto, servem hoje para **conter** o modelo (não propor
-   sem pedido), não para ensiná-lo a sequência — que o prompt de regras já ensina. Com o Flash o
-   custo dos exemplos (US$ 0,0002–0,0005/exec.) é irrelevante; a decisão fica para o OpenAI e para
-   modelos menores (Ollama).
+5. **Exemplos anotados: o efeito agora parece claramente dependente do provedor.** No Gemini 2.5
+   Flash, tirar os exemplos zera o `MALFORMED_FUNCTION_CALL` nas *hard* (8/55 → **0/55**), mas o
+   custo sobe (19,2 k → **25,4 k** tokens/exec.) e a precisão/ordem não melhoram o suficiente para
+   justificar uma troca global. No OpenAI, com o mesmo recorte *hard* k=5, o acerto fica em
+   **55/55** com e sem exemplos; sem exemplos ele só fica um pouco mais barato e rápido
+   (18,9 k → 17,7 k tokens; US$ 0,0081 → 0,0075). A leitura correta, portanto, é: os exemplos não
+   explicam o comportamento de todos os provedores; o problema observado é específico do Flash.
 6. **No estado atual, o erro remanescente é específico do provedor.** No Gemini, todos os 8 erros
    *hard* da configuração
    padrão (e os 2 da rodada sem compactar) são `finish_reason = function_call_filter:
@@ -197,9 +215,9 @@ replanejamentos e verificador aprovado.
    1,0) além do lembrete — a temperatura 0 tende a reproduzir a mesma chamada malformada; numa
    validação de 24 execuções nas 6 tarefas que falharam (H01, H02, H04, H06, H08, H10, k=4, com
    exemplos) sobrou **1 erro (4 %)** contra 15 % — melhora, mas com n pequeno; a tentativa repetida
-   ainda falhou nesse caso. No OpenAI o problema não é tool call malformada, e sim resposta final
-   numérica em duas tarefas *medium*. Portanto, a discussão sobre desligar exemplos continua aberta
-   e precisa do A/B do bloco seguinte.
+   ainda falhou nesse caso. O A/B k=5 reforça que esse ruído vem do Gemini: no OpenAI o problema
+   não é tool call malformada, e sim resposta final numérica em duas tarefas *medium* do benchmark
+   completo.
 7. **Sem manobra é tão importante quanto manobrar.** Nos dois eventos novos (`chave_indisponivel`,
    `falta_transitoria`) o agente não propôs nada em nenhuma das 14 execuções do Gemini (nem nas 30
    do fake) e citou o número certo de clientes; numa execução de M12 o Gemini consultou
@@ -251,10 +269,10 @@ Rodada de 2026-09-10 (PR #36), mantida como histórico:
 
 ### Pendências
 
-- Confirmar o efeito dos exemplos no `MALFORMED_FUNCTION_CALL`: `--provider gemini --nivel hard
-  --k 5 --seed 42 --sem-exemplos` (55 execuções, ~US$ 0,55) contra os 8/55 com exemplos; se
-  confirmar, o perfil `gemini` pode desligar os exemplos por padrão (ou trocar o formato textual
-  `ferramenta(arg=…)` dos exemplos por uma lista) — decisão para o mantenedor.
+- Avaliar uma mitigação **específica do perfil Gemini** para o `MALFORMED_FUNCTION_CALL`: manter os
+  exemplos ligados, mas trocar o formato textual `ferramenta(arg=…)` por uma lista/JSON mais
+  literal, ou desabilitá-los só no perfil `gemini` se a apresentação priorizar robustez acima de
+  custo e explicabilidade.
 - Tempo de resposta da API: um `ReadTimeout` de 60 s (H11, sem exemplos) — o cliente não repete em
   timeout; avaliar `timeout` maior ou repetição também nesse caso.
 - Os preços em `PRECOS_USD_MILHAO` são de lista (Gemini conferido em 2026-09-11; OpenAI do
