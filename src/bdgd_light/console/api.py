@@ -432,11 +432,21 @@ def criar_app(
                 409,
                 "proposta sem detalhes elétricos disponíveis; gere alternativas com score=true",
             )
+        score_escolhido = next(
+            (
+                o["score"]
+                for o in opcoes
+                if o.get("escolhida") and isinstance(o.get("score"), Mapping)
+            ),
+            opcoes[0]["score"],
+        )
         return {
             "proposta_id": p["id"],
             "status": p["status"],
             "falta": p["falta"],
             "escolhida": p["chave"],
+            "simulado_em": score_escolhido.get("simulado_em"),
+            "estado_rede": score_escolhido.get("estado_rede"),
             "opcoes": opcoes,
         }
 
