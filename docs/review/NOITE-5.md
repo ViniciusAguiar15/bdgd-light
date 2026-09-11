@@ -145,7 +145,7 @@ o que custou caro na rodada 4 (ver `docs/review/MANHA-4.md`, seção "Processo")
 
 ## 5. Issue #84 — resultados consolidados gerados a partir dos CSVs do benchmark (20:35)
 
-- **Branch/PR:** `docs/84-resultados-consolidados`, PR desta issue.
+- **Branch/PR:** `docs/84-resultados-consolidados`, PR #89.
 - **O que mudou no código/documentação:** criei `scripts/gerar_resultados.py`, que percorre
   deterministicamente os CSVs versionados de `docs/bench/`, resume métricas por arquivo/família
   (pass@1, pass@k efetivo, ordem, precisão, chamadas desnecessárias, tokens, custo, tempo e taxa de
@@ -179,7 +179,7 @@ o que custou caro na rodada 4 (ver `docs/review/MANHA-4.md`, seção "Processo")
   - #81 — suíte adversarial do verificador → PR #86.
   - #82 — ganho dos exemplos anotados (resultado nulo bem medido, sem forçar conclusão) → PR #87.
   - #83 — replay da auditoria do agente → PR #88.
-  - #84 — resultados consolidados gerados a partir dos CSVs do benchmark → PR desta tarefa.
+  - #84 — resultados consolidados gerados a partir dos CSVs do benchmark → PR #89.
 - **Estado final esperado do repositório ao concluir esta branch/PR:** `main` atualizado com os cinco
   squash-merges da rodada 5, issues #80–#84 fechadas e nenhum PR pendente dessa fila.
 - **Pendências conhecidas:** nesta rodada não faltou chave para concluir as entregas. `OPENAI_API_KEY`
