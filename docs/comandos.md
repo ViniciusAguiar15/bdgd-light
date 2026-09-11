@@ -590,9 +590,10 @@ SMOKE_FLUXO=1 SMOKE_PASSOS=1 SMOKE_TOKEN=demo SMOKE_BASE=base-nenhuma SMOKE_CAPT
 
 ### `bdgd-light bench` — benchmark do agente (pass@k, ordenação, tokens e US$ por acerto)
 
-Roda as 34 tarefas de `bench/tarefas.yaml` (10 *simple* — topologia; 13 *medium* — chave, zona e
+Roda as 38 tarefas de `bench/tarefas.yaml` (10 *simple* — topologia; 13 *medium* — chave, zona e
 isolamento de uma falta, mais dois eventos **sem manobra**: chave indisponível e falta transitória;
-11 *hard* — restauração com o gêmeo, quatro delas o evento completo com proposta) `n` vezes com um
+15 *hard* — restauração com o gêmeo, quatro delas do bloco **hard+** com restrição, indisponibilidade
+e replanejamento após rejeição) `n` vezes com um
 provedor, calcula pass@1/pass@k, ordenação e precisão da sequência de ferramentas (LCS contra a
 referência anotada), tokens e US$ (preço de lista) por acerto e tempo, e grava
 `docs/bench/<data>-<provedor>[-modo].csv|.md` com a tabela comparativa de todos os CSVs da pasta.
@@ -600,11 +601,22 @@ O gabarito de cada tarefa é recalculado pelas próprias ferramentas da sessão 
 confere). Metodologia e resultados em [`docs/bench.md`](docs/bench.md).
 
 ```bash
-uv run bdgd-light bench --gabarito                                  # confere os 34 gabaritos (sem LLM)
+uv run bdgd-light bench --gabarito                                  # confere os 38 gabaritos (sem LLM)
 uv run bdgd-light bench --provider fake --k 5 --seed 42             # baseline determinístico, 170 execuções
 uv run bdgd-light bench --provider gemini --nivel simple --k 3 --seed 42
 uv run bdgd-light bench --provider openai --k 5 --seed 42           # OPENAI_API_KEY no ambiente
 uv run bdgd-light bench --provider fake --k 5 --seed 42 --sem-compactar   # mede o custo sem compactação
+```
+
+### Gerar `docs/resultados.md` — consolidado rastreável dos benchmarks
+
+Lê os CSVs mais recentes de `docs/bench/` e cruza esses números com as fontes versionadas do recorte
+(`docs/bench.md`, `docs/escopo-cidade.md`, `docs/agent.md`, `docs/review/NOITE.md` e
+`docs/agent/sessao-tijuca.json`) para reescrever `docs/resultados.md`. A saída é **determinística**:
+se as fontes não mudarem, rodar o comando duas vezes produz o mesmo arquivo.
+
+```bash
+uv run python scripts/gerar_resultados.py
 ```
 
 ## Estrutura do repositório
