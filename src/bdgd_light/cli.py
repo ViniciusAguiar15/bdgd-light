@@ -1606,7 +1606,7 @@ def _imprimir_bench(resumo: dict, k: int) -> None:
     tabela = Table(title="benchmark", show_lines=False)
     for col in (
         "nível", "tarefas", "exec.", "pass@1", f"pass@{k}", "ordem", "precisão",
-        "tokens", "tokens/pass@1", "chars ferr.", "s/exec.",
+        "tokens", "tokens/pass@1", "US$/exec.", "chars ferr.", "s/exec.",
     ):  # fmt: skip
         tabela.add_column(col, justify="right" if col not in ("nível",) else "left")
     for nivel, m in resumo.items():
@@ -1620,6 +1620,7 @@ def _imprimir_bench(resumo: dict, k: int) -> None:
             f"{100 * m['precisao']:.0f} %",
             f"{m['tokens_medio']:,.0f}",
             "—" if m["tokens_por_pass1"] is None else f"{m['tokens_por_pass1']:,.0f}",
+            "—" if m["usd_medio"] is None else f"{m['usd_medio']:.4f}",
             f"{m['chars_ferramentas_medio']:,.0f}",
             f"{m['segundos_medio']:.1f}",
         )

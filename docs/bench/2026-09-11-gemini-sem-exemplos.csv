@@ -1,0 +1,180 @@
+tarefa,nivel,cluster,repeticao,acerto,obtido,esperado,sequencia,referencia,ordem,precisao,rodadas,tokens_prompt,tokens_completion,tokens_total,tokens_informados,chars_ferramentas,segundos_llm,segundos_ferramentas,segundos_total,replanejamentos,recusas,erro,resposta,provider,modelo,exemplos,compactado,seed,data
+S08,simple,taquara,2,1,17.979,17.979,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,5674,45,5795,1,2643,2.038,0.011,2.049,0,0,,O alimentador TQR33859 possui 17.979 km de rede MT.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H02,hard,tijuca,2,1,46.0,45.978043127965336,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,4,12387,618,13306,1,4981,6.585,7.573,14.159,0,0,,"A falta está registrada no trecho 11304252 do CTMT ALC9925, com o religador 10927447 aberto. Um total de 4042 clientes (4036 UCBT e 6 UCMT) estão sem tensão.
+
+O plano de isolamento da falta envolve a abertura das chaves 10927447 e 11035901. Após o isolamento, o religador 10927447 não poderá religar.",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M05,medium,ipanema,2,1,404.0,404,"[""downstream_customers""]","[""downstream_customers""]",1.0,1.0,2,4386,58,4555,1,159,2.579,0.005,2.584,0,0,,"Se a chave 505111870 (PTS0001) abrir, 404 clientes UCBT ficarão sem tensão.",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M03,medium,taquara,2,1,1361.0,1361,"[""downstream_customers""]","[""downstream_customers""]",1.0,1.0,2,4434,72,4588,1,165,1.973,0.004,1.977,0,0,,"Se a chave 640922462 (TQR33859) for aberta, 1361 unidades consumidoras de baixa tensão (UCBT) perderão o fornecimento de energia.",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S04,simple,tijuca,2,1,436.0,436,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,5153,45,5282,1,1685,1.7,0.009,1.71,0,0,,O alimentador URG29983 é composto por 436 trechos de rede MT.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H07,hard,ipanema,1,1,479.0,479,"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,0.75,5,14288,725,16014,1,2209,11.403,0.085,11.488,0,0,,"Após isolar a zona em falta, **479 UCBT** sãs continuam sem tensão.
+Existem **0** opções de restauração.
+
+**Resumo para o operador:**
+
+*   **Falta:** Registrada no trecho 11409068 do CTMT PTS0001, com o religador 10933610 aberto.
+*   **Clientes sem tensão:** Inicialmente, 1730 UCBT estavam sem tensã",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M13,medium,ipanema,1,1,1730.0,1730,[],[],1.0,1.0,1,2446,101,2853,1,0,2.439,0.0,2.439,0,0,,"Foi registrada uma falta transitória no alimentador PTS0001, no trecho 11409068. O religador 10933610 atuou e religou com sucesso após 0.5 segundos.
+
+Durante o tempo morto do religador, 1730 clientes (UCBT) ficaram sem tensão. Como o religador religou com sucesso, a energia foi restaurada automatica",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H10,hard,taquara,1,1,"""11053522""","[""11053522"", ""11053620"", ""11056672"", ""752622332"", ""134733185"", ""258481641""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,5,21434,734,25379,1,7553,21.378,8.013,29.391,0,0,,"**Resumo para o operador:**
+
+**Falta:** Permanente no trecho **260547810** do CTMT **TQR33862**. O religador **10924213** abriu.
+**Clientes sem tensão:** Inicialmente, **4351** clientes (UCBT) ficaram sem tensão.
+**Isolamento:** As chaves a serem abertas para isolar a falta são **479996584**, **5369",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S09,simple,taquara,1,1,82.0,82,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,5468,39,5585,1,2236,1.557,0.014,1.571,0,0,,O alimentador TQR0007 possui 82 transformadores de distribuição.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H03,hard,tijuca,1,1,4.0,4,"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,0.75,5,18906,1429,20570,1,6551,10.126,8.969,19.095,0,0,,"Existem 4 opções de restauração eletricamente viáveis.
+
+**Resumo para o operador:**
+
+*   **Falta:** Trecho 11304252 do CTMT ALC9925. O religador 10927447 abriu.
+*   **Clientes sem tensão:** 4042 clientes (4036 UCBT / 6 UCMT).
+*   **Isolamento:** A falta será isolada abrindo a chave 11035901. O relig",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S05,simple,ipanema,2,1,1816.0,1816,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,4587,38,4706,1,624,1.577,0.019,1.596,0,0,,O alimentador PTS9088 possui 1816 clientes UCBT.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M07,medium,tijuca,2,1,4036.0,4036,"[""locate_fault"", ""isolate_fault""]","[""locate_fault"", ""isolate_fault""]",1.0,1.0,3,7396,201,7877,1,911,4.587,0.025,4.612,0,0,,"Após isolar a zona em falta, 4036 UCBTs sãs continuam sem tensão.
+
+Resumo para o operador:
+Falta permanente no trecho 11304252 do CTMT ALC9925, com o religador 10927447 aberto.
+4036 UCBT e 6 UCMT (total de 4042 clientes) estão sem tensão.
+O isolamento da falta será feito abrindo as chaves 10927447 e",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M06,medium,tijuca,1,1,35.0,35,"[""locate_fault""]","[""locate_fault""]",1.0,1.0,2,4649,29,4892,1,408,2.703,0.005,2.709,0,0,,A zona de falta entre as chaves é formada por 35 nós (PACs).,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M01,medium,tijuca,1,1,1307.0,1307,"[""downstream_customers""]","[""downstream_customers""]",1.0,1.0,2,4406,62,4590,1,166,1.73,0.003,1.733,0,0,,"Se a chave 1006470683 (ALC9925) abrir, 1307 UCBTs ficarão sem tensão.",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S10,simple,taquara,1,1,58.0,58,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,5949,48,6094,1,3171,1.859,0.013,1.872,0,0,,O alimentador TQR33862 possui 58 chaves no total.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H01,hard,tijuca,1,1,"""974020904""","[""974020904"", ""529355823""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,5,19737,731,21608,1,6530,10.914,7.561,18.475,0,0,,"A falta permanente foi registrada no trecho 11304252 do CTMT ALC9925, com o religador 10927447 aberto. Um total de 4042 clientes (4036 UCBT e 6 UCMT) estão sem tensão.
+
+O isolamento da falta requer a abertura da chave 11035901. O religador 10927447 não pode religar após o isolamento.
+
+Foram encontra",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M02,medium,tijuca,2,1,1395.0,1395,"[""downstream_customers""]","[""downstream_customers""]",1.0,1.0,2,4402,50,4511,1,165,1.536,0.001,1.537,0,0,,Existem 1395 clientes UCBT a jusante da chave 977464767.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M10,medium,taquara,2,1,4.0,4,"[""locate_fault"", ""isolate_fault""]","[""locate_fault""]",1.0,0.5,3,7789,288,8161,1,1361,4.232,0.068,4.3,0,0,,"Para isolar a zona em falta no trecho 11798327, 4 chaves de fronteira precisam ser abertas.
+
+**Resumo para o operador:**
+
+*   **Falta:** Trecho 11798327, CTMT TQR33862, religador 10924213.
+*   **Clientes sem tensão:** 4351 clientes (UCBT).
+*   **Isolamento:** As chaves a serem abertas para isolar a ",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M13,medium,ipanema,2,1,1730.0,1730,[],[],1.0,1.0,1,2446,94,2736,1,0,1.868,0.0,1.868,0,0,,"Foi registrada uma falta transitória no CTMT PTS0001, no trecho 11409068. O religador 10933610 atuou e religou com sucesso.
+
+Durante o tempo morto de 5.0 segundos, 1730 clientes ficaram sem tensão. Como o religador religou com sucesso, a situação foi normalizada automaticamente e não há necessidade ",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H09,hard,taquara,1,1,10.0,10,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,4,13380,59,13787,1,5948,5.094,14.606,19.7,0,0,,Existem 10 opções de restauração para a falta no trecho 11798327.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S10,simple,taquara,2,1,58.0,58,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,5949,48,6098,1,3171,1.733,0.005,1.738,0,0,,O alimentador TQR33862 possui 58 chaves no total.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M02,medium,tijuca,1,1,1395.0,1395,"[""downstream_customers""]","[""downstream_customers""]",1.0,1.0,2,4402,50,4511,1,165,1.46,0.001,1.461,0,0,,Existem 1395 clientes UCBT a jusante da chave 977464767.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S06,simple,ipanema,2,1,31.0,31,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,4610,47,4771,1,630,1.713,0.004,1.717,0,0,,O alimentador PTS0001 possui 31 chaves normalmente abertas (NA).,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M11,medium,ipanema,1,1,271.0,271,"[""downstream_customers""]","[""downstream_customers""]",1.0,1.0,2,4386,58,4517,1,159,2.171,0.003,2.174,0,0,,"Se a chave 504519384 (PTS9088) abrir, 271 clientes UCBT ficarão sem tensão.",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H07,hard,ipanema,2,1,479.0,479,"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,0.75,5,14250,702,16004,1,2136,10.971,0.028,10.999,0,0,,"Após isolar a falta no trecho 11409068, do CTMT PTS0001, que causou a abertura do religador 10933610, 479 UCBT sãs continuam sem tensão.
+
+Não existem 0 opções de restauração viáveis para reenergizar os clientes desligados.
+
+**Resumo para o operador:**
+
+*   **Falta:** Trecho 11409068 (PTS0001), relig",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H04,hard,tijuca,1,1,"""746851189""","[""746851189""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,5,20266,858,23095,1,6295,16.62,4.901,21.521,0,0,,"Falta permanente no trecho 1006470677 do CTMT ALC9925. O religador 10927447 abriu, deixando 4042 clientes (4036 UCBT / 6 UCMT) sem tensão.
+
+**Isolamento:**
+A zona de falta está entre as chaves 1006470683, 1007089101 e 11035943. Para isolar a falta, as seguintes chaves devem ser abertas: 1006470683, ",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H11,hard,ipanema,1,1,null,[],"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,5,15446,418,17752,1,2121,17.517,0.078,17.595,0,0,,"Prezado operador,
+
+Foi registrada uma falta permanente no **trecho 11730406** do **CTMT PTS9924**, com o **religador 10934149** aberto. Inicialmente, **1174 clientes (UCBT)** ficaram sem tensão.
+
+A localização da falta indica que a zona afetada está entre o religador e a chave 449470191, impactando ",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M12,medium,ipanema,1,1,1816.0,1816,[],[],1.0,1.0,1,2328,161,2815,1,0,2.991,0.0,2.991,0,0,,"Foi registrada a restrição operacional para a chave 10934177 no CTMT PTS9088.
+
+**Resumo para o operador:**
+A chave 10934177 (normalmente fechada, atualmente fechada) está com falha de comunicação, o que significa que o telecomando não está disponível. Qualquer manobra nesta chave dependerá de uma eq",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M03,medium,taquara,1,1,1361.0,1361,"[""downstream_customers""]","[""downstream_customers""]",1.0,1.0,2,4434,68,4584,1,165,1.893,0.003,1.896,0,0,,"Se a chave 640922462 (TQR33859) for aberta, 1361 unidades consumidoras de baixa tensão (UCBT) perderão tensão.",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H08,hard,taquara,1,1,"""11053620""","[""11053620"", ""11056672"", ""789941518"", ""11053522"", ""11053627"", ""1007642983"", ""752622332"", ""11026494"", ""134733185"", ""258481641""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,5,21743,597,23308,1,7777,11.584,31.423,43.008,0,0,,"Foi detectada uma falta permanente no trecho 11798327 do CTMT TQR33862. O religador 10924213 abriu, deixando 4351 clientes sem tensão.
+
+A zona de falta está localizada entre as chaves 11026473, 22826994, 528574225 e 790615689, afetando 516 clientes.
+
+Para isolar a falta e restaurar o trecho são, as ",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S03,simple,tijuca,1,1,9.0,9,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,4945,50,5106,1,1275,2.098,0.004,2.102,0,0,,Existem 9 chaves normalmente abertas (NA) no alimentador ALC9946.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M09,medium,taquara,1,1,2023.0,2023,"[""locate_fault"", ""isolate_fault""]","[""locate_fault"", ""isolate_fault""]",1.0,1.0,3,7852,264,8227,1,1361,3.978,0.117,4.095,0,0,,"Após isolar a zona em falta no trecho 11798327 (TQR33862) e religar o tronco são, 2023 UCBT continuam sem tensão e são restauráveis por outra fonte.
+
+Resumo para o operador:
+Falta no trecho 11798327 do CTMT TQR33862, com o religador 10924213 aberto.
+Inicialmente, 4351 clientes (UCBT) ficaram sem ten",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M01,medium,tijuca,2,1,1307.0,1307,"[""downstream_customers""]","[""downstream_customers""]",1.0,1.0,2,4406,62,4590,1,166,1.732,0.001,1.733,0,0,,"Se a chave 1006470683 (ALC9925) abrir, 1307 UCBTs ficarão sem tensão.",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H04,hard,tijuca,2,1,"""746851189""","[""746851189""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,5,20251,621,24314,1,6273,20.971,5.832,26.804,0,0,,"**Resumo para o operador:**
+
+**Falta:**
+*   **Trecho:** 1006470677
+*   **CTMT:** ALC9925
+*   **Religador:** 10927447
+
+**Clientes sem tensão:**
+*   Inicialmente, 4042 clientes (4036 UCBT / 6 UCMT) ficaram sem tensão.
+*   Após o isolamento da falta e o religamento do tronco são, 1310 clientes (1307 UC",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S06,simple,ipanema,1,1,31.0,31,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,4610,47,4736,1,630,1.621,0.005,1.626,0,0,,O alimentador PTS0001 possui 31 chaves normalmente abertas (NA).,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S01,simple,tijuca,1,1,4.246,4.246,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,5334,44,5464,1,2068,1.854,0.006,1.86,0,0,,O alimentador ALC9925 possui 4.246 quilômetros de rede MT.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S09,simple,taquara,2,1,82.0,82,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,5468,39,5585,1,2236,1.762,0.005,1.767,0,0,,O alimentador TQR0007 possui 82 transformadores de distribuição.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H05,hard,tijuca,1,1,644.0,644,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,4,12046,525,13028,1,3591,7.813,3.768,11.581,0,0,,"A falta permanente no trecho 977464723 do CTMT URG29983 causou a abertura do religador 10926271, deixando 3395 UCBT e 1 UCMT (total de 3396 clientes) sem tensão.
+
+Após a localização da falta, a zona de falta foi identificada, e o plano de isolamento propõe a abertura das chaves 10915362, 11006780 e ",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H09,hard,taquara,2,1,10.0,10,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,4,13380,59,13742,1,5948,5.855,16.08,21.935,0,0,,Existem 10 opções de restauração para a falta no trecho 11798327.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H02,hard,tijuca,1,1,46.0,45.978043127965336,"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,0.75,5,18748,1153,21472,1,6550,13.962,8.126,22.088,0,0,,"A margem do disjuntor da melhor opção viável de restauração é de 46.0%.
+
+**Resumo para o operador:**
+Falta permanente no trecho 11304252 do CTMT ALC9925, com o religador 10927447 aberto.
+4042 clientes (4036 UCBT / 6 UCMT) estão sem tensão.
+O isolamento da falta requer a abertura das chaves 10927447 ",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M04,medium,taquara,1,1,1261.0,1261,"[""downstream_customers""]","[""downstream_customers""]",1.0,1.0,2,4428,47,4542,1,164,1.664,0.001,1.665,0,0,,Existem 1261 UCBT a jusante da chave 57067405.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H06,hard,ipanema,1,1,null,[],"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,5,15411,386,16672,1,2178,8.808,0.043,8.851,0,0,,"**Resumo para o operador:**
+
+Foi registrada uma falta permanente no trecho **11409068** do CTMT **PTS0001**. O religador **10933610** abriu, deixando **1730 clientes** sem tensão.
+
+A falta foi localizada na zona entre as chaves **10933610**, **505111870** e **561826961**, afetando **1251 clientes**.",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M11,medium,ipanema,2,1,271.0,271,"[""downstream_customers""]","[""downstream_customers""]",1.0,1.0,2,4386,58,4556,1,159,2.328,0.001,2.329,0,0,,"Se a chave 504519384 (PTS9088) abrir, 271 clientes UCBT ficarão sem tensão.",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S07,simple,ipanema,1,1,5.956,5.956,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,4647,43,4762,1,742,1.651,0.004,1.655,0,0,,A extensão da rede MT do alimentador PTS4022 é de 5.956 km.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H10,hard,taquara,2,1,"""11053522""","[""11053522"", ""11053620"", ""11056672"", ""752622332"", ""134733185"", ""258481641""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,5,20973,547,24858,1,6976,20.388,16.002,36.39,0,0,,"**Resumo para o operador:**
+
+**Falta:** Falta permanente no trecho 260547810 do CTMT TQR33862. O religador 10924213 abriu.
+
+**Clientes sem tensão:** Inicialmente, 4351 clientes ficaram sem tensão. Após o isolamento da falta e o religamento do tronco são, 1261 clientes permanecem sem tensão.
+
+**Isola",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H03,hard,tijuca,2,1,4.0,4,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,4,12339,47,12747,1,4981,4.291,8.735,13.026,0,0,,Existem 4 opções de restauração eletricamente viáveis.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M10,medium,taquara,1,1,4.0,4,"[""locate_fault"", ""isolate_fault""]","[""locate_fault""]",1.0,0.5,3,7789,288,8203,1,1361,3.525,0.013,3.538,0,0,,"Para isolar a zona em falta no trecho 11798327, 4 chaves de fronteira precisam ser abertas.
+
+**Resumo para o operador:**
+
+*   **Falta:** Trecho 11798327, CTMT TQR33862, religador 10924213.
+*   **Clientes sem tensão:** 4351 clientes (UCBT).
+*   **Isolamento:** As chaves a serem abertas para isolar a ",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M07,medium,tijuca,1,1,4036.0,4036,"[""isolate_fault""]","[""locate_fault"", ""isolate_fault""]",0.5,1.0,2,4680,33,5081,1,503,2.894,0.004,2.898,0,0,,"Após isolar a zona em falta, 4036 UCBTs sãs continuam sem tensão.",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H11,hard,ipanema,2,0,null,[],[],"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",0.0,0.0,0,0,0,0,0,0,0.0,0.0,22.521,0,0,ReadTimeout: [Errno 60] Operation timed out,,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S07,simple,ipanema,2,1,5.956,5.956,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,4647,43,4764,1,742,1.852,0.003,1.855,0,0,,A extensão da rede MT do alimentador PTS4022 é de 5.956 km.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H05,hard,tijuca,2,1,644.0,644,"[""locate_fault"", ""isolate_fault"", ""restore_options""]","[""locate_fault"", ""isolate_fault"", ""restore_options""]",1.0,1.0,4,12046,666,13174,1,3591,8.033,3.395,11.428,0,0,,"A falta permanente no trecho 977464723 (CTMT URG29983) causou a interrupção de 3396 clientes (3395 UCBT e 1 UCMT). O religador 10926271 abriu.
+
+A zona de falta não possui clientes. Após o isolamento da falta, 1395 clientes (UCBT) permanecerão sem energia. O religador 10926271 pode ser religado após ",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S01,simple,tijuca,2,1,4.246,4.246,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,5334,44,5462,1,2068,1.645,0.003,1.648,0,0,,O alimentador ALC9925 possui 4.246 quilômetros de rede MT.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S02,simple,tijuca,1,1,5824.0,5824,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,5065,45,5308,1,1544,2.309,0.004,2.313,0,0,,O alimentador RCP9882 atende 5824 unidades consumidoras de baixa tensão (UCBT).,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M04,medium,taquara,2,1,1261.0,1261,"[""downstream_customers""]","[""downstream_customers""]",1.0,1.0,2,4428,47,4542,1,164,1.7,0.001,1.701,0,0,,Existem 1261 UCBT a jusante da chave 57067405.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M09,medium,taquara,2,1,2023.0,2023,"[""locate_fault"", ""isolate_fault""]","[""locate_fault"", ""isolate_fault""]",1.0,1.0,3,7852,264,8242,1,1361,3.767,0.012,3.779,0,0,,"Após isolar a zona em falta no trecho 11798327 (TQR33862) e religar o tronco são, 2023 UCBT continuam sem tensão e são restauráveis por outra fonte.
+
+Resumo para o operador:
+Falta no trecho 11798327 do CTMT TQR33862, com o religador 10924213 aberto.
+Inicialmente, 4351 clientes (UCBT) ficaram sem ten",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S03,simple,tijuca,2,1,9.0,9,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,4945,50,5106,1,1275,1.902,0.004,1.906,0,0,,Existem 9 chaves normalmente abertas (NA) no alimentador ALC9946.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M08,medium,ipanema,1,1,1251.0,1251,"[""locate_fault""]","[""locate_fault""]",1.0,1.0,2,4674,34,4814,1,432,2.031,0.004,2.035,0,0,,"Existem 1251 clientes UCBT dentro da zona de falta, entre as chaves de fronteira.",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H06,hard,ipanema,2,1,null,[],"[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,5,15364,326,16850,1,2097,9.866,0.03,9.897,0,0,,"**Resumo para o operador:**
+
+Foi registrada uma falta permanente no trecho 11409068 do CTMT PTS0001, operado pelo religador 10933610. Inicialmente, 1730 clientes UCBT ficaram sem tensão.
+
+A zona de falta foi localizada e afeta 1251 clientes UCBT. Para isolar a falta, as chaves a serem abertas são 50",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H08,hard,taquara,2,1,"""11053620""","[""11053620"", ""11056672"", ""789941518"", ""11053522"", ""11053627"", ""1007642983"", ""752622332"", ""11026494"", ""134733185"", ""258481641""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,5,21826,699,24585,1,7914,15.138,17.53,32.668,0,0,,"Falta permanente no trecho 11798327 do CTMT TQR33862, com indicação na chave 11026473. O religador 10924213 abriu, deixando 4351 clientes sem tensão.
+
+**Isolamento:**
+A zona de falta está entre as chaves 11026473, 22826994, 528574225 e 790615689. Para isolar a falta, as seguintes chaves devem ser ab",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M12,medium,ipanema,2,1,1816.0,1816,[],[],1.0,1.0,1,2328,137,2686,1,0,2.228,0.0,2.228,0,0,,"A chave 10934177 (CTMT PTS9088), normalmente fechada, está indisponível para telecomando devido a problemas na bateria do comando. Isso significa que qualquer manobra que envolva essa chave precisará ser realizada por uma equipe em campo.
+
+Como consequência, 1816 clientes a jusante dessa chave, aten",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S04,simple,tijuca,1,1,436.0,436,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,5153,45,5282,1,1685,1.955,0.003,1.958,0,0,,O alimentador URG29983 é composto por 436 trechos de rede MT.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+H01,hard,tijuca,2,1,"""974020904""","[""974020904"", ""529355823""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]","[""locate_fault"", ""isolate_fault"", ""restore_options"", ""propose_plan""]",1.0,1.0,5,19785,833,22813,1,6634,19.237,8.819,28.056,0,0,,"Ocorreu uma falta permanente no trecho 11304252 do CTMT ALC9925. O religador 10927447 abriu, deixando 4042 clientes (4036 UCBT e 6 UCMT) sem tensão.
+
+**Isolamento da Falta:**
+A zona de falta está entre as chaves 10927447 e 11035901. Para isolar a falta, a chave 11035901 deve ser aberta. Após o isola",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S05,simple,ipanema,1,1,1816.0,1816,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,4587,38,4706,1,624,1.796,0.041,1.837,0,0,,O alimentador PTS9088 possui 1816 clientes UCBT.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M05,medium,ipanema,1,1,404.0,404,"[""downstream_customers""]","[""downstream_customers""]",1.0,1.0,2,4386,58,4555,1,159,2.338,0.001,2.339,0,0,,"Se a chave 505111870 (PTS0001) abrir, 404 clientes UCBT ficarão sem tensão.",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M06,medium,tijuca,2,1,35.0,35,"[""locate_fault""]","[""locate_fault""]",1.0,1.0,2,4649,29,4892,1,408,2.305,0.005,2.31,0,0,,A zona de falta entre as chaves é formada por 35 nós (PACs).,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+M08,medium,ipanema,2,1,1251.0,1251,"[""locate_fault""]","[""locate_fault""]",1.0,1.0,2,4674,34,4809,1,432,2.807,0.006,2.813,0,0,,"Existem 1251 clientes UCBT dentro da zona de falta, entre as chaves de fronteira.",gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S02,simple,tijuca,2,1,5824.0,5824,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,5065,45,5309,1,1544,2.474,0.004,2.478,0,0,,O alimentador RCP9882 atende 5824 unidades consumidoras de baixa tensão (UCBT).,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00
+S08,simple,taquara,1,1,17.979,17.979,"[""get_topology""]","[""get_topology""]",1.0,1.0,2,5674,45,5795,1,2643,1.663,0.005,1.668,0,0,,O alimentador TQR33859 possui 17.979 km de rede MT.,gemini,gemini-2.5-flash,0,1,42,2026-09-11T11:20:35+00:00

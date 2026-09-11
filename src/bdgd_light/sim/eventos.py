@@ -261,6 +261,10 @@ class Simulador:
                 "estado": "aberta" if d.get("aberta") else "fechada",
                 "tlcd": bool(d.get("tlcd")),
             }
+            if not d.get("aberta"):
+                # quem depende dessa chave para uma manobra remota (NF: tudo a jusante dela)
+                nos = self.rede.downstream_switch(chave)
+                detalhes["clientes_a_jusante"] = self.rede.customers(nos).to_dict()
         return self._evento(CHAVE_INDISPONIVEL, detalhes, chave=chave, ctmt=ctmt)
 
     # -- sorteios (determinísticos para a mesma semente) ------------------------------------------

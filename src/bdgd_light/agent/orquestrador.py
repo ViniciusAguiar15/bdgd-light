@@ -262,15 +262,20 @@ Regras:
    sem chave (isolar a falta e religar o tronco são) e recomende despacho de equipe.
 3. Só proponha chaves que apareçam em restore_options; nunca feche uma NA antes de abrir as chaves
    de fronteira; não conte com chaves informadas como indisponíveis.
-4. Falta transitória (o religador religou): não há manobra — registre e explique. Pico de carga:
+4. Falta transitória (o religador religou): não há manobra — registre e explique, citando quantos
+   clientes ficaram sem tensão durante o tempo morto (detalhes do evento). Pico de carga:
    run_powerflow com o loadmult do evento e relate violações e sobrecargas. Chave indisponível:
-   registre a restrição, sem manobra.
+   registre a restrição, sem manobra, e diga quantos clientes a jusante passam a depender de equipe.
 5. Se o verificador recusar sua proposta (erro da ferramenta com "problemas"), leia os problemas e
    escolha outra opção, ou proponha só o isolamento.
 6. Termine com um resumo em português para o operador: falta (trecho, CTMT, religador), clientes
    sem tensão, isolamento (chaves a abrir), opção escolhida e por quê (margem em %, tensão em pu),
    alternativas descartadas e por quê, e o que ele deve aprovar (id da proposta). Objetivo, com
    unidades (A, pu, kW, clientes); sem inventar números que não vieram das ferramentas.
+7. Quando a pergunta pede um número (quantos, qual a tensão, quantas opções), a resposta final
+   tem de trazer esse número escrito explicitamente, na unidade pedida ("existem 10 opções", "Vmin
+   1,027 pu") — nunca só implícito ("a melhor e outras 9") nem um número de outra grandeza no lugar
+   (o total do CTMT em vez dos clientes que continuam sem tensão).
 """
 
 
@@ -1083,19 +1088,27 @@ def fake_operador(modelo: str = "fake-operador") -> FakeLLMClient:
             )
         if tipo == FALTA_TRANSITORIA:
             d = evento.get("detalhes", {})
+            afetados = (d.get("sem_tensao_se_religador_abrir") or {}).get("clientes") or {}
             return Text(
                 f"Falta transitória em {evento.get('trecho')} ({evento.get('ctmt')}): o religador "
-                f"{d.get('religador', '?')} religou em {d.get('tempo_morto_s', '?')} s. Nenhuma "
-                "manobra; registrar a ocorrência e acompanhar reincidência.",
+                f"{d.get('religador', '?')} religou em {d.get('tempo_morto_s', '?')} s; "
+                f"{afetados.get('ucbt', '?')} UCBT ficaram sem tensão durante o tempo morto. "
+                "Nenhuma manobra; registrar a ocorrência e acompanhar reincidência.",
                 modelo=modelo,
                 uso=Uso(),
             )
         if tipo == CHAVE_INDISPONIVEL:
             d = evento.get("detalhes", {})
+            jusante = d.get("clientes_a_jusante") or {}
+            dependem = (
+                f" {jusante.get('ucbt')} UCBT a jusante passam a depender de equipe para manobra."
+                if jusante
+                else ""
+            )
             return Text(
                 f"Chave {evento.get('chave')} ({d.get('normal', '?')}, {d.get('estado', '?')}) "
                 f"indisponível por {d.get('motivo', '?')}: não entra em planos de manobra até "
-                "restabelecer o telecomando; manobra local só por equipe.",
+                f"restabelecer o telecomando; manobra local só por equipe.{dependem}",
                 modelo=modelo,
                 uso=Uso(),
             )

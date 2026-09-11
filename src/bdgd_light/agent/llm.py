@@ -436,7 +436,11 @@ class OpenAICompatClient:
 
     # -- API ----------------------------------------------------------------------------------
     def montar_payload(
-        self, messages: Sequence[Message], tools: Sequence[ToolSpec] = ()
+        self,
+        messages: Sequence[Message],
+        tools: Sequence[ToolSpec] = (),
+        *,
+        temperatura: float | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self.modelo,
@@ -445,9 +449,19 @@ class OpenAICompatClient:
         if tools:
             payload["tools"] = [t.to_openai() for t in tools]
             payload["tool_choice"] = "auto"
-        if self.temperatura is not None:
-            payload["temperature"] = self.temperatura
+        temperatura = self.temperatura if temperatura is None else temperatura
+        if temperatura is not None:
+            payload["temperature"] = temperatura
         return payload
+
+    def temperatura_da_tentativa(self, tentativa: int) -> float | None:
+        """Temperatura da ``tentativa`` (1 = pedido original) de um pedido repetido por resposta
+        vazia: sobe 0,5 por repetição até 1,0. Com temperatura 0 o mesmo pedido tende a reproduzir
+        a mesma chamada malformada (``MALFORMED_FUNCTION_CALL`` do Gemini após ``isolate_fault``:
+        3 falhas em 3 no benchmark de 2026-09-11, as três com as 3 tentativas iguais)."""
+        if tentativa <= 1 or self.temperatura is None:
+            return self.temperatura
+        return min(1.0, self.temperatura + 0.5 * (tentativa - 1))
 
     def chat(self, messages: Sequence[Message], tools: Sequence[ToolSpec] = ()) -> Resposta:
         payload = self.montar_payload(messages, tools)
@@ -466,8 +480,13 @@ class OpenAICompatClient:
                     raise
                 self._dormir(1.0)
                 # repetir o mesmo pedido costuma falhar igual: acrescenta um lembrete (só neste
-                # pedido; o histórico do chamador não muda) para o modelo refazer a chamada
-                payload = self.montar_payload([*messages, Message.user(LEMBRETE_CHAMADA)], tools)
+                # pedido; o histórico do chamador não muda) e sobe a temperatura para o modelo
+                # refazer a chamada de outro jeito
+                payload = self.montar_payload(
+                    [*messages, Message.user(LEMBRETE_CHAMADA)],
+                    tools,
+                    temperatura=self.temperatura_da_tentativa(tentativa + 1),
+                )
                 continue
             self.ultimo_uso = resposta.uso
             return resposta

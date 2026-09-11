@@ -47,7 +47,7 @@ não usá-lo em eventos (a falta já foi registrada).
 
 ### Prompt de sistema
 
-Papel (assistente do COD da Light, nível 2), seis regras e, quando há exemplos, a seção "Exemplos
+Papel (assistente do COD da Light, nível 2), sete regras e, quando há exemplos, a seção "Exemplos
 anotados (tarefa → ferramentas → justificativa)". Regras, em resumo:
 
 1. Nunca executar manobras; toda manobra é uma proposta; **uma proposta por execução**.
@@ -56,10 +56,16 @@ anotados (tarefa → ferramentas → justificativa)". Regras, em resumo:
    `propose_plan()` sem chave (isolar e religar o tronco são) + despacho de equipe.
 3. Só chaves de `restore_options`; nunca fechar NA antes de abrir a fronteira; respeitar chaves
    indisponíveis.
-4. Transitória: registrar, sem manobra. Pico: `run_powerflow(loadmult)`. Chave indisponível:
-   registrar a restrição.
+4. Transitória: registrar, sem manobra, citando os clientes sem tensão no tempo morto. Pico:
+   `run_powerflow(loadmult)`. Chave indisponível: registrar a restrição, sem manobra, dizendo
+   quantos clientes a jusante passam a depender de equipe.
 5. Recusa do verificador → ler `problemas` e escolher outra opção (ou só isolar).
 6. Resumo final em português com unidades, alternativas descartadas e o id da proposta.
+7. Pergunta numérica → o número pedido **escrito explicitamente** na resposta final, na unidade
+   pedida — nunca implícito ("a melhor e outras 9") nem outra grandeza no lugar (o total do CTMT em
+   vez dos clientes que continuam sem tensão). Regra acrescentada pelo benchmark (issue #52): são
+   os dois erros que o critério `verificar: resposta` pegou no Gemini (H09) e no gpt-4.1-mini
+   (Ipanema, [`docs/review/RESULTADOS-OPENAI.md`](review/RESULTADOS-OPENAI.md)).
 
 ### Exemplos anotados (`docs/agent/exemplos.yaml`)
 
@@ -149,8 +155,8 @@ não checa tensão/corrente), `--sem-compactar` (retornos íntegros ao modelo), 
 `--seed`, `--json`, `--saida`. Sai com código 1 quando a execução termina com `erro` (sem proposta
 em falta permanente, rodadas esgotadas, provedor indisponível).
 
-O benchmark do agente (`bdgd-light bench`, 30 tarefas, pass@k, ordenação, tokens por acerto,
-OpenAI × Gemini × fake) está em [`docs/bench.md`](bench.md).
+O benchmark do agente (`bdgd-light bench`, 34 tarefas, pass@k, ordenação, tokens e US$ por
+acerto, OpenAI × Gemini × fake, com/sem exemplos e compactação) está em [`docs/bench.md`](bench.md).
 
 ## Validação com modelos reais (2026-09-10)
 

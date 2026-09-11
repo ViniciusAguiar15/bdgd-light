@@ -330,16 +330,27 @@ def test_openai_compat_client_repete_resposta_vazia_malformed_function_call():
     primeiro, segundo = (json.loads(p.content)["messages"] for p in pedidos)
     assert len(primeiro) == 1 and len(segundo) == 2
     assert segundo[-1]["role"] == "user" and "malformada" in segundo[-1]["content"]
+    # ... e temperatura maior: a 0 o pedido repetido reproduz a mesma chamada malformada
+    assert [json.loads(p.content)["temperature"] for p in pedidos] == [0.0, 0.5]
 
-    mock2, pedidos2 = transporte([(200, vazia), (200, vazia)])
-    dois = OpenAICompatClient(
-        ENDPOINT, token="t", max_tentativas=2, dormir=lambda _s: None, transporte=mock2
+    mock2, pedidos2 = transporte([(200, vazia), (200, vazia), (200, vazia)])
+    tres = OpenAICompatClient(
+        ENDPOINT, token="t", max_tentativas=3, dormir=lambda _s: None, transporte=mock2
     )
     with pytest.raises(RespostaVaziaError, match="MALFORMED_FUNCTION_CALL") as info:
-        dois.chat([Message.user("x")])
-    assert len(pedidos2) == 2
-    # as duas tentativas falhas custaram tokens: a exceção carrega a soma
-    assert info.value.uso == Uso(20, 0, 20)
+        tres.chat([Message.user("x")])
+    assert len(pedidos2) == 3
+    assert [json.loads(p.content)["temperature"] for p in pedidos2] == [0.0, 0.5, 1.0]
+    # as três tentativas falhas custaram tokens: a exceção carrega a soma
+    assert info.value.uso == Uso(30, 0, 30)
+    # sem temperatura configurada (None) o pedido repetido também não a inventa
+    mock3, pedidos3 = transporte([(200, vazia), (200, payload_texto("ok"))])
+    livre = OpenAICompatClient(
+        ENDPOINT, token="t", temperatura=None, max_tentativas=2, dormir=lambda _s: None,
+        transporte=mock3,
+    )  # fmt: skip
+    assert livre.chat([Message.user("x")]).content == "ok"
+    assert all("temperature" not in json.loads(p.content) for p in pedidos3)
 
 
 def test_conversar_anexa_parcial_quando_o_provedor_falha_no_meio():

@@ -22,7 +22,7 @@ nunca force-push, nunca direto em `main`. Horários em BRT.
 | | |
 |---|---|
 | Branch | `feat/demo-passo-a-passo` (a partir de `main` `5e38c1c`) |
-| PR | ver "Fechamento" ao fim da seção |
+| PR | **#54** — CI verde (console, llm-smoke, test 3.11/3.12) → squash-merge às 07:52, `main` `791ca3d`; issue #51 fechada. Revisão do mantenedor em `docs/review/PR-17.md` (aprovado; a porta 8010 já está explícita no roteiro, §0). |
 
 ### Decisões
 
@@ -86,3 +86,78 @@ dos *mtimes* dos logs por etapa; os das demos foram medidos direto. Tudo em `doc
 - **OpenAI na demo ao vivo**: o roteiro está escrito com `--provider openai` (como pedido) e os
   números da §3.2 vêm de `docs/agent.md` (validação do mantenedor em 2026-09-10); nesta máquina só
   foi possível ensaiar com `fake` e `gemini`.
+
+## 2. #52 — benchmark completo (07:55–09:05)
+
+| | |
+|---|---|
+| Branch | `feat/bench-completo` (a partir de `main` `791ca3d`) |
+| PR | ver "Fechamento" ao fim da seção |
+| Leituras | `docs/review/PR-17.md` (revisão do #54, chegou 08:55: aprovado; nada a aplicar — a porta 8010 já está na §0 do roteiro; OpenAI segue ausente neste shell, conferido de novo: `env`/`zsh -lic` sem `OPENAI_API_KEY`). |
+
+### Decisões
+
+- **Eventos sem manobra no harness**: `evento: falta_transitoria | chave_indisponivel` (com `falta`
+  ou `chave`), `verificar: sem_manobra` (reprova proposta ou `propose_plan`/`set_switch`/`inject_fault`;
+  exige o número do gabarito na resposta) e `referencia: []` = nenhuma ferramenta necessária — o
+  número já vem nos detalhes do evento (`sem_tensao_se_religador_abrir` / `clientes_a_jusante`, este
+  acrescentado ao `chave_indisponivel` do simulador para chaves NF). Consultar continua permitido,
+  mas derruba a precisão. O gabarito só injeta a falta quando o evento é `falta_permanente`.
+- **+4 tarefas de Ipanema** (M11–M13, H11) sobre o que a rede subterrânea tem de diferente: NF do
+  PTS9088 (271 UCBT), religador 10934177 indisponível (1.816), transitória no tronco do PTS0001
+  (1.730), falta na ponta do PTS9924 → proposta sem chave. `bench --gabarito` confere os 34
+  (`34 gabaritos conferem`). Cabeçalho do YAML atualizado (versão 2).
+- **Regra 7 do prompt** (número explícito na resposta final, na unidade pedida) — H09/H03 e a
+  observação do mantenedor (1.730 no lugar de 479). Regra 4 explicitada para transitória/chave
+  indisponível (citar os clientes). O operador fake responde aos dois eventos citando o número.
+- **Custo em US$** no harness (`PRECOS_USD_MILHAO`, `preco_modelo`, `custo_usd`): preço de lista
+  por prefixo de modelo (`gpt-4.1-mini-2025-04-14` → `gpt-4.1-mini`; `openai/…` do GitHub Models),
+  raciocínio do Gemini (total − prompt) cobrado como saída, execuções sem uso informado (timeout)
+  contam zero, grupos só de fake → `—`. Coluna `US$/exec.` no CSV/`.md`/comparativo e na tabela do
+  CLI; o `.md` registra o preço usado. Gemini conferido na página de preços (US$ 0,30/2,50);
+  OpenAI = preço de lista do lançamento (a página é renderizada no cliente; conferir antes da aula).
+- **`MALFORMED_FUNCTION_CALL` voltou** (8/55 nas *hard* com exemplos, sempre após `isolate_fault`,
+  3 tentativas iguais): a hipótese de ontem (compactação) não se sustentou com mais dados — 2/22 sem
+  compactar e **0/22 sem exemplos**. Mitigação barata e testada: o pedido repetido após resposta
+  vazia sobe a temperatura (0 → 0,5 → 1,0) além do lembrete (`temperatura_da_tentativa`); validação
+  em 24 execuções das 6 tarefas que falharam → 1 erro (4 %) contra 15 %, n pequeno, registrado como
+  tal. Não mudei o padrão dos exemplos: fica como pendência com o comando do A/B k=5.
+- **Baselines refeitos com as 34 tarefas** (fake ×3 modos, k=5, 170 execuções cada) para o
+  comparativo não misturar 30 e 34 tarefas; os CSVs de 2026-09-10 ficam como histórico (o
+  comparativo usa só o mais recente de cada provedor·modo). Os `.md` de hoje foram regenerados ao
+  fim (`relatorio_markdown` sobre os CSVs) para todos trazerem o comparativo completo.
+
+### Rodadas (Gemini 2.5 Flash, `--seed 42`; 284 execuções, 3,9 M tokens, US$ 1,69)
+
+| rodada | exec. | acertos | erros | tokens/exec. | US$/exec. | s/exec. |
+|---|---|---|---|---|---|---|
+| `--nivel hard --k 5` (08:01–08:18) | 55 | 47 (85 %; pass@5 100 %) | 8 × MALFORMED | 19.234 | 0,0090 | 16,9 |
+| `--nivel simple,medium --k 3 --acrescentar` (08:18–08:20) | 69 | 69 | — | 5.437 | 0,0020 | 1,9 |
+| `--k 2 --sem-exemplos` (08:20–08:31) | 68 | 67 | 1 × ReadTimeout (H11) | 9.290 | 0,0044 | 8,1 |
+| `--k 2 --sem-compactar` (08:31–08:42) | 68 | 66 | 2 × MALFORMED | 18.858 | 0,0071 | 7,2 |
+| validação da temperatura: `--ids H01,H02,H04,H06,H08,H10 --k 4` (08:43–08:52, `/tmp`) | 24 | 23 | 1 × MALFORMED | — | — | — |
+
+Leitura completa (compactação −52 % de tokens nas *hard*; exemplos não compram acerto no Flash, mas
+contêm o `propose_plan` sem pedido; custo por evento < US$ 0,01) em `docs/bench.md`.
+
+### Validação
+
+```bash
+uv run bdgd-light bench --gabarito                                                  # 34 gabaritos conferem
+uv run bdgd-light bench --provider fake --ids M11,M12,M13,H11 --k 1 --seed 42 --saida /tmp/…   # 4/4
+uv run bdgd-light bench --provider gemini --nivel hard --k 5 --seed 42 --estado /tmp/n3/bench/estado-gemini
+uv run bdgd-light bench --provider gemini --nivel simple,medium --k 3 --seed 42 --acrescentar --estado …
+uv run bdgd-light bench --provider gemini --k 2 --seed 42 --sem-exemplos --estado …
+uv run bdgd-light bench --provider gemini --k 2 --seed 42 --sem-compactar --estado …
+uv run bdgd-light bench --provider fake --k 5 --seed 42 [--sem-compactar | --sem-exemplos]     # 170/170 ×3
+uv run ruff check . && uv run ruff format . && uv run pytest                        # 278 testes verdes
+```
+
+### Pendências desta issue
+
+- **OpenAI** (simple/medium/hard k=3 e o comparativo final): sem `OPENAI_API_KEY` neste shell, de
+  novo. Comandos e custo estimado (~US$ 0,55) em `docs/bench.md` → Pendências; os 3 cenários do
+  agente com OpenAI já estão em `docs/agent.md` (mantenedor, 10/09).
+- Confirmar o efeito dos exemplos no `MALFORMED_FUNCTION_CALL` com `--nivel hard --k 5 --sem-exemplos`
+  (~US$ 0,55) e decidir se o perfil `gemini` desliga os exemplos por padrão.
+- `ReadTimeout` de 60 s (1 em 284): o cliente não repete em timeout.
