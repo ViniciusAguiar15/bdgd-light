@@ -45,3 +45,28 @@ o que custou caro na rodada 4 (ver `docs/review/MANHA-4.md`, seção "Processo")
   `uv run pytest` → `307 passed, 1 warning`. Também rodei o recorte direcionado
   `uv run pytest tests/test_gpkg2dss.py tests/test_mcp_server.py tests/test_console_api.py -q`
   para confirmar os três chamadores alterados.
+
+## 2. Issue #81 — suíte adversarial do verificador (18:58)
+
+- **Branch/PR:** `test/81-verificador-adversarial`, PR #86.
+- **O que mudou no código:** criei `src/bdgd_light/agent/verificador_adversarial.py` como fonte única
+  da matriz adversarial usada por teste e documentação. A matriz cobre 8 recusas determinísticas do
+  verificador: `falta_registrada`, `chaves_existem`, `chaves_disponiveis`,
+  `restricoes_operacionais`, `abre_antes_de_fechar`, `opcao_em_restore_options`,
+  `sem_sobrecarga_mt` (caso AMALIA/Tijuca, trecho `11051956` a ~180 %) e `fronteira_isolada`.
+  Todos os planos são montados diretamente em Python e passados ao `Verificador`, sem cliente de
+  LLM e sem depender do orquestrador.
+- **Teste novo:** `tests/test_verificador_adversarial.py` parametriza a matriz inteira, asserta
+  `ok is False`, o **primeiro gate reprovado** e um trecho da mensagem esperada em cada caso.
+  Também verifica que `docs/verificador.md` está sincronizado com `renderizar_markdown()`.
+- **Documentação versionada no mesmo PR:** `docs/verificador.md` agora é gerado por
+  `scripts/gerar_verificador_doc.py` a partir da mesma matriz, com tabela situação → gate →
+  mensagem e um parágrafo explicando por que o gate é determinístico.
+- **Decisões de design:** preferi uma fonte compartilhada em `src/` para evitar duplicação entre
+  pytest e documentação. Para o caso elétrico de AMALIA, congelei no plano manual o score já
+  conhecido da rota inviável (sobrecarga em `Line.smt_11051956`), o que mantém a suíte rápida e
+  independente de provider de LLM; os demais casos exercitam apenas estado de sessão e sequência de
+  manobras.
+- **Validação local:** `uv run python scripts/gerar_verificador_doc.py`, `uv run pytest
+  tests/test_verificador_adversarial.py`, `uv run ruff check .`, `uv run ruff format . --check` e
+  `uv run pytest` → `316 passed, 1 warning`.
