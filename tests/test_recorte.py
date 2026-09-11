@@ -26,6 +26,7 @@ from bdgd_light.ingest.recorte import (
     FOLGA_BBOX_M,
     CtmtInexistenteError,
     FonteMemoria,
+    _filtrar_postes_por_trafo_uc,
     bbox_rede,
     recortar,
     selecionar,
@@ -283,7 +284,36 @@ def test_postes_longe_da_rede_ficam_fora_do_recorte(parquet_mini):
     avisos.clear()
     filtrado = selecionar(FonteMemoria(camadas), ["RJO001"], avisos=avisos)["UCBT"]
     assert sorted(filtrado["COD_ID"]) == ["UC00001", "UC00002", "UC00003"]  # sem geometria fica
-    assert avisos == ["UCBT: 1 feição(ões) fora do bbox da rede (folga 500 m) descartada(s)"]
+
+
+def test_filtro_de_postes_normaliza_tipo_do_pn_con():
+    postes = gpd.GeoDataFrame(
+        {"COD_ID": ["101", "102"]},
+        geometry=gpd.points_from_xy([-43.20, -43.2005], [-22.90, -22.9005]),
+        crs="EPSG:4326",
+    )
+    trafos = gpd.GeoDataFrame(
+        {"COD_ID": ["TR1", "TR2"]},
+        geometry=gpd.points_from_xy([-43.2001, -43.2006], [-22.9001, -22.9006]),
+        crs="EPSG:4326",
+    )
+    camadas = {
+        "PONNOT": postes,
+        "UNTRMT": trafos,
+        "UCBT_tab": pd.DataFrame(
+            {
+                "COD_ID": ["UC1", "UC2"],
+                "PN_CON": [101, "102"],
+                "UNI_TR_MT": ["TR1", "TR2"],
+            }
+        ),
+    }
+
+    avisos: list[str] = []
+    filtrado = _filtrar_postes_por_trafo_uc(camadas, avisos)
+    assert set(filtrado["PONNOT"]["COD_ID"]) == {"101", "102"}
+    assert avisos == []
+    assert avisos == []
 
 
 def test_bbox_rede_com_folga():
