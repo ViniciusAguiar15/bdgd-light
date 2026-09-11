@@ -80,7 +80,7 @@ def calcular_impacto_opcao(
     clientes_restantes = max(int(isolamento.clientes_desligados.total) - clientes_restaurados, 0)
     minutos_evitar_por_cliente = max(tempo_reparo - tempo_manobra, 0.0)
     consumidor_minutos = float(clientes_restaurados) * minutos_evitar_por_cliente
-    dec_conjunto = _impacto_dec_conjunto(rede, opcao.nos, consumidor_minutos)
+    dec_conjunto = _impacto_dec_conjunto(rede, opcao.nos, minutos_evitar_por_cliente)
     return ImpactoEstimado(
         tempo_reparo_min=tempo_reparo,
         tempo_manobra_min=tempo_manobra,
@@ -103,7 +103,7 @@ def _tempo_positivo(nome: str, valor: float) -> float:
 
 
 def _impacto_dec_conjunto(
-    rede: Rede, nos: Iterable[str], consumidor_minutos: float
+    rede: Rede, nos: Iterable[str], minutos_evitar_por_cliente: float
 ) -> ImpactoDECConjunto | None:
     camadas = rede.camadas
     if camadas.conj is None or camadas.conj.empty:
@@ -116,7 +116,8 @@ def _impacto_dec_conjunto(
         return None
     nome = _nome_conjunto(camadas.conj, codigo)
     restauradas = _clientes_por_conjunto(rede, set(nos)).get(codigo, 0)
-    dec_horas = consumidor_minutos / total_uc / 60.0
+    consumidor_minutos_conjunto = float(restauradas) * minutos_evitar_por_cliente
+    dec_horas = consumidor_minutos_conjunto / total_uc / 60.0
     return ImpactoDECConjunto(
         codigo=codigo,
         nome=nome,

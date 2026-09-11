@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from rich.console import Console
 
+import bdgd_light.grid.impacto as impacto_mod
 from bdgd_light.grid import Cluster, calcular_impacto_opcao
 from bdgd_light.ingest.recorte import recortar
 
@@ -50,6 +51,32 @@ def test_impacto_sem_camada_conj_nao_estima_dec(recorte_impacto: Path):
     opcao = next(o for o in rede.restore_options("SEG001") if o.chave == "CH003")
     impacto = calcular_impacto_opcao(rede, opcao, isolamento=isolamento)
     assert impacto.dec_conjunto is None
+
+
+def test_dec_conjunto_usa_so_clientes_do_proprio_conjunto(recorte_impacto: Path, monkeypatch):
+    rede = Cluster.from_gpkg(recorte_impacto)
+
+    monkeypatch.setattr(
+        impacto_mod, "_clientes_por_conjunto", lambda *_args, **_kwargs: {"A": 2, "B": 1}
+    )
+    monkeypatch.setattr(
+        impacto_mod, "_total_uc_conjunto", lambda _rede, codigo: {"A": 10, "B": 20}[codigo]
+    )
+    monkeypatch.setattr(impacto_mod, "_nome_conjunto", lambda _conj, codigo: f"Conjunto {codigo}")
+    monkeypatch.setattr(impacto_mod, "_resolver_codigo_conjunto", lambda *_args, **_kwargs: "A")
+
+    dec_a = impacto_mod._impacto_dec_conjunto(rede, {"n1", "n2"}, 175.0)
+    assert dec_a is not None
+    assert dec_a.codigo == "A"
+    assert dec_a.ucs_restauradas_no_conjunto == 2
+    assert dec_a.dec_minutos == pytest.approx((2 * 175.0) / 10)
+
+    monkeypatch.setattr(impacto_mod, "_resolver_codigo_conjunto", lambda *_args, **_kwargs: "B")
+    dec_b = impacto_mod._impacto_dec_conjunto(rede, {"n1", "n2"}, 175.0)
+    assert dec_b is not None
+    assert dec_b.codigo == "B"
+    assert dec_b.ucs_restauradas_no_conjunto == 1
+    assert dec_b.dec_minutos == pytest.approx((1 * 175.0) / 20)
 
 
 @pytest.mark.skipif(not TIJUCA.exists(), reason=f"recorte real {TIJUCA} ausente")
