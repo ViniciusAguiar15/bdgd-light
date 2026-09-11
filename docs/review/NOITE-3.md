@@ -167,7 +167,7 @@ uv run ruff check . && uv run ruff format . && uv run pytest                    
 | | |
 |---|---|
 | Branch | `fix/opendss-subprocesso` (a partir de `main` `791ca3d`; `origin/main` `2a10a76` mesclado após o #55) |
-| PR | ver "Fechamento" ao fim da seção |
+| PR | **#56** — CI verde na primeira (console 14 s, llm-smoke 19 s, test 3.11 1m22s / 3.12 1m34s — Linux sem `SIGSEGV` na saída) → squash-merge às 09:36, `main` `0c36619`; issue #48 fechada. |
 | Leituras | `docs/review/` sem arquivo novo desde o PR-17; issue #48 (contrato de `no_motor`, filho reciclado, `BDGD_MOTOR`, sem `os._exit` no conftest) e `docs/backlog/18`. |
 
 ### Decisões
@@ -218,3 +218,60 @@ uv run ruff check . && uv run ruff format . && uv run pytest     # 285 testes ve
 - `BDGD_MOTOR=thread` fica documentado como modo de transição; remover (junto com
   `encerrar_processo`) quando ninguém mais precisar dele.
 - Windows não é alvo (socket `AF_UNIX`); se um dia for, trocar por `AF_INET` em 127.0.0.1.
+
+## 4. #40 — postes de `UCBT_tab.PN_CON` longe da rede inflam recorte e tiles (09:20–10:00)
+
+| | |
+|---|---|
+| Branch | `fix/recorte-bbox` (a partir de `main` `0c36619`) |
+| PR | ver "Fechamento" ao fim da seção |
+| Leituras | `docs/review/` sem arquivo novo (PR-17 continua só local); issue #40, pedido 2 do `PR-08.md`, `NOITE-2.md` (bbox −23,0…−22,18 do Tijuca), `recorte.py`, `tiles.py`, `gerar_fixture.py`. |
+
+### Decisões
+
+- **Diagnóstico com dados reais antes de codar.** PMTiles versionados: Tijuca lon −43,50…−43,19 /
+  lat −23,005…−22,176; Ipanema −43,70…−43,19 / −22,99…−22,62 — para redes de ~2,5 × 2 km. Causa
+  única: `PONNOT` entra por `COD_ID ∈ PN_CON*` e parte dos `UCBT_tab.PN_CON` aponta para postes a
+  5–84 km (Tijuca: 22 dos 1.908, 14 no Rio, 7 em Paraíba do Sul, 1 em Nova Iguaçu, pelo `MUN`;
+  Ipanema: 5, um em Paracambi referenciado por 149 UCs; TQR: 13). Só `UCBT_tab`/`UGBT_tab`
+  (e `RAMLIG`, tabela) referenciam esses postes — nenhuma camada geográfica de rede.
+- **Corrigir na fonte, com rede de segurança nos tiles.** `recorte.filtrar_por_bbox` restringe
+  `PONNOT` (e `UCBT` com geometria, quando existir) ao *bbox* da união de `CAMADAS_BBOX` (SSDMT,
+  SSDBT, UNSEMT, UNSEBT, UNTRMT, UNREMT, UNCRMT, RAMLIG) com `FOLGA_BBOX_M = 500` m (graus na
+  latitude do centro; feições sem geometria ficam). `tiles.escrever_geojson` aplica o mesmo filtro
+  lendo só `pyogrio.read_info(...)["total_bounds"]` (sem carregar a rede) para GPKGs gerados antes.
+  `--folga-bbox` nos dois comandos; negativo desliga. A UC segue em `UCBT_tab` (carga do trafo); o
+  `meta.json` ganha `bbox_folga_m` e `avisos`.
+- **Cada recorte aplica o seu bbox.** A primeira versão filtrava só a seleção do cluster e os
+  recortes por CTMT (derivados dela em memória) saíam com `avisos: []`; agora a seleção na fonte
+  é única e sem filtro, e cada CTMT e o cluster filtram pelo próprio *bbox* — o `meta.json` de
+  cada um diz quantos postes saíram.
+- **Fixture reproduz o defeito.** `PN107` (poste de `UC00007`) foi para (−43,60, −23,00), ~40 km da
+  rede sintética; `bdgd_mini.gpkg` regenerado. Testes novos: `test_postes_longe_da_rede_ficam_fora_do_recorte`
+  (com/sem filtro, folga enorme, UCBT com geometria e sem geometria), `test_bbox_rede_com_folga`,
+  CLI com `--folga-bbox -1`, `test_postes_fora_do_bbox_da_rede_ficam_fora_dos_tiles` (GPKG sem
+  filtro → tiles filtram e avisam; `folga_bbox_m=None` reproduz o bbox antigo).
+- **Tiles da demo regenerados** (`recortar` + `tiles` dos três clusters): Tijuca −43,245…−43,221 /
+  −22,937…−22,916 (0,98 MB), Ipanema −43,211…−43,188 / −22,988…−22,977 (0,77 MB), TQR
+  −43,451…−43,373 / −22,932…−22,904 (1,43 MB). O console não muda: com cenário usa centro/zoom
+  fixos; com `?tiles=` avulso o `fitBounds` do cabeçalho agora enquadra o bairro.
+
+### Validação
+
+```bash
+uv run tests/fixtures/gerar_fixture.py                           # PN107 a ~40 km; bdgd_mini.gpkg regenerado
+uv run pytest tests/test_recorte.py tests/test_tiles.py tests/test_export.py tests/test_inventario.py -q
+uv run bdgd-light recortar --ctmt ALC9925,ALC9946,URG29983,RCP9882 --nome-cluster cluster_tijuca --out data/feeders   # ⚠ 22 postes fora
+uv run bdgd-light recortar --ctmt PTS0001,PTS9088,PTS9924,PTS4022 --nome-cluster cluster_ipanema --out data/feeders   # ⚠ 5
+uv run bdgd-light recortar --ctmt TQR0007,TQR33859,TQR33862 --out data/feeders                                        # ⚠ 13
+uv run bdgd-light tiles --gpkg data/feeders/cluster_tijuca.gpkg --out console/public/tiles/exemplo_tijuca.pmtiles     # bbox do bairro
+uv run ruff check . && uv run ruff format . && uv run pytest     # 281 testes verdes
+```
+
+### Pendências desta issue
+
+- O filtro é geométrico (bbox + 500 m), não topológico: um poste errado a 400 m da rede continua
+  entrando. Para a demo basta; um refinamento seria exigir distância ao trafo (`UNI_TR_MT`) da UC.
+- `UCBT` dos tiles perde as UCs desses postes (9 postes/Tijuca, 2/Ipanema, 3/TQR) — elas seguem em
+  `UCBT_tab` e no gêmeo (cargas por trafo), só não têm ponto no mapa; o aviso `postes … sem PONNOT`
+  registra isso a cada `tiles`.
