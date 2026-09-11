@@ -2250,9 +2250,10 @@ def _fmt_int(n: int) -> str:
 
 
 def main() -> None:
-    """Entry point ``bdgd-light``: roda o Typer e, se o gêmeo OpenDSS foi usado, encerra o processo
-    sem a finalização da biblioteca (``twin.powerflow.encerrar_processo``; SIGSEGV na saída em
-    Linux)."""
+    """Entry point ``bdgd-light``: roda o Typer e, se a biblioteca OpenDSS foi carregada neste
+    processo (``BDGD_MOTOR=thread``), encerra sem a finalização dela
+    (``twin.powerflow.encerrar_processo``; SIGSEGV na saída em Linux). No modo padrão
+    (``processo``) a saída é a normal."""
     codigo = 0
     try:
         app()

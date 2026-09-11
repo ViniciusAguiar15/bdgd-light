@@ -92,7 +92,7 @@ dos *mtimes* dos logs por etapa; os das demos foram medidos direto. Tudo em `doc
 | | |
 |---|---|
 | Branch | `feat/bench-completo` (a partir de `main` `791ca3d`) |
-| PR | ver "Fechamento" ao fim da seção |
+| PR | **#55** — CI verde (console, llm-smoke, test 3.11/3.12) → squash-merge às 09:15, `main` `2a10a76`; issue #52 fechada. |
 | Leituras | `docs/review/PR-17.md` (revisão do #54, chegou 08:55: aprovado; nada a aplicar — a porta 8010 já está na §0 do roteiro; OpenAI segue ausente neste shell, conferido de novo: `env`/`zsh -lic` sem `OPENAI_API_KEY`). |
 
 ### Decisões
@@ -161,3 +161,60 @@ uv run ruff check . && uv run ruff format . && uv run pytest                    
 - Confirmar o efeito dos exemplos no `MALFORMED_FUNCTION_CALL` com `--nivel hard --k 5 --sem-exemplos`
   (~US$ 0,55) e decidir se o perfil `gemini` desliga os exemplos por padrão.
 - `ReadTimeout` de 60 s (1 em 284): o cliente não repete em timeout.
+
+## 3. #48 — motor OpenDSS em subprocesso (09:05–09:35)
+
+| | |
+|---|---|
+| Branch | `fix/opendss-subprocesso` (a partir de `main` `791ca3d`; `origin/main` `2a10a76` mesclado após o #55) |
+| PR | ver "Fechamento" ao fim da seção |
+| Leituras | `docs/review/` sem arquivo novo desde o PR-17; issue #48 (contrato de `no_motor`, filho reciclado, `BDGD_MOTOR`, sem `os._exit` no conftest) e `docs/backlog/18`. |
+
+### Decisões
+
+- **Subprocesso próprio, não `multiprocessing` spawn.** A primeira versão usava
+  `multiprocessing.get_context("spawn").Process`; funcionou nos testes, mas o *bootstrap* do spawn
+  reexecuta o `__main__` do pai no filho e quebrou num script lido de stdin (`python - <<EOF` →
+  `FileNotFoundError: …/<stdin>`), o que também alcançaria notebooks/REPLs. O motor agora é um
+  `subprocess.Popen([sys.executable, "-c", "from bdgd_light.twin.powerflow import _main_motor; …"])`
+  que importa **só** este módulo, ligado ao pai por um socket `AF_UNIX` em pasta temporária com
+  `multiprocessing.connection.Connection` e desafio HMAC (chave de 32 bytes aleatórios passada por
+  stdin, nunca por argv/ambiente). Mesmo contrato de `no_motor`: `(fn, args, kwargs)` em pickle,
+  `(True, resultado)` ou `(False, exceção)` de volta; funções de módulo já eram serializáveis
+  (`_run_powerflow`, `_ampacidade_tronco`).
+- **Filho reciclado, erro visível.** Uma chamada por vez (trava); filho morto no meio de uma chamada
+  (`SIGILL`/`SIGSEGV`/sem resposta em `BDGD_MOTOR_TIMEOUT`, padrão 600 s) → `MotorError`
+  (subclasse de `ErroOpenDSS`) com o sinal no texto; a chamada seguinte recria o filho (`reinicios`).
+  No agente isso vira `{"erro": …}` para o modelo e `ok: false` na execução (nada novo a fazer: o laço
+  de ferramentas já convertia exceções). Exceções do filho sem construtor compatível com pickle
+  (`DSSException(numero, texto)`) viram `ErroOpenDSS` com o mesmo texto (`_exportavel`).
+- **Sem `os._exit`**: `tests/conftest.py` perdeu `pytest_sessionfinish`/`pytest_unconfigure`; o
+  guarda de coleta (`opendssdirect` importado no processo de testes) fica, agora protegendo a
+  invariante "o pai nunca carrega a biblioteca". `encerrar_processo` sobrevive só para
+  `BDGD_MOTOR=thread` (estratégia anterior, mantida na transição) e é um `sys.exit` normal no modo
+  padrão. `/api/estado` ganhou `motor` (`modo`, `pid`, `chamadas`, `reinicios`).
+- **Custo medido** (macOS arm64, Master DU01 base do cluster Tijuca, 34.095 nós, resultado de
+  3,1 MiB em pickle): criar o filho 0,4–0,8 s na 1ª chamada; **5–20 ms por chamada** sobre 1,0–1,2 s
+  de fluxo; a suíte inteira caiu de ~40 s para 28 s (sem a troca de thread a cada chamada).
+  `serve --cluster tijuca --provider fake`: cenário Cabo Frio → 14 chamadas ao motor, 7,6 s de
+  ferramentas, `P-0004`; `kill -11` no filho + novo evento → `P-0005`, `reinicios: 1`, sem traceback
+  no log; ao parar o servidor o filho sai junto (conexão cai → `EOFError` → fim do laço; `atexit`
+  também o mata).
+
+### Validação
+
+```bash
+uv run pytest tests/test_twin.py -k motor -q                     # recriação após morte (no meio e entre chamadas), timeout, exceção relançada, estado
+uv run pytest tests/test_console_api.py -k motor_morre -q        # motor morre durante o agente; API viva; evento seguinte em motor novo
+uv run bdgd-light dss --master tests/fixtures/dss/ieee13/IEEE13_Master.dss   # entry point sai com 0 sem os._exit
+BDGD_CONSOLE_TOKEN=demo uv run bdgd-light serve --cluster tijuca --provider fake --porta 8012   # + kill -11 <pid do motor> (ver /api/estado → motor)
+uv run ruff check . && uv run ruff format . && uv run pytest     # 285 testes verdes, 28 s, nenhum processo _main_motor órfão
+```
+
+### Pendências desta issue
+
+- CI Linux é o teste definitivo do adeus ao `SIGSEGV` na saída (aqui no macOS nunca ocorreu); se
+  voltar, a suspeita passa a ser outra biblioteca nativa, não a DSS C-API.
+- `BDGD_MOTOR=thread` fica documentado como modo de transição; remover (junto com
+  `encerrar_processo`) quando ninguém mais precisar dele.
+- Windows não é alvo (socket `AF_UNIX`); se um dia for, trocar por `AF_INET` em 127.0.0.1.
