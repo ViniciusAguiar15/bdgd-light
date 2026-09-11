@@ -24,8 +24,11 @@ fila de eventos (sim) ──► Orquestrador.executar_evento(evento)
                               │       propose_plan passa pelo Verificador antes de chegar à sessão
                               │  5. sem proposta (falta permanente)? mensagem de replanejamento
                               │     (até --replanejar vezes)
-                              ▼
-                         Execucao (proposta, veredito, chamadas, recusas, tokens, tempos, hash)
+                              │  6. rejeição humana com motivo? o orquestrador extrai a restrição
+                              │     estruturada, registra `agente.replanejamento` e roda de novo
+                              │     para a mesma falta, sem `inject_fault`
+                               ▼
+                                                       Execucao (proposta, veredito, chamadas, recusas, tokens, tempos, hash)
                               │
                               ▼
         proposta P-000n pendente ──► bdgd-light aprovar / console ──► set_switch com token
@@ -55,7 +58,7 @@ anotados (tarefa → ferramentas → justificativa)". Regras, em resumo:
    com a melhor opção **viável** (maior margem no disjuntor, mais clientes); sem opção viável,
    `propose_plan()` sem chave (isolar e religar o tronco são) + despacho de equipe.
 3. Só chaves de `restore_options`; nunca fechar NA antes de abrir a fronteira; respeitar chaves
-   indisponíveis.
+   indisponíveis e restrições operacionais explícitas da sessão.
 4. Transitória: registrar, sem manobra, citando os clientes sem tensão no tempo morto. Pico:
    `run_powerflow(loadmult)`. Chave indisponível: registrar a restrição, sem manobra, dizendo
    quantos clientes a jusante passam a depender de equipe.
@@ -87,6 +90,7 @@ Gate dentro do wrapper de `propose_plan`. Checagens (nome → o que falha):
 | `opcao_em_restore_options` | a chave proposta não está entre as opções devolvidas |
 | `chaves_existem` | alguma chave da sequência não existe no cluster |
 | `chaves_disponiveis` | a sequência usa chave marcada indisponível (evento `chave_indisponivel`) |
+| `restricoes_operacionais` | a proposta viola uma restrição ativa da sessão (chave proibida, fonte/CTMT a evitar ou exigência de só telecomandadas) |
 | `abre_antes_de_fechar` | há um `fechar` antes de um `abrir` na sequência |
 | `fronteira_isolada` | a sequência não abre toda a fronteira da falta (`isolate_fault.chaves`) |
 | `score_eletrico` | opção sem score e `exigir_score=True` (peça `restore_options(score=true)`) |
@@ -100,6 +104,24 @@ Avisos (não recusam): há opção viável com margem ≥ 2 p.p. maior; `propose
 existe opção viável. A recusa vira `{"erro", "problemas", "avisos"}` para o modelo, um registro
 `agente.verificador.recusa` na auditoria e uma entrada em `Execucao.recusas`; a aprovação registra
 `agente.verificador.ok` e o veredito vai dentro da proposta (`verificador`).
+
+### Replanejamento após rejeição humana (issue #61)
+
+`Orquestrador.replanejar_apos_rejeicao(proposta_id, motivo, evento=)` fecha o ciclo colaborativo:
+
+1. o operador rejeita a proposta e escreve o motivo;
+2. o LLM extrai uma restrição estruturada (`registrar_restricao`: `chaves_proibidas`,
+   `alimentadores_evitar`, `somente_telecomandadas`, `resumo`);
+3. a `SessaoCOD` persiste essa restrição no estado explícito da sessão (`restricoes`,
+   `restricoes_agregadas`, `replanejamentos_evento`);
+4. a auditoria registra `hitl.rejeicao` (motivo bruto) e `agente.replanejamento`
+   (restrição aplicada);
+5. uma nova execução roda para a **mesma falta já registrada**, sem `inject_fault`;
+6. `restore_options` mantém todas as opções, mas marca as bloqueadas com `bloqueada: <motivo>`;
+7. o verificador reprova qualquer `propose_plan` que insista em uma opção bloqueada.
+
+O limite é **3 replanejamentos automáticos por evento**. Depois disso, a sessão mantém a rejeição,
+mas o agente não roda de novo e o console/CLI devem pedir intervenção humana.
 
 ### Métricas por execução (`Execucao.to_dict()`)
 
@@ -132,10 +154,11 @@ registra o modo; o benchmark (#36) compara tokens e acerto com e sem compactaç�
 ### Operador fake (`fake_operador()`)
 
 `FakeLLMClient` com regra que lê o histórico e segue o fluxo do prompt: falta permanente →
-locate → isolate → restore_options(score) → propose_plan (primeira opção viável ainda não tentada;
-se o verificador recusar, a seguinte; sem chave se não houver) → resumo; pico → run_powerflow com
-o `loadmult` do evento; transitória e chave indisponível → só o resumo; pergunta → get_topology →
-resposta. Serve aos testes, à demo offline e como baseline do benchmark (#36).
+locate → isolate → restore_options(score) → propose_plan (primeira opção viável ainda não tentada
+e não bloqueada; se o verificador recusar, a seguinte; sem chave se não houver) → resumo; pico →
+run_powerflow com o `loadmult` do evento; transitória e chave indisponível → só o resumo; rejeição
+humana → `registrar_restricao`; pergunta → get_topology → resposta. Serve aos testes, à demo
+offline e como baseline do benchmark (#36).
 
 ## CLI
 
@@ -233,6 +256,11 @@ recusa consome uma rodada de `--max-rodadas`. Com `--vmin 1.03` em `tijuca_cabof
 nenhuma opção passa (Vmin 1,018–1,027 pu) e a execução termina com `erro` após esgotar as
 opções — o *gate* nunca deixa passar uma manobra fora dos limites.
 
+No ciclo HITL da issue #61 o mesmo mecanismo vale depois de uma rejeição do operador: por exemplo,
+rejeitar `"a chave 974020904 está em manutenção"` produz uma restrição explícita (`chaves_proibidas:
+["974020904"]`), `restore_options` marca a opção como bloqueada e o verificador reprova qualquer
+nova proposta que tente fechá-la.
+
 ## Limites conhecidos
 
 - O agente é **sequencial e síncrono**: um evento por vez, sem fila interna; o console (#35,
@@ -245,5 +273,5 @@ opções — o *gate* nunca deixa passar uma manobra fora dos limites.
 - Seleção de exemplos é lexical (sem embeddings) — suficiente para 12 exemplos e 4 tipos de evento.
 - Custo: ~50–65 k tokens de prompt por falta permanente com o Gemini Flash (rodadas cumulativas);
   ver #36 para compactação dos retornos e comparação entre provedores.
-- Não há memória entre execuções além de `indisponiveis` (chaves sem telecomando) e do estado da
-  sessão (falta, propostas, auditoria).
+- Não há memória entre execuções além de `indisponiveis`, das `restricoes` explícitas da sessão
+  (rejeições humanas ativas) e do próprio estado da sessão (falta, propostas, auditoria).

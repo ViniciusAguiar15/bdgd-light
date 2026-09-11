@@ -208,13 +208,60 @@ def test_passo_a_passo_uma_manobra_por_chamada(cliente: TestClient, sessao: Sess
     assert [x.get("ferramenta") for x in aud["registros"]][-2:] == ["set_switch", "set_switch"]
 
 
-def test_rejeitar_e_erros(cliente: TestClient, recorte: Path):
+def test_rejeitar_replaneja_com_restricao(cliente: TestClient, sessao: SessaoCOD, recorte: Path):
     r = cliente.post("/api/eventos", json={"cluster": str(recorte), "trecho": "SEG001"}, headers=OP)
     assert r.status_code == 202
     r = cliente.post(
-        "/api/propostas/P-0001/rejeitar", json={"motivo": "equipe no local"}, headers=OP
+        "/api/propostas/P-0001/rejeitar",
+        json={"motivo": "a chave CH003 está em manutenção"},
+        headers=OP,
     )
-    assert r.status_code == 200 and r.json()["proposta"]["status"] == "rejeitada"
+    assert r.status_code == 200
+    corpo = r.json()
+    assert corpo["proposta"]["status"] == "rejeitada"
+    assert corpo["replanejamento"]["status"] == "concluido"
+    pendentes = cliente.get("/api/propostas", params={"status": "pendente"}).json()
+    assert [p["id"] for p in pendentes] == ["P-0002"]
+    detalhe = cliente.get("/api/propostas/P-0002").json()
+    assert detalhe["chave"] == "CH005"
+    assert detalhe["replanejada_apos_rejeicao"] == "a chave CH003 está em manutenção"
+    alternativas = {a["chave"]: a for a in detalhe["alternativas"]}
+    assert "manutenção" in alternativas["CH003"]["bloqueada"]
+    assert cliente.get("/api/estado").json()["replanejamentos_evento"] == 1
+    hitl = [json.loads(x) for x in (sessao.estado_dir / "hitl.jsonl").read_text().splitlines()]
+    assert hitl[-1]["tipo"] == "hitl.rejeicao"
+    trilha = [json.loads(x) for x in (sessao.estado_dir / "audit.jsonl").read_text().splitlines()]
+    assert "agente.replanejamento" in [r["tipo"] for r in trilha]
+
+
+def test_rejeitar_limita_replanejamento_automatico(cliente: TestClient, recorte: Path):
+    r = cliente.post("/api/eventos", json={"cluster": str(recorte), "trecho": "SEG001"}, headers=OP)
+    assert r.status_code == 202
+    for i in range(1, 4):
+        r = cliente.post(
+            f"/api/propostas/P-{i:04d}/rejeitar",
+            json={"motivo": f"a chave CH003 está em manutenção ({i})"},
+            headers=OP,
+        )
+        assert r.status_code == 200
+    limite = cliente.post(
+        "/api/propostas/P-0004/rejeitar",
+        json={"motivo": "a chave CH003 está em manutenção (4)"},
+        headers=OP,
+    )
+    assert limite.status_code == 200
+    corpo = limite.json()
+    assert corpo["proposta"]["status"] == "rejeitada"
+    assert corpo["replanejamento"]["status"] == "limite"
+    assert "intervenção humana" in corpo["replanejamento"]["mensagem"]
+    assert cliente.get("/api/propostas", params={"status": "pendente"}).json() == []
+
+
+def test_rejeitar_e_erros(cliente: TestClient, recorte: Path):
+    r = cliente.post("/api/eventos", json={"cluster": str(recorte), "trecho": "SEG001"}, headers=OP)
+    assert r.status_code == 202
+    r = cliente.post("/api/propostas/P-0001/rejeitar", headers=OP)
+    assert r.status_code == 200
     assert cliente.post("/api/propostas/P-0001/aprovar", headers=OP).status_code == 409
     assert cliente.get("/api/propostas/P-9999").status_code == 409
     r = cliente.post("/api/eventos", json={"cenario": "inexistente"}, headers=OP)

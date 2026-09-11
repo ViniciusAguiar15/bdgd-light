@@ -119,6 +119,8 @@ def _opcao_detalhada(o: Mapping[str, Any]) -> dict[str, Any]:
     d = {k: o.get(k) for k in _CAMPOS_OPCAO if k in o}
     d["clientes"] = _clientes(o.get("clientes"))
     d["manobras"] = _manobras(o.get("manobras"))
+    if o.get("bloqueada"):
+        d["bloqueada"] = o.get("bloqueada")
     score = o.get("score")
     if isinstance(score, Mapping):
         s = {k: score.get(k) for k in _CAMPOS_SCORE if k in score}
@@ -137,6 +139,8 @@ def _opcao_resumida(o: Mapping[str, Any]) -> dict[str, Any]:
         "fonte": o.get("fonte"),
         "clientes": (o.get("clientes") or {}).get("total"),
     }
+    if o.get("bloqueada"):
+        d["bloqueada"] = o.get("bloqueada")
     if score:
         d["viavel"] = score.get("viavel")
         if isinstance(score.get("margem_disjuntor"), int | float):

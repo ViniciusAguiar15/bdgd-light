@@ -35,6 +35,10 @@ interface Verificador {
   avisos: string[];
 }
 
+interface RestricaoOperacional {
+  motivo: string;
+}
+
 export interface Proposta {
   id: string;
   criada_em: string;
@@ -51,6 +55,7 @@ export interface Proposta {
   status: "pendente" | "aprovada" | "executada" | "rejeitada" | "expirada" | string;
   aprovada_por: string | null;
   motivo: string | null;
+  replanejada_apos_rejeicao: string | null;
   verificador: Verificador | null;
   ja_satisfeitas: string[];
   alternativas?: Alternativa[];
@@ -63,6 +68,7 @@ interface Alternativa {
   clientes: Clientes;
   escolhida: boolean;
   score: Score | null;
+  bloqueada?: string | null;
 }
 
 interface Execucao {
@@ -111,6 +117,10 @@ export interface Estado {
   eventos_n: number;
   agente: Agente | null;
   autorizacao: "segredo" | "sem-segredo" | "bloqueado";
+  restricoes: RestricaoOperacional[];
+  replanejamentos_evento: number;
+  limite_replanejamentos_evento: number;
+  ultima_rejeicao: string | null;
   hora: string;
 }
 
@@ -130,6 +140,13 @@ interface Auditoria {
   }[];
 }
 
+interface RejeicaoResposta {
+  replanejamento?: {
+    status: string;
+    mensagem: string;
+  };
+}
+
 /** Cenário do console → cenário nomeado do simulador (`bdgd_light.sim.CENARIOS`). */
 export const CENARIO_SIM: Record<string, string> = {
   tijuca: "tijuca_cabofrio_tronco",
@@ -140,6 +157,11 @@ export const CENARIO_SIM: Record<string, string> = {
 const INTERVALO_MS = 2000;
 const CHAVE_OPERADOR = "bdgd-light.operador";
 const CHAVE_TOKEN = "bdgd-light.token";
+const SUGESTOES_REJEICAO = [
+  "a chave 974020904 está em manutenção",
+  "não quero carregar o BOMPASTOR",
+  "prefiro a rota telecomandada",
+];
 
 export interface EstadoCod {
   api: string;
@@ -172,6 +194,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
 /** Uma linha explicando por que a alternativa não foi a proposta (pedido PR-15): o motivo do
  *  score quando inviável; senão a comparação com a escolhida (margem, clientes, telecomando). */
 function motivoDescarte(a: Alternativa, escolhida: Alternativa | undefined): string {
+  if (a.bloqueada) return a.bloqueada;
   if (a.score && !a.score.viavel) return a.score.motivos?.length ? a.score.motivos.join("; ") : "inviável";
   if (!a.tlcd && escolhida?.tlcd) return "sem telecomando";
   if (!escolhida) return "não escolhida";
@@ -389,6 +412,11 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
         (ag?.ocupado ? " · pensando…" : ""),
     );
     linhas.push(`eventos na fila: ${estado.eventos_n} · autorização: ${estado.autorizacao}`);
+    linhas.push(
+      `replanejamentos automáticos: ${estado.replanejamentos_evento}/${estado.limite_replanejamentos_evento}`,
+    );
+    if (estado.restricoes?.length)
+      linhas.push(`restrições ativas: ${estado.restricoes.map((r) => r.motivo).join(" · ")}`);
     const situacao = el("div", { class: "cod-situacao", id: "cod-situacao" });
     for (const l of linhas) situacao.append(el("div", {}, l));
     if (!clusterCerto)
@@ -491,6 +519,14 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
             (p.score.motivos?.length ? ` · ${p.score.motivos.join("; ")}` : ""),
         ),
       );
+    if (p.replanejada_apos_rejeicao)
+      card.append(
+        el(
+          "div",
+          { class: "cod-motivo" },
+          `replanejada após rejeição: ${p.replanejada_apos_rejeicao}`,
+        ),
+      );
     if (p.verificador) {
       const v = p.verificador;
       const n = Object.keys(v.checagens ?? {}).length;
@@ -542,18 +578,47 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
           (proximo ? `: ${proximo.acao} ${proximo.chave}` : "") +
           ` (${feitas + 1}/${p.manobras.length})`,
       );
-      const rejeitar = el("button", { type: "button", id: "cod-rejeitar" }, "Rejeitar");
+      const motivo = el("input", {
+        type: "text",
+        id: "cod-rejeitar-motivo",
+        placeholder: "motivo da rejeição",
+      }) as HTMLInputElement;
+      const sugestoes = el("div", { class: "cod-sugestoes" });
+      for (const texto of SUGESTOES_REJEICAO) {
+        const botao = el("button", { type: "button", class: "cod-sugestao" }, texto);
+        botao.addEventListener("click", () => {
+          motivo.value = texto;
+          motivo.focus();
+        });
+        sugestoes.append(botao);
+      }
+      const rejeitar = el("button", { type: "button", id: "cod-rejeitar" }, "Rejeitar e replanejar");
       aprovar.disabled = passo.disabled = bloqueado || !!estado.agente?.ocupado;
       if (estado.agente?.ocupado) aprovar.title = passo.title = "aguarde o agente concluir a resposta";
       else passo.title = `POST api/propostas/${p.id}/passo — aprova (se pendente) e executa só a próxima manobra`;
-      rejeitar.disabled = bloqueado || feitas > 0; // com manobras já aplicadas não há mais o que rejeitar
+      rejeitar.disabled = motivo.disabled = bloqueado || feitas > 0; // com manobras já aplicadas não há mais o que rejeitar
+      sugestoes.querySelectorAll("button").forEach((b) => {
+        (b as HTMLButtonElement).disabled = rejeitar.disabled;
+      });
       aprovar.addEventListener("click", () => void cod.aprovar(p.id).catch(() => undefined));
       passo.addEventListener("click", () => void cod.passo(p.id).catch(() => undefined));
       rejeitar.addEventListener("click", () => {
-        const motivo = prompt("Motivo da rejeição (opcional):", "") ?? "";
-        void cod.rejeitar(p.id, motivo).catch(() => undefined);
+        void cod
+          .rejeitar(p.id, motivo.value)
+          .then((r) => {
+            const resposta = r as RejeicaoResposta | null;
+            const msg = resposta?.replanejamento?.mensagem;
+            if (msg && resposta?.replanejamento?.status !== "iniciado" && resposta?.replanejamento?.status !== "concluido")
+              mostrarErro(msg);
+          })
+          .catch(() => undefined);
       });
-      card.append(el("div", { class: "cod-acoes" }, aprovar, rejeitar), el("div", { class: "cod-acoes" }, passo));
+      card.append(
+        el("div", { class: "cod-acoes" }, aprovar, rejeitar),
+        el("div", { class: "cod-acoes" }, passo),
+        el("label", { class: "cod-rejeicao" }, "Motivo da rejeição", motivo),
+        sugestoes,
+      );
       if (bloqueado)
         card.append(
           el(

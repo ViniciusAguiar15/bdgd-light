@@ -62,6 +62,7 @@ CLUSTERS = {
 ESTADOS_CHAVE = {"aberta": ABRIR, "fechada": FECHAR, ABRIR: ABRIR, FECHAR: FECHAR}
 LIMITE_LISTA_AUDIT = 30
 LIMITE_TEXTO_AUDIT = 300
+LIMITE_REPLANEJAMENTOS_EVENTO = 3
 
 
 class SessaoError(RuntimeError):
@@ -189,6 +190,7 @@ class Proposta:
     expira_em: str | None = None
     motivo: str | None = None
     executadas: int = 0
+    replanejada_apos_rejeicao: str | None = None
 
     @property
     def proximo_passo(self) -> dict | None:
@@ -204,6 +206,26 @@ class Proposta:
 
     @classmethod
     def de_dict(cls, d: Mapping[str, Any]) -> Proposta:
+        campos = set(cls.__dataclass_fields__)
+        return cls(**{k: v for k, v in d.items() if k in campos})
+
+
+@dataclass
+class RestricaoOperacional:
+    """Restrição explícita aplicada à sessão após rejeição humana."""
+
+    motivo: str
+    criada_em: str
+    chaves_proibidas: list[str] = field(default_factory=list)
+    alimentadores_evitar: list[str] = field(default_factory=list)
+    somente_telecomandadas: bool = False
+    resumo: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def de_dict(cls, d: Mapping[str, Any]) -> RestricaoOperacional:
         campos = set(cls.__dataclass_fields__)
         return cls(**{k: v for k, v in d.items() if k in campos})
 
@@ -312,7 +334,14 @@ class FilaPropostas:
             if atual is None:
                 self._itens[gravada.id] = gravada
             elif atual.status == "pendente" and gravada.status in ("aprovada", "rejeitada"):
-                for campo in ("status", "token", "aprovada_em", "aprovada_por", "expira_em"):
+                for campo in (
+                    "status",
+                    "token",
+                    "aprovada_em",
+                    "aprovada_por",
+                    "expira_em",
+                    "replanejada_apos_rejeicao",
+                ):
                     setattr(atual, campo, getattr(gravada, campo))
                 atual.motivo = gravada.motivo or atual.motivo
 
@@ -376,6 +405,164 @@ class SessaoCOD:
         self._indicacoes: list[str] = []
         self._master_base: Path | None = None
         self._scores: dict[str, dict] = {}  # último restore_options com score, por chave
+        self.restricoes: list[RestricaoOperacional] = []
+        self.replanejamentos_evento = 0
+        self.ultima_rejeicao: str | None = None
+
+    @property
+    def restricoes_agregadas(self) -> dict[str, Any]:
+        """Visão agregada das restrições ativas, para console e verificador."""
+        chaves: list[str] = []
+        alimentadores: list[str] = []
+        somente_telecomandadas = False
+        for r in self.restricoes:
+            chaves.extend(r.chaves_proibidas)
+            alimentadores.extend(r.alimentadores_evitar)
+            somente_telecomandadas = somente_telecomandadas or r.somente_telecomandadas
+        return {
+            "chaves_proibidas": sorted(set(chaves)),
+            "alimentadores_evitar": sorted(set(alimentadores)),
+            "somente_telecomandadas": somente_telecomandadas,
+            "motivos": [r.motivo for r in self.restricoes],
+        }
+
+    def limpar_restricoes(self) -> None:
+        """Zera o histórico de restrições do evento atual."""
+        self.restricoes = []
+        self.replanejamentos_evento = 0
+        self.ultima_rejeicao = None
+
+    def aplicar_restricao(self, restricao: Mapping[str, Any], *, motivo: str) -> dict[str, Any]:
+        """Anexa a restrição estruturada à sessão e registra o motivo da rejeição."""
+
+        def _lista(campo: str) -> list[str]:
+            valores = restricao.get(campo) or []
+            if not isinstance(valores, list):
+                return []
+            vistos: set[str] = set()
+            saida: list[str] = []
+            for valor in valores:
+                texto = str(valor).strip()
+                if texto and texto not in vistos:
+                    vistos.add(texto)
+                    saida.append(texto)
+            return saida
+
+        item = RestricaoOperacional(
+            motivo=motivo.strip() or "sem motivo informado",
+            criada_em=_iso(self._agora()),
+            chaves_proibidas=_lista("chaves_proibidas"),
+            alimentadores_evitar=_lista("alimentadores_evitar"),
+            somente_telecomandadas=bool(restricao.get("somente_telecomandadas")),
+            resumo=(str(restricao.get("resumo")).strip() or None)
+            if restricao.get("resumo") is not None
+            else None,
+        )
+        self.restricoes.append(item)
+        self.replanejamentos_evento += 1
+        self.ultima_rejeicao = item.motivo
+        return item.to_dict()
+
+    def resumo_restricoes(self) -> list[str]:
+        """Descrições curtas das restrições ativas para o prompt/situação da sessão."""
+        linhas = []
+        for r in self.restricoes:
+            partes = []
+            if r.chaves_proibidas:
+                partes.append("chaves proibidas: " + ", ".join(r.chaves_proibidas))
+            if r.alimentadores_evitar:
+                partes.append("alimentadores a evitar: " + ", ".join(r.alimentadores_evitar))
+            if r.somente_telecomandadas:
+                partes.append("usar apenas rotas/manobras telecomandadas")
+            corpo = "; ".join(partes) or (r.resumo or "motivo sem restrição estruturada")
+            linhas.append(f"{corpo} (motivo: {r.motivo})")
+        return linhas
+
+    @staticmethod
+    def _match_alimentador(alvo: str, valor: str | None) -> bool:
+        if not alvo or not valor:
+            return False
+        a = "".join(ch for ch in alvo.upper() if ch.isalnum())
+        b = "".join(ch for ch in valor.upper() if ch.isalnum())
+        return bool(a and b and (a == b or a in b or b in a))
+
+    def motivo_bloqueio_opcao(self, opcao: Mapping[str, Any]) -> str | None:
+        """Explica por que a opção viola alguma restrição ativa; ``None`` se liberada."""
+        if not self.restricoes:
+            return None
+        rede = self._rede()
+        motivos: list[str] = []
+        chaves_seq = [
+            str(m.get("chave"))
+            for m in list(opcao.get("manobras") or [])
+            if isinstance(m, Mapping) and m.get("chave")
+        ]
+        chave_opcao = str(opcao.get("chave") or "")
+        fonte = str(opcao.get("fonte") or "")
+        for r in self.restricoes:
+            proibidas = set(r.chaves_proibidas)
+            usadas = sorted({c for c in [chave_opcao, *chaves_seq] if c in proibidas})
+            if usadas:
+                motivos.append(f"{r.motivo}: usa chave proibida {', '.join(usadas)}")
+            ctmt_chave = str(opcao.get("ctmt_chave") or "")
+            if r.alimentadores_evitar and any(
+                self._match_alimentador(alvo, fonte) or self._match_alimentador(alvo, ctmt_chave)
+                for alvo in r.alimentadores_evitar
+            ):
+                motivos.append(f"{r.motivo}: evita alimentar pela fonte {fonte or ctmt_chave}")
+            if r.somente_telecomandadas:
+                sem_telecom = []
+                if not bool(opcao.get("tlcd")):
+                    sem_telecom.append(chave_opcao)
+                for chave in chaves_seq:
+                    if chave in rede.chaves and not bool(self._dados_chave(rede, chave)["tlcd"]):
+                        sem_telecom.append(chave)
+                if sem_telecom:
+                    unicas = ", ".join(sorted(set(filter(None, sem_telecom))))
+                    motivos.append(
+                        f"{r.motivo}: exige só telecomandadas; há manobra local em {unicas}"
+                    )
+        return "; ".join(motivos) or None
+
+    def motivos_restricao_sequencia(
+        self,
+        sequencia: Sequence[Mapping[str, Any]],
+        *,
+        chave: str | None = None,
+        fonte: str | None = None,
+        opcao: Mapping[str, Any] | None = None,
+    ) -> list[str]:
+        """Motivos determinísticos para o verificador reprovar um plano por restrição ativa."""
+        if opcao is not None:
+            bloqueio = self.motivo_bloqueio_opcao(opcao)
+            return [bloqueio] if bloqueio else []
+        if not self.restricoes:
+            return []
+        rede = self._rede()
+        chaves_seq = [str(m.get("chave")) for m in sequencia if m.get("chave")]
+        motivos: list[str] = []
+        for r in self.restricoes:
+            proibidas = sorted(
+                {c for c in [*(chaves_seq or []), chave or ""] if c in r.chaves_proibidas}
+            )
+            if proibidas:
+                motivos.append(f"{r.motivo}: usa chave proibida {', '.join(proibidas)}")
+            if r.alimentadores_evitar and any(
+                self._match_alimentador(alvo, fonte) for alvo in r.alimentadores_evitar
+            ):
+                motivos.append(f"{r.motivo}: evita alimentar pelo alimentador {fonte}")
+            if r.somente_telecomandadas:
+                sem_telecom = [
+                    c
+                    for c in chaves_seq
+                    if c in rede.chaves and not bool(self._dados_chave(rede, c)["tlcd"])
+                ]
+                if sem_telecom:
+                    motivos.append(
+                        f"{r.motivo}: exige só telecomandadas; há manobra local em "
+                        + ", ".join(sorted(set(sem_telecom)))
+                    )
+        return motivos
 
     # -- infraestrutura -----------------------------------------------------------------------
 
@@ -507,6 +694,7 @@ class SessaoCOD:
         self._indicacoes = []
         self._master_base = None
         self._scores = {}
+        self.limpar_restricoes()
         for p in self.propostas.listar():
             if p.status in ("pendente", "aprovada"):
                 p.status, p.token = "expirada", None
@@ -597,6 +785,7 @@ class SessaoCOD:
         rede.open_switch(religador)
         self.falta, self.religador, self._indicacoes = trecho, religador, indicacoes
         self._scores = {}
+        self.limpar_restricoes()
         return {
             "trecho": trecho,
             "ctmt": ctmt,
@@ -734,12 +923,17 @@ class SessaoCOD:
                 }
             except (ImportError, SessaoError, FileNotFoundError, RuntimeError) as exc:
                 saida["aviso"] = f"sem score elétrico: {exc}"
-        for o in opcoes:
+        for pos, o in enumerate(opcoes):
             d = o.to_dict()
             d["n_nos"] = len(d.pop("nos"))
             d["manobras"] = self._sequencia(rede, iso, religar, fechar=o.chave)
             d["score"] = scores.get(o.chave)
+            d["bloqueada"] = self.motivo_bloqueio_opcao(d)
+            d["_ordem"] = pos
             saida["opcoes"].append(d)
+        saida["opcoes"].sort(key=lambda o: (o.get("bloqueada") is not None, o.get("_ordem", 0)))
+        for d in saida["opcoes"]:
+            d.pop("_ordem", None)
         return saida
 
     @ferramenta(
@@ -820,6 +1014,7 @@ class SessaoCOD:
             score=None if chave is None else self._scores.get(chave),
             ja_satisfeitas=[c for c in iso.chaves if rede.is_open(c)],
             motivo=justificativa or None,
+            replanejada_apos_rejeicao=self.ultima_rejeicao,
         )
         return p.to_dict(com_token=False)
 
@@ -932,7 +1127,10 @@ class SessaoCOD:
         ):
             return []
         try:
-            opcoes = self._plano().restore_options(p.falta)
+            plano = self._plano()
+            opcoes = plano.restore_options(p.falta)
+            iso = plano.isolate_segment(p.falta)
+            religar = self._religar(iso)
         except (KeyError, ValueError, TrechoInexistenteError):
             return []
         saida = []
@@ -947,6 +1145,16 @@ class SessaoCOD:
                     "clientes": o.clientes.to_dict(),
                     "escolhida": o.chave == p.chave,
                     "score": sc,
+                    "bloqueada": self.motivo_bloqueio_opcao(
+                        {
+                            "chave": o.chave,
+                            "fonte": o.fonte,
+                            "ctmt_chave": o.ctmt_chave,
+                            "tlcd": o.tlcd,
+                            "manobras": self._sequencia(rede, iso, religar, fechar=o.chave),
+                            "score": sc,
+                        }
+                    ),
                 }
             )
         # ordem do ranking elétrico quando existe (viáveis primeiro, a escolhida, maior margem),
@@ -974,6 +1182,11 @@ class SessaoCOD:
             "religador": self.religador,
             "sem_tensao": None if rede is None else self._sem_tensao(rede),
             "propostas": [p.to_dict(com_token=False) for p in self.propostas.listar()],
+            "restricoes": [r.to_dict() for r in self.restricoes],
+            "restricoes_agregadas": self.restricoes_agregadas,
+            "replanejamentos_evento": self.replanejamentos_evento,
+            "limite_replanejamentos_evento": LIMITE_REPLANEJAMENTOS_EVENTO,
+            "ultima_rejeicao": self.ultima_rejeicao,
             "audit": None if audit is None else str(audit),
             "audit_n": None if self.audit is None else len(self.audit),
             "hash": None if self.audit is None or not len(self.audit) else self.audit.ultimo_hash,
