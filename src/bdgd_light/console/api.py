@@ -269,6 +269,22 @@ def criar_app(
             cliente=request.client.host if request.client else None,
         )
 
+    @app.post("/api/propostas/{proposta_id}/passo")
+    def passo(request: Request, proposta_id: str, corpo: Corpo = None) -> dict[str, Any]:
+        """Modo passo a passo: aprova (se pendente) e executa **uma** manobra — a próxima da
+        sequência — por chamada; o mapa recolore a cada passo."""
+        corpo = corpo or {}
+        operador = quem(request)
+        exigir_agente_livre()
+        return humano.executar_passo(
+            sessao,
+            proposta_id,
+            operador=operador,
+            validade_s=int(corpo.get("validade_s", 1800)),
+            origem="console",
+            cliente=request.client.host if request.client else None,
+        )
+
     @app.post("/api/propostas/{proposta_id}/rejeitar")
     def rejeitar(request: Request, proposta_id: str, corpo: Corpo = None) -> dict[str, Any]:
         corpo = corpo or {}

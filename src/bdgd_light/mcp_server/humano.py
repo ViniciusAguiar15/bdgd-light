@@ -8,7 +8,8 @@ iniciado explicitamente com ``--sem-segredo`` (demo local).
 
 A decisão vai para dois lugares: ``audit.jsonl`` da sessão (``hitl.aprovacao``/``hitl.rejeicao``,
 via ``SessaoCOD.approve/reject``) e ``hitl.jsonl`` — a cadeia própria do lado humano, a mesma que
-``bdgd-light aprovar`` escreve — com operador, origem e endereço do cliente.
+``bdgd-light aprovar`` escreve — com operador, origem e endereço do cliente. ``executar_passo`` é o
+modo passo a passo do console: uma manobra por chamada, cada uma registrada como ``hitl.passo``.
 """
 
 from __future__ import annotations
@@ -139,9 +140,67 @@ def executar_proposta(sessao: SessaoCOD, p: Mapping[str, Any]) -> list[dict[str,
     token = p.get("token")
     passos: list[dict[str, Any]] = []
     for m in list(p["manobras"])[int(p.get("executadas", 0)) :]:
-        estado = "aberta" if m["acao"] == ABRIR else "fechada"
-        passos.append(sessao.set_switch(m["chave"], estado, approval_token=token))
+        passos.append(_executar_manobra(sessao, m, token))
     return passos
+
+
+def _executar_manobra(sessao: SessaoCOD, m: Mapping[str, Any], token: str | None) -> dict[str, Any]:
+    estado = "aberta" if m["acao"] == ABRIR else "fechada"
+    return sessao.set_switch(m["chave"], estado, approval_token=token)
+
+
+def executar_passo(
+    sessao: SessaoCOD,
+    proposta_id: str,
+    *,
+    operador: str,
+    validade_s: int = VALIDADE_TOKEN_S,
+    origem: str = "http",
+    cliente: str | None = None,
+) -> dict[str, Any]:
+    """Modo **passo a passo** (pedido 1 da revisão PR-15): executa **uma** manobra da proposta — a
+    próxima da sequência — por chamada. Se a proposta ainda está pendente, a primeira chamada a
+    aprova (token emitido, ``hitl.aprovacao`` com ``executar: "passo"``) e executa o passo 1; as
+    seguintes só executam. Cada passo é um ``set_switch`` auditado e vai para ``hitl.jsonl`` como
+    ``hitl.passo``. Devolve ``{operador, passo, proposta, erro}``; ``passo`` é ``None`` se a
+    proposta já estava concluída."""
+    p = sessao.propostas.obter(proposta_id)  # relê o arquivo: decisões externas vencem
+    hitl = hitl_log(sessao)
+    if p.status == "pendente":
+        aprovada = sessao.approve(proposta_id, operador=operador, validade_s=validade_s)
+        if hitl is not None:
+            hitl.registrar(
+                "hitl.aprovacao",
+                proposta=_sem_token(aprovada),
+                operador=operador,
+                origem=origem,
+                cliente=cliente,
+                executar="passo",
+            )
+        p = sessao.propostas.obter(proposta_id)
+    if p.status != "aprovada":
+        raise SessaoError(f"proposta {proposta_id} está {p.status}; nada a executar")
+    saida: dict[str, Any] = {"operador": operador, "passo": None, "erro": None}
+    proximo = p.proximo_passo
+    if proximo is not None:
+        try:
+            saida["passo"] = _executar_manobra(sessao, proximo, p.token)
+        except (RecusadoError, SessaoError) as exc:
+            saida["erro"] = str(exc)
+        if hitl is not None:
+            hitl.registrar(
+                "hitl.passo",
+                proposta_id=proposta_id,
+                operador=operador,
+                origem=origem,
+                cliente=cliente,
+                manobra=dict(proximo),
+                passo=None if saida["passo"] is None else saida["passo"].get("passo"),
+                n_passos=len(p.manobras),
+                erro=saida["erro"],
+            )
+    saida["proposta"] = sessao.propostas.obter(proposta_id).to_dict(com_token=False)
+    return saida
 
 
 def rejeitar(
