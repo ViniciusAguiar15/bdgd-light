@@ -68,6 +68,8 @@ CAMADAS_POR_TRAFO = ["SSDBT", "UNSEBT", "RAMLIG", "UCBT", "UCBT_tab", "UGBT", "U
 CAMADAS_BBOX = ["SSDMT", "SSDBT", "UNSEMT", "UNSEBT", "UNTRMT", "UNREMT", "UNCRMT", "RAMLIG"]
 CAMADAS_FILTRADAS_POR_BBOX = ["PONNOT", "UCBT"]
 FOLGA_BBOX_M = 500.0
+# ~5× o raio plausível de um circuito BT urbano: filtra só erro grosseiro de cadastro sem cortar
+# rede legítima; o aviso emitido permite revisar o limiar com dado real.
 DIST_MAX_POSTE_TRAFO_UC_M = 2_000.0
 EQUIPAMENTOS = {  # camada de equipamento → (coluna de ligação, camadas de unidades)
     "EQTRMT": ("UNI_TR_MT", ["UNTRMT"]),
@@ -260,16 +262,20 @@ def _filtrar_postes_por_trafo_uc(
         return camadas
 
     refs_uc = pd.concat(referencias_uc, ignore_index=True).drop_duplicates(["PN_CON", "UNI_TR_MT"])
+    refs_uc["PN_CON"] = refs_uc["PN_CON"].astype(str)
+    refs_uc["UNI_TR_MT"] = refs_uc["UNI_TR_MT"].astype(str)
     postes_geom = (
         postes[["COD_ID", "geometry"]]
         .dropna(subset=["geometry"])
         .rename(columns={"COD_ID": "PN_CON", "geometry": "geometry_poste"})
     )
+    postes_geom["PN_CON"] = postes_geom["PN_CON"].astype(str)
     trafos_geom = (
         trafos[["COD_ID", "geometry"]]
         .dropna(subset=["geometry"])
         .rename(columns={"COD_ID": "UNI_TR_MT", "geometry": "geometry_trafo"})
     )
+    trafos_geom["UNI_TR_MT"] = trafos_geom["UNI_TR_MT"].astype(str)
     medidas = refs_uc.merge(postes_geom, on="PN_CON").merge(trafos_geom, on="UNI_TR_MT")
     if medidas.empty:
         return camadas
@@ -278,14 +284,15 @@ def _filtrar_postes_por_trafo_uc(
     trafos_3857 = gpd.GeoSeries(medidas["geometry_trafo"], crs=trafos.crs).to_crs("EPSG:3857")
     medidas["dist_trafo_m"] = postos_3857.distance(trafos_3857)
 
-    referencias_validas = set(referencias_outras)
-    referencias_validas |= set(refs_uc["PN_CON"]) - set(medidas["PN_CON"])
+    referencias_outras_str = {str(v) for v in referencias_outras}
+    referencias_validas = set(referencias_outras_str)
+    referencias_validas |= set(refs_uc["PN_CON"].astype(str)) - set(medidas["PN_CON"].astype(str))
     referencias_validas |= set(
         medidas.loc[medidas["dist_trafo_m"] <= distancia_max_m, "PN_CON"].astype(str)
     )
     invalidos = sorted(
         set(medidas.loc[medidas["dist_trafo_m"] > distancia_max_m, "PN_CON"].astype(str))
-        - referencias_outras
+        - referencias_outras_str
     )
     if not invalidos:
         return camadas
