@@ -29,9 +29,14 @@ fila e aprovação** e clique **injetar falta**. O agente localiza, isola e aval
 a proposta aparece com manobras, clientes recuperados, veredito do gêmeo (margem no disjuntor, Vmin
 MT) e do verificador (checagens aprovadas/total), motivo e alternativas descartadas. **Aprovar e executar**
 executa a sequência e o mapa recolore (trechos reenergizados voltam a verde; a zona da falta segue
-vermelha); **Rejeitar** pede um motivo. A auditoria lista os últimos registros e "trilha íntegra ✓
-hash". Com uma falta já tratada o botão vira **reiniciar e injetar falta** (recarrega o cluster —
-rede normal, propostas em aberto expiradas — e injeta de novo).
+vermelha). **Rejeitar e replanejar** agora traz um campo de motivo com sugestões clicáveis
+(`a chave … está em manutenção`, `não quero carregar o BOMPASTOR`, `prefiro a rota telecomandada`);
+o backend rejeita a proposta, registra `hitl.rejeicao`, extrai a restrição estruturada e dispara uma
+nova execução do agente para a mesma falta, sem reinjetar o evento. A proposta seguinte mostra
+`replanejada após rejeição: <motivo>`. O limite é **3 replanejamentos automáticos por evento**; ao
+atingi-lo, o console para de replanejar e pede intervenção humana. A auditoria lista os últimos
+registros e "trilha íntegra ✓ hash". Com uma falta já tratada o botão vira **reiniciar e injetar
+falta** (recarrega o cluster — rede normal, propostas em aberto expiradas — e injeta de novo).
 
 | opção de `serve` | padrão | descrição |
 |---|---|---|
@@ -58,7 +63,7 @@ Todas as rotas devolvem JSON; erros de domínio (`SessaoError`) viram **409** co
 | `GET /api/propostas/{id}` | proposta + `alternativas` (opções de `restore_options` com o último score, a escolhida primeiro) + `verificador` (veredito da execução do agente que a gerou) | `alternativas = []` após executada |
 | `POST /api/propostas/{id}/aprovar` | `{operador, proposta, execucao, erro}` | corpo `{executar?: true, validade_s?: 1800}`; aprova **e executa** por padrão (no transporte MCP http o padrão é só aprovar); grava `hitl.aprovacao` com `origem: console`. Com manobras já aplicadas pelo modo passo a passo, executa só as restantes |
 | `POST /api/propostas/{id}/passo` | `{operador, passo, erro, proposta}` | **modo passo a passo**: aprova a proposta se ainda pendente (`hitl.aprovacao` com `executar: "passo"`) e aplica **só a próxima manobra** (`Proposta.proximo_passo`) com `set_switch` + token da proposta; grava `hitl.passo` (`manobra`, `passo`, `n_passos`). Uma chamada por manobra; a n-ésima marca a proposta `executada`; a seguinte responde 409 |
-| `POST /api/propostas/{id}/rejeitar` | `{operador, proposta}` | corpo `{motivo?}` |
+| `POST /api/propostas/{id}/rejeitar` | `{operador, proposta, replanejamento}` | corpo `{motivo?}`; rejeita a proposta, registra `hitl.rejeicao` e, se houver agente e o limite de 3 não tiver sido atingido, dispara um replanejamento para a mesma falta com a restrição derivada do motivo |
 | `GET /api/auditoria?n=12` | `{n_total, integra, hash, registros[]}` compactos (sem `approval_token`) | `integra` vem de `AuditLog.verificar()` na cadeia inteira |
 | `GET /api/agente?n=5` | estado + últimas execuções (resumo: proposta, rodadas, ferramentas, recusas, tempos, resposta) | |
 | `GET /docs` | OpenAPI | |
@@ -86,6 +91,11 @@ ou `X-Console-Token` com `compare_digest` (401 se errado; 503 se o servidor não
   "Aprovar e executar" vira "Executar a última"/"Executar as k restantes" e "Rejeitar" desabilita
   depois da primeira manobra aplicada. Como cada `set_switch` entra na auditoria, o `hash` muda e o
   mapa recolore a cada passo sem nada especial no front.
+- **Rejeição com motivo** (issue #61): o cartão agora traz um `input` para o motivo e três sugestões
+  clicáveis. Ao rejeitar, o console faz `POST …/rejeitar {motivo}`; se o backend devolver
+  `replanejamento.status = limite`, mostra a mensagem de intervenção humana. Enquanto as alternativas
+  replanejadas aparecem, as opções vetadas continuam visíveis em `alternativas`, mas com
+  `bloqueada: <motivo>` para o operador entender por que foram descartadas.
 - `window.cod` expõe `estado`, `atualizar()`, `injetar()`, `aprovar(id)`, `passo(id)`,
   `rejeitar(id, motivo)` para depuração e para o smoke.
 - Smoke ponta a ponta: `SMOKE_FLUXO=1 SMOKE_TOKEN=demo node scripts/smoke.mjs
@@ -139,6 +149,22 @@ Modo passo a passo (2026-09-11, `SMOKE_PASSOS=1`, sessão nova, Tijuca):
 
 Abrir a chave de isolamento (11035901) não reenergiza nada — o mapa só muda no segundo clique, quando
 o tie 974020904 fecha e ALC9946 assume a carga; é exatamente o que se quer mostrar em aula.
+
+### Replanejamento após rejeição (fluxo esperado)
+
+Com LLM real, o replanejamento tende a ser mais rápido que a primeira proposta porque a falta já está
+registrada, o cluster já está carregado e não há nova injeção do evento; o ciclo esperado é:
+
+1. operador rejeita a proposta e informa o motivo;
+2. `/api/propostas/{id}/rejeitar` devolve `replanejamento.status = iniciado`;
+3. a auditoria registra `hitl.rejeicao` e `agente.replanejamento`;
+4. a proposta seguinte aparece com `replanejada após rejeição: <motivo>`;
+5. `alternativas` mantém as rotas vetadas, marcadas como `bloqueada`.
+
+Para a demo da issue #61, o objetivo operacional é a nova proposta surgir em **menos de 40 s** com
+sessão aquecida e LLM real. O teste automatizado usa `--provider fake`: rejeitar `"a chave CH003
+está em manutenção"` gera a P-0002 por outra chave viável e o verificador recusa qualquer insistência
+na CH003.
 
 ![modo passo a passo: 1/2 executadas, ✓ abrir 11035901, ▶ fechar 974020904](img/2b-passo.png)
 

@@ -404,6 +404,46 @@ def test_fake_operador_chave_indisponivel_bloqueia_plano(sessao, simulador):
     assert ex2.sequencia.count("propose_plan") == 2
 
 
+def test_rejeicao_com_motivo_vira_restricao_e_replanejamento(sessao, simulador):
+    ev = simulador.falta_permanente("SEG001")
+    orq = Orquestrador(sessao, fake_operador(), provider="fake")
+    ex1 = orq.executar_evento(ev)
+    assert ex1.proposta["chave"] == "CH003"
+    sessao.reject("P-0001", operador="ana", motivo="a chave CH003 está em manutenção")
+
+    ex2 = orq.replanejar_apos_rejeicao("P-0001", "a chave CH003 está em manutenção", evento=ev)
+    assert ex2.tipo == "replanejamento"
+    assert ex2.proposta["id"] == "P-0002" and ex2.proposta["chave"] == "CH005"
+    assert ex2.proposta["replanejada_apos_rejeicao"] == "a chave CH003 está em manutenção"
+    assert sessao.replanejamentos_evento == 1
+    assert sessao.restricoes_agregadas["chaves_proibidas"] == ["CH003"]
+    opcoes = sessao.restore_options(score=False)["opcoes"]
+    ch003 = next(o for o in opcoes if o["chave"] == "CH003")
+    assert "manutenção" in ch003["bloqueada"]
+    assert "agente.replanejamento" in [r["tipo"] for r in registros(sessao)]
+
+
+def test_rejeicao_faz_verificador_recusar_chave_proibida(sessao, simulador):
+    ev = simulador.falta_permanente("SEG001")
+    base = Orquestrador(sessao, fake_operador(), provider="fake")
+    base.executar_evento(ev)
+    sessao.reject("P-0001", operador="ana", motivo="a chave CH003 está em manutenção")
+
+    roteiro = [
+        tc("locate_fault"),
+        tc("isolate_fault"),
+        tc("restore_options", score=True),
+        tc("propose_plan", chave="CH003", justificativa="insistindo na chave proibida"),
+        tc("propose_plan", chave="CH005", justificativa="plano alternativo"),
+        Text("Proposta P-0002 por CH005.", modelo="fake-roteiro"),
+    ]
+    orq = Orquestrador(sessao, FakeLLMClient(roteiro), provider="fake")
+    ex = orq.replanejar_apos_rejeicao("P-0001", "a chave CH003 está em manutenção", evento=ev)
+    assert ex.proposta["chave"] == "CH005"
+    assert ex.recusas[0]["checagens"]["restricoes_operacionais"] is False
+    assert "chave proibida CH003" in ex.recusas[0]["problemas"][0]
+
+
 def test_fake_operador_transitoria_e_pico(sessao, simulador):
     orq = Orquestrador(sessao, fake_operador(), provider="fake")
     ex = orq.executar_evento(simulador.falta_transitoria("SEG003"))

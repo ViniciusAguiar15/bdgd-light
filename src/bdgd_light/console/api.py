@@ -23,7 +23,12 @@ from bdgd_light.agent.audit import AuditError
 from bdgd_light.grid.geojson import estado_geojson
 from bdgd_light.mcp_server import humano
 from bdgd_light.mcp_server.humano import Autorizador, NaoAutorizadoError
-from bdgd_light.mcp_server.sessao import SessaoCOD, SessaoError, resolver_cluster
+from bdgd_light.mcp_server.sessao import (
+    LIMITE_REPLANEJAMENTOS_EVENTO,
+    SessaoCOD,
+    SessaoError,
+    resolver_cluster,
+)
 from bdgd_light.sim.eventos import (
     CENARIOS,
     CHAVE_INDISPONIVEL,
@@ -51,6 +56,7 @@ class AgenteEmSegundoPlano:
         self._thread: threading.Thread | None = None
         self.execucoes: list[dict[str, Any]] = []
         self.evento_atual: dict[str, Any] | None = None
+        self.ultimo_evento: Evento | None = None
         self.erro: str | None = None
         self.inicio: str | None = None
 
@@ -61,6 +67,7 @@ class AgenteEmSegundoPlano:
     def tratar(self, evento: Evento) -> bool:
         if self.ocupado:
             return False
+        self.ultimo_evento = evento
         if self.sincrono:
             self._rodar(evento)
             return True
@@ -68,12 +75,57 @@ class AgenteEmSegundoPlano:
         self._thread.start()
         return True
 
+    def replanejar(self, proposta_id: str, motivo: str) -> str:
+        """Nova execução para a mesma falta após rejeição; devolve o estado do disparo."""
+        if self.ocupado:
+            return "ocupado"
+        if self.ultimo_evento is None:
+            return "sem_evento"
+        if self.orq.sessao.replanejamentos_evento >= LIMITE_REPLANEJAMENTOS_EVENTO:
+            self.erro = (
+                "SessaoError: limite de 3 replanejamentos automáticos por evento atingido; "
+                "peça intervenção humana"
+            )
+            return "limite"
+        try:
+            if self.sincrono:
+                self._rodar_replanejamento(proposta_id, motivo)
+                return "erro" if self.erro else "concluido"
+            self._thread = threading.Thread(
+                target=self._rodar_replanejamento, args=(proposta_id, motivo), daemon=True
+            )
+            self._thread.start()
+            return "iniciado"
+        except SessaoError as exc:
+            self.erro = str(exc)
+            return "limite" if "limite de 3 replanejamentos" in str(exc) else "erro"
+
     def _rodar(self, evento: Evento) -> None:
         self.evento_atual = evento.to_dict()
         self.inicio = _agora()
         self.erro = None
         try:
             execucao = self.orq.executar_evento(evento)
+            self.execucoes.append(execucao.to_dict())
+            del self.execucoes[:-LIMITE_EXECUCOES]
+        except Exception as exc:  # noqa: BLE001 — qualquer falha vira estado consultável
+            self.erro = f"{type(exc).__name__}: {exc}"
+        finally:
+            self.evento_atual = None
+
+    def _rodar_replanejamento(self, proposta_id: str, motivo: str) -> None:
+        if self.ultimo_evento is None:
+            raise SessaoError("nenhum evento anterior para replanejar")
+        self.evento_atual = {
+            **self.ultimo_evento.to_dict(),
+            "replanejamento": {"proposta_id": proposta_id, "motivo": motivo},
+        }
+        self.inicio = _agora()
+        self.erro = None
+        try:
+            execucao = self.orq.replanejar_apos_rejeicao(
+                proposta_id, motivo, evento=self.ultimo_evento
+            )
             self.execucoes.append(execucao.to_dict())
             del self.execucoes[:-LIMITE_EXECUCOES]
         except Exception as exc:  # noqa: BLE001 — qualquer falha vira estado consultável
@@ -91,6 +143,9 @@ class AgenteEmSegundoPlano:
             "inicio": self.inicio if self.ocupado else None,
             "erro": self.erro,
             "n_execucoes": len(self.execucoes),
+            "replanejamentos_evento": getattr(
+                getattr(self.orq, "sessao", None), "replanejamentos_evento", 0
+            ),
             "ultima": None if ultima is None else _resumo_execucao(ultima),
         }
 
@@ -299,7 +354,7 @@ def criar_app(
     def rejeitar(request: Request, proposta_id: str, corpo: Corpo = None) -> dict[str, Any]:
         corpo = corpo or {}
         operador = quem(request)
-        return humano.rejeitar(
+        resultado = humano.rejeitar(
             sessao,
             proposta_id,
             operador=operador,
@@ -307,6 +362,25 @@ def criar_app(
             origem="console",
             cliente=request.client.host if request.client else None,
         )
+        motivo = str(corpo.get("motivo", "")).strip()
+        status = "sem_agente"
+        if agente is not None:
+            status = agente.replanejar(proposta_id, motivo)
+        resultado["replanejamento"] = {
+            "status": status,
+            "mensagem": {
+                "iniciado": "agente replanejando com a restrição informada",
+                "concluido": "agente replanejou com a restrição informada",
+                "ocupado": "agente ainda ocupado; aguarde a execução atual",
+                "sem_evento": "não há evento anterior para replanejar",
+                "sem_agente": "console sem agente automático; intervenção humana necessária",
+                "limite": (
+                    "limite de 3 replanejamentos por evento atingido; peça intervenção humana"
+                ),
+                "erro": "falha ao iniciar o replanejamento automático",
+            }.get(status, status),
+        }
+        return resultado
 
     @app.get("/api/auditoria")
     def auditoria(n: int = Query(12, ge=1, le=200)) -> dict[str, Any]:

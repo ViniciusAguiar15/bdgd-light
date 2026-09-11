@@ -10,8 +10,9 @@ de aprovação humana (CLI ``aprovar`` ou console).
 **Verificador**: porta determinística na frente de ``propose_plan`` — chaves existem, sequência
 abre antes de fechar, fronteira da falta coberta, opção consta de ``restore_options``, veredito
 elétrico do gêmeo (convergência, 0,93–1,05 pu MT, corrente do disjuntor ≤ nominal, sem sobrecarga
-MT) e chaves indisponíveis. Proposta recusada volta ao modelo como erro de ferramenta para ele
-replanejar; ``max_rodadas`` e ``replanejamentos`` limitam o laço.
+MT), chaves indisponíveis e restrições explícitas vindas de rejeições humanas. Proposta recusada
+volta ao modelo como erro de ferramenta para ele replanejar; ``max_rodadas`` e
+``replanejamentos`` limitam o laço.
 """
 
 from __future__ import annotations
@@ -46,7 +47,12 @@ from bdgd_light.agent.llm import (
     Uso,
     conversar,
 )
-from bdgd_light.mcp_server.sessao import SessaoCOD, SessaoError, resolver_cluster
+from bdgd_light.mcp_server.sessao import (
+    LIMITE_REPLANEJAMENTOS_EVENTO,
+    SessaoCOD,
+    SessaoError,
+    resolver_cluster,
+)
 from bdgd_light.sim.eventos import (
     CHAVE_INDISPONIVEL,
     FALTA_PERMANENTE,
@@ -92,6 +98,21 @@ DESCRICAO_PARAMETROS: dict[str, str] = {
 VMIN_PADRAO, VMAX_PADRAO = 0.93, 1.05
 TOLERANCIA_MARGEM = 0.02
 """Diferença de margem no disjuntor (2 pontos percentuais) abaixo da qual duas opções empatam."""
+
+EXTRATOR_RESTRICOES = ToolSpec(
+    "registrar_restricao",
+    "Extrai uma restrição operacional estruturada a partir do motivo da rejeição humana.",
+    {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "chaves_proibidas": {"type": "array", "items": {"type": "string"}},
+            "alimentadores_evitar": {"type": "array", "items": {"type": "string"}},
+            "somente_telecomandadas": {"type": "boolean"},
+            "resumo": {"type": "string"},
+        },
+    },
+)
 
 # ---------------------------------------------------------------------------------------------
 # Descritores das ferramentas (ToolSpec a partir da assinatura da sessão)
@@ -404,6 +425,16 @@ class Verificador:
             )
         else:
             passa("chaves_disponiveis")
+        motivos_restricao = sessao.motivos_restricao_sequencia(
+            sequencia,
+            chave=chave,
+            fonte=None if opcao is None else str(opcao.get("fonte") or ""),
+            opcao=opcao,
+        )
+        if motivos_restricao:
+            falha("restricoes_operacionais", "; ".join(motivos_restricao))
+        else:
+            passa("restricoes_operacionais")
         acoes = [m.get("acao") for m in sequencia]
         fechamentos = [i for i, a in enumerate(acoes) if a == "fechar"]
         aberturas = [i for i, a in enumerate(acoes) if a == "abrir"]
@@ -657,7 +688,116 @@ class Orquestrador:
             mensagem, consulta=pergunta, exigir_proposta=False, tipo="pergunta", pergunta=pergunta
         )
 
+    def replanejar_apos_rejeicao(
+        self,
+        proposta_id: str,
+        motivo: str,
+        *,
+        evento: Evento | Mapping[str, Any] | None = None,
+    ) -> Execucao:
+        """Aplica a restrição explicitada pelo operador e roda uma nova execução do orquestrador
+        para a mesma falta, sem reinjetar o evento no simulador."""
+        proposta = self.sessao.propostas.obter(proposta_id)
+        if proposta.falta is None or self.sessao.falta != proposta.falta:
+            raise SessaoError(
+                f"proposta {proposta_id} não corresponde à falta atual da sessão; reinicie o evento"
+            )
+        if self.sessao.replanejamentos_evento >= LIMITE_REPLANEJAMENTOS_EVENTO:
+            raise SessaoError(
+                "limite de 3 replanejamentos automáticos por evento atingido; "
+                "peça intervenção humana"
+            )
+        evento_dict = (
+            evento.to_dict()
+            if isinstance(evento, Evento)
+            else dict(evento or self._evento_atual_padrao(proposta))
+        )
+        restricao = self._extrair_restricao_rejeicao(
+            motivo, proposta_id, proposta.to_dict(com_token=False)
+        )
+        aplicada = self.sessao.aplicar_restricao(restricao, motivo=motivo)
+        if self.audit is not None:
+            self.audit.registrar(
+                "agente.replanejamento",
+                proposta_id=proposta_id,
+                motivo=motivo,
+                restricao=aplicada,
+                n_replanejamento=self.sessao.replanejamentos_evento,
+                evento=evento_dict,
+            )
+        mensagem = self._mensagem_rejeicao(evento_dict, proposta.to_dict(com_token=False), motivo)
+        consulta = (
+            f"rejeição {motivo} "
+            f"{evento_dict.get('tipo', '')} {evento_dict.get('detalhes', {}).get('descricao', '')}"
+        )
+        return self._rodar(
+            mensagem,
+            consulta=consulta,
+            exigir_proposta=True,
+            tipo="replanejamento",
+            evento=evento_dict,
+        )
+
     # -- preparação ----------------------------------------------------------------------------
+
+    def _evento_atual_padrao(self, proposta) -> dict[str, Any]:
+        return {
+            "tipo": FALTA_PERMANENTE,
+            "cluster": proposta.cluster,
+            "hora": datetime.now(UTC).isoformat(timespec="seconds"),
+            "trecho": proposta.falta,
+            "detalhes": {},
+        }
+
+    def _extrair_restricao_rejeicao(
+        self, motivo: str, proposta_id: str, proposta: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        alternativas = self.sessao.alternativas(proposta_id)
+        mensagens = [
+            Message.system(
+                "Você extrai restrições operacionais estruturadas para novos planos de manobra. "
+                "Sempre chame a ferramenta registrar_restricao com JSON válido. "
+                "Use só o que estiver explícito no motivo do operador ou no contexto das "
+                "alternativas. Campos: chaves_proibidas (COD_ID), "
+                "alimentadores_evitar (CTMT/fonte), "
+                "somente_telecomandadas (bool) e resumo."
+            ),
+            Message.user(
+                "REJEICAO_OPERADOR "
+                + json.dumps(
+                    {
+                        "motivo": motivo,
+                        "proposta": proposta,
+                        "alternativas": [
+                            {
+                                "chave": a.get("chave"),
+                                "fonte": a.get("fonte"),
+                                "tlcd": a.get("tlcd"),
+                                "bloqueada": a.get("bloqueada"),
+                            }
+                            for a in alternativas
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+            ),
+        ]
+        try:
+            resposta = self.cliente.chat(mensagens, tools=[EXTRATOR_RESTRICOES])
+        except LLMError:
+            return _heuristica_restricao(motivo, alternativas)
+        if isinstance(resposta, ToolCalls):
+            for chamada in resposta.calls:
+                if chamada.name == EXTRATOR_RESTRICOES.name:
+                    return _normalizar_restricao(chamada.arguments, motivo)
+        if isinstance(resposta, Text):
+            try:
+                bruto = json.loads(resposta.content)
+            except (TypeError, json.JSONDecodeError):
+                return _heuristica_restricao(motivo, alternativas)
+            if isinstance(bruto, Mapping):
+                return _normalizar_restricao(bruto, motivo)
+        return _heuristica_restricao(motivo, alternativas)
 
     def _carregar(self, cluster: str) -> None:
         alvo = resolver_cluster(cluster, self.sessao.feeders)
@@ -697,6 +837,15 @@ class Orquestrador:
             + (", ".join(sorted(self.indisponiveis)) or "nenhuma")
             + "."
         )
+        restricoes = s.resumo_restricoes()
+        if restricoes:
+            partes.append("Restrições operacionais ativas: " + " | ".join(restricoes) + ".")
+            partes.append(
+                f"Replanejamentos automáticos neste evento: {s.replanejamentos_evento}/"
+                f"{LIMITE_REPLANEJAMENTOS_EVENTO}."
+            )
+        else:
+            partes.append("Restrições operacionais ativas: nenhuma.")
         return "\n".join(partes)
 
     def _mensagem_evento(self, ev: Evento, contexto: Mapping[str, Any]) -> str:
@@ -720,6 +869,20 @@ class Orquestrador:
         }.get(ev.tipo, "TAREFA: analisar o evento e responder ao operador.")
         return (
             f"EVENTO {json.dumps(ev.to_dict(), ensure_ascii=False)}\n{self._situacao()}\n{tarefa}"
+        )
+
+    def _mensagem_rejeicao(
+        self, evento: Mapping[str, Any], proposta: Mapping[str, Any], motivo: str
+    ) -> str:
+        rejeicao = json.dumps({"proposta": proposta, "motivo": motivo}, ensure_ascii=False)
+        return (
+            f"EVENTO {json.dumps(evento, ensure_ascii=False)}\n"
+            f"REJEICAO_HUMANA {rejeicao}\n"
+            f"{self._situacao()}\n"
+            "TAREFA: replaneje para a mesma falta sem reinjetar o evento. Respeite as restrições "
+            "operacionais ativas; opções marcadas como bloqueadas em restore_options não devem "
+            "virar proposta. Termine com propose_plan (melhor opção viável restante, ou sem "
+            "chave se não houver) e o resumo para o operador."
         )
 
     # -- ferramentas ---------------------------------------------------------------------------
@@ -976,10 +1139,11 @@ class Orquestrador:
 
 
 # ---------------------------------------------------------------------------------------------
-# Operador fake (offline, determinístico): segue o fluxo FLISR pelas regras do prompt
+# Extração de restrições + operador fake (offline, determinístico)
 # ---------------------------------------------------------------------------------------------
 
 _RE_EVENTO = re.compile(r"^EVENTO (\{.*\})$", re.MULTILINE)
+_RE_REJEICAO_OPERADOR = re.compile(r"^REJEICAO_OPERADOR (\{.*\})$", re.MULTILINE)
 
 
 def _execucoes_do_historico(messages: Sequence[Message]) -> list[tuple[str, dict, Any]]:
@@ -1009,7 +1173,68 @@ def _evento_do_historico(messages: Sequence[Message]) -> dict[str, Any] | None:
                     return json.loads(achado.group(1))
                 except json.JSONDecodeError:
                     return None
+
+
+def _rejeicao_operador_do_historico(messages: Sequence[Message]) -> dict[str, Any] | None:
+    for m in messages:
+        if m.role == "user" and m.content:
+            achado = _RE_REJEICAO_OPERADOR.search(m.content)
+            if achado:
+                try:
+                    return json.loads(achado.group(1))
+                except json.JSONDecodeError:
+                    return None
     return None
+
+
+def _normalizar_restricao(dados: Mapping[str, Any], motivo: str) -> dict[str, Any]:
+    def lista(campo: str) -> list[str]:
+        valores = dados.get(campo) or []
+        if not isinstance(valores, list):
+            return []
+        vistos: set[str] = set()
+        saida: list[str] = []
+        for valor in valores:
+            texto = str(valor).strip()
+            if texto and texto not in vistos:
+                vistos.add(texto)
+                saida.append(texto)
+        return saida
+
+    resumo = dados.get("resumo")
+    return {
+        "chaves_proibidas": lista("chaves_proibidas"),
+        "alimentadores_evitar": lista("alimentadores_evitar"),
+        "somente_telecomandadas": bool(dados.get("somente_telecomandadas")),
+        "resumo": str(resumo).strip() if resumo not in (None, "") else motivo.strip() or None,
+    }
+
+
+def _heuristica_restricao(
+    motivo: str, alternativas: Sequence[Mapping[str, Any]] = ()
+) -> dict[str, Any]:
+    texto = motivo.strip()
+    ids = []
+    for achado in re.finditer(r"\b(?:CH\d+|\d{6,})\b", texto, re.IGNORECASE):
+        valor = achado.group(0)
+        if valor not in ids:
+            ids.append(valor)
+    alimentadores = []
+    for achado in re.finditer(r"\b[A-Z]{3}\d{3,5}\b", texto):
+        valor = achado.group(0)
+        if valor not in alimentadores:
+            alimentadores.append(valor)
+    motivo_maiusculo = texto.upper()
+    for alt in alternativas:
+        fonte = str(alt.get("fonte") or "").strip()
+        if fonte and fonte.upper() in motivo_maiusculo and fonte not in alimentadores:
+            alimentadores.append(fonte)
+    return {
+        "chaves_proibidas": ids,
+        "alimentadores_evitar": alimentadores,
+        "somente_telecomandadas": "telecom" in texto.lower(),
+        "resumo": texto or None,
+    }
 
 
 def fake_operador(modelo: str = "fake-operador") -> FakeLLMClient:
@@ -1022,6 +1247,16 @@ def fake_operador(modelo: str = "fake-operador") -> FakeLLMClient:
         feitas = _execucoes_do_historico(messages)
         nomes = [n for n, _, _ in feitas]
         disponiveis = {t.name for t in tools}
+        rejeicao = _rejeicao_operador_do_historico(messages)
+        if rejeicao is not None and EXTRATOR_RESTRICOES.name in disponiveis:
+            restricao = _heuristica_restricao(
+                str(rejeicao.get("motivo") or ""), rejeicao.get("alternativas") or []
+            )
+            return ToolCalls(
+                (ToolCall("call_restricao_1", EXTRATOR_RESTRICOES.name, restricao),),
+                modelo=modelo,
+                uso=Uso(),
+            )
         evento = _evento_do_historico(messages) or {}
         tipo = evento.get("tipo")
 
@@ -1051,6 +1286,7 @@ def fake_operador(modelo: str = "fake-operador") -> FakeLLMClient:
                     o
                     for o in opcoes
                     if o["chave"] not in tentadas
+                    and not o.get("bloqueada")
                     and (o.get("score") is None or o["score"].get("viavel"))
                 ]
                 if candidatas:
