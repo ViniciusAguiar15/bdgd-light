@@ -16,6 +16,7 @@ label "phase:F1"     "bfd4f2" "Fase 1: dados + mapa"
 label "phase:F2"     "bfd4f2" "Fase 2: grafo + gêmeo"
 label "phase:F3"     "bfd4f2" "Fase 3: agente"
 label "phase:F4"     "bfd4f2" "Fase 4: benchmark + governança"
+label "phase:F5"     "bfd4f2" "Fase 5: operação colaborativa"
 label "copilot"      "8b5cf6" "Pronta para o Copilot coding agent"
 label "spike"        "e4e669" "Investigação com resultado documentado"
 
@@ -24,6 +25,7 @@ ms "F1 Dados + mapa"          "Exportar camadas, inventário, recorte por CTMT, 
 ms "F2 Grafo + gêmeo"         "networkx + OpenDSS dos alimentadores escolhidos"
 ms "F3 Agente"                "MCP server, orquestrador/verificador HITL, simulador de eventos, FLISR"
 ms "F4 Benchmark + governança" "Tarefas/métricas estilo PowerChain, logs, RACI-A, demo"
+ms "F5 Operação colaborativa"   "Rejeição com replanejamento, impacto em DEC, painel elétrico, dívida e cenários"
 
 # Issues a partir de docs/backlog/*.md (front matter: title, labels, milestone)
 for f in docs/backlog/*.md; do
