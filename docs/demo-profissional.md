@@ -41,7 +41,9 @@ proposta aprovada, `set_switch` é recusado — o agente nunca manobra.
 
 ## 6. Trilha (30 s)
 Auditoria encadeada por hash: evento, cada chamada e resultado, rotas descartadas e o porquê,
-proposta, quem aprovou, comandos enviados. É o que permite reconstruir o incidente depois.
+proposta, quem aprovou, comandos enviados. Depois de aprovar a manobra, `uv run bdgd-light replay
+E-0001 --origem data/agent --verificar-cadeia` é a resposta prática para "como vocês provam o que o
+agente fez?".
 
 ## 7. Se sobrar tempo: o outro Rio (1 min)
 `?cenario=ipanema` — rede subterrânea. A resposta certa é que **não há rota**: isolar e despachar

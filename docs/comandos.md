@@ -458,6 +458,23 @@ conversa.hash_auditoria, conversa.uso_total, conversa.segundos  # hash, tokens s
 AuditLog.verificar_arquivo("data/audit/llm.jsonl")  # nº de registros ou AuditError
 ```
 
+### `bdgd-light replay` — reconstrução de um evento auditado
+
+Lê os JSONL de auditoria (`audit.jsonl`, `hitl.jsonl` ou um diretório com vários arquivos) e
+reconstroi a linha do tempo de um evento do agente: preparo (`load_cluster`/`inject_fault`),
+ferramentas chamadas na ordem, opções avaliadas em `restore_options`, veredito do verificador
+(gates aprovados e reprovados), rejeições e replanejamentos, aprovação humana e execução de
+`set_switch`. Com `--verificar-cadeia`, recalcula os hashes dos arquivos usados e aponta a primeira
+divergência se houver adulteração. Sem `--json`, imprime texto legível em pt-BR; com `--json`,
+devolve uma estrutura única com `evento`, `cadeia`, `linha_do_tempo`, `registros` e
+`resposta_final`.
+
+```bash
+uv run bdgd-light replay E-0001 --origem data/agent                  # timeline legível
+uv run bdgd-light replay E-0001 --origem data/agent --verificar-cadeia
+uv run bdgd-light replay E-0001 --origem data/agent --json           # estrutura completa
+```
+
 ### `bdgd-light mcp` / `bdgd-light aprovar` — ferramentas de rede para o agente, com aprovação humana
 
 Servidor [MCP](https://modelcontextprotocol.io) (issue #32) que expõe grafo e gêmeo como ferramentas
@@ -476,6 +493,7 @@ uv run bdgd-light aprovar                                       # fila de propos
 uv run bdgd-light aprovar P-0001                                # aprova e imprime o approval_token (30 min)
 uv run bdgd-light aprovar P-0002 --rejeitar --motivo "prefiro CH003"
 uv run bdgd-light audit data/agent/audit.jsonl --mostrar 5      # cadeia do servidor; hitl.jsonl = decisões humanas
+uv run bdgd-light replay E-0001 --origem data/agent --verificar-cadeia   # reconstrói o incidente
 ```
 
 Fluxo FLISR completo, exemplo de JSON de cada ferramenta, regras de recusa de `set_switch`, rotas
@@ -595,7 +613,7 @@ uv run bdgd-light bench --provider fake --k 5 --seed 42 --sem-compactar   # mede
 src/bdgd_light/        pacote Python (ingest, grid, twin, mcp_server, agent, sim)
   catalogo.py          IDs da BDGD por distribuidora/ano, camadas-chave, domínios TEN_NOM e TIP_UNID
   cli.py               CLI `bdgd-light` (typer): export, inventario, vizinhos, recortar, grafo, dss,
-                       tiles, llm, audit, mcp, aprovar, sim, agente, serve, bench
+                       tiles, llm, audit, replay, mcp, aprovar, sim, agente, serve, bench
   ingest/export.py     exportação de camadas para GeoParquet/Parquet/GeoPackage, em lotes
   ingest/parquet.py    leitura das camadas exportadas com filtros empurrados ao pyarrow
   ingest/interligacoes.py  detecção geométrica de chaves NA de interligação entre CTMT
