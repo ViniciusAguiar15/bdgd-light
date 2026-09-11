@@ -82,9 +82,12 @@ ou `X-Console-Token` com `compare_digest` (401 se errado; 503 se o servidor não
   mapa + estado estático do cenário.
 - Com backend **e** cluster carregado, o estado vivo (`/api/estado.geojson`) substitui o GeoJSON
   estático (`?estado=`), reaproveitando a fonte `estado` e a legenda de `estado.ts`.
-- O botão "injetar falta" manda o cenário nomeado correspondente ao cenário do console
-  (`tijuca → tijuca_cabofrio_tronco`, `ipanema → ipanema_9210`, `taquara → taquara_bocari`); se o
-  backend está com outro cluster (`cluster_demo`), o painel avisa qual `?cenario=` abrir.
+- O seletor de evento do painel injeta **falta permanente**, **pico de carga** ou
+  **chave indisponível** pelo mesmo `POST /api/eventos`. Para a falta ele usa o cenário nomeado
+  correspondente ao console (`tijuca → tijuca_cabofrio_tronco`, `ipanema → ipanema_9210`,
+  `taquara → taquara_bocari`); para pico/chave, usa alvos padrão do cluster da demo quando eles
+  existem e, se o backend está com outro cluster (`cluster_demo`), o painel avisa qual
+  `?cenario=` abrir.
 - **Modo passo a passo** (pedido da revisão PR-15 / backlog 16): o cartão da proposta traz, além de
   "Aprovar e executar", o botão `#cod-passo` — "Aprovar e executar a 1ª manobra: abrir X (1/n)" e
   depois "Próxima manobra: fechar Y (k/n)" — que chama `POST …/passo`. A lista `<ol.cod-manobras>`
@@ -102,11 +105,16 @@ ou `X-Console-Token` com `compare_digest` (401 se errado; 503 se o servidor não
   convergência e o trecho mais carregado; para a opção escolhida o console desenha um sparkline
   simples do perfil de tensão MT da fonte até a ponta e a tabela dos top 5 trechos carregados
   permite clicar num `COD_ID` para destacá-lo no mapa.
-- `window.cod` expõe `estado`, `atualizar()`, `injetar()`, `aprovar(id)`, `passo(id)`,
+- `window.cod` expõe `estado`, `atualizar()`, `injetar(tipo?)`, `aprovar(id)`, `passo(id)`,
   `rejeitar(id, motivo)` para depuração e para o smoke.
-- Smoke ponta a ponta: `SMOKE_FLUXO=1 SMOKE_TOKEN=demo node scripts/smoke.mjs
+- Quando o último evento é um **pico de carga sem proposta**, o cartão final mostra
+  `veredito: sem manobra` e destaca automaticamente no mapa os trechos MT em sobrecarga; os
+  botões com `COD_ID` reaproveitam o mesmo destaque de trecho usado em "detalhes elétricos".
+- Smoke ponta a ponta: `SMOKE_FLUXO=1 SMOKE_EVENTO=falta_permanente SMOKE_TOKEN=demo node scripts/smoke.mjs
   "http://127.0.0.1:8000/?cenario=tijuca"` injeta, espera a proposta, aprova e confere que o número
-  de trechos desenergizados no mapa caiu; falha se passar de 60 s ou o mapa não mudar. Variáveis:
+  de trechos desenergizados no mapa caiu; `SMOKE_EVENTO=pico_carga` e
+  `SMOKE_EVENTO=chave_indisponivel` verificam o cartão `sem manobra` para os outros cenários.
+  Falha se passar de 60 s ou se a interface não mostrar o veredito esperado. Variáveis:
   `SMOKE_PASSOS=1` usa o modo passo a passo e **falha se o número de cliques for diferente do de
   manobras** ou se um clique aplicar mais de uma; `SMOKE_CAPTURAS=<pasta>` grava um PNG por etapa
   (`1-evento`, `2-proposta` com as alternativas abertas, `2b-passo`, `3-executada`) — são as

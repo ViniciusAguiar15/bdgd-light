@@ -145,6 +145,20 @@ autorizado chave por chave. `data/agent/hitl.jsonl` guarda quem aprovou o quê, 
 
 ## 4. O outro Rio e o "o LLM errou" — 10:00 → 13:00
 
+### Variações de 1 minuto no mesmo console (opcional entre 3.3 e 4.1)
+
+Com o seletor do painel **COD · fila e aprovação**, troque o tipo de evento e injete duas variações
+rápidas sem sair da mesma tela:
+
+- **Pico de carga** — clique **injetar pico de carga**. O agente roda `run_powerflow` com o
+  `loadmult` do evento, lista subtensões/sobrecargas previstas e o cartão final marca
+  **veredito: sem manobra**. Aponte os botões de `COD_ID`: eles destacam no mapa os trechos MT
+  violados.
+- **Chave indisponível** — clique **injetar chave indisponível**. O agente registra a restrição,
+  informa quantos clientes a jusante passam a depender de equipe e o console também mostra
+  **veredito: sem manobra**. A mensagem importante aqui é governança: a chave fica fora de qualquer
+  plano automático.
+
 ### 4.1 Cenário negativo — Ipanema (10:00)
 
 **[ação]** terminal 2:

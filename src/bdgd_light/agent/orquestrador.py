@@ -931,6 +931,7 @@ class Orquestrador:
                     "ferramenta": nome,
                     "argumentos": argumentos,
                     "ok": True,
+                    "resultado": para_modelo,
                     "resumo": _resumir(resultado),
                     "segundos": round(time.perf_counter() - inicio, 3),
                     "chars": len(json.dumps(para_modelo, ensure_ascii=False, default=str)),
@@ -1352,7 +1353,7 @@ def fake_operador(modelo: str = "fake-operador") -> FakeLLMClient:
             return Text(
                 f"Chave {evento.get('chave')} ({d.get('normal', '?')}, {d.get('estado', '?')}) "
                 f"indisponível por {d.get('motivo', '?')}: não entra em planos de manobra até "
-                f"restabelecer o telecomando; manobra local só por equipe.{dependem}",
+                f"restabelecer o telecomando; sem manobra automática, só por equipe.{dependem}",
                 modelo=modelo,
                 uso=Uso(),
             )

@@ -22,7 +22,12 @@
         <div class="cod-identidade">
           <input id="cod-operador" type="text" placeholder="operador" spellcheck="false" title="X-Operador: quem aprova/rejeita (fica na auditoria)" />
           <input id="cod-token" type="password" placeholder="token" title="BDGD_CONSOLE_TOKEN do backend (vazio se serve --sem-segredo)" />
-          <button id="cod-injetar" type="button" title="injeta a falta do cenário e aciona o agente">injetar falta</button>
+          <select id="cod-tipo-evento" title="tipo de evento a injetar">
+            <option value="falta_permanente">falta permanente</option>
+            <option value="pico_carga">pico de carga</option>
+            <option value="chave_indisponivel">chave indisponível</option>
+          </select>
+          <button id="cod-injetar" type="button" title="injeta o evento selecionado e aciona o agente">injetar evento</button>
         </div>
         <p id="cod-erro" class="erro" hidden></p>
         <div id="cod"></div>

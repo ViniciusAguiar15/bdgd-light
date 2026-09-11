@@ -91,6 +91,23 @@ interface RestricaoOperacional {
   motivo: string;
 }
 
+interface DestaquesExecucao {
+  trechos: string[];
+  n_subtensao?: number | null;
+  n_sobretensao?: number | null;
+  n_sobrecargas?: number | null;
+  loadmult?: number | null;
+}
+
+interface EventoResumo {
+  id?: string;
+  tipo: string;
+  trecho?: string;
+  ctmt?: string;
+  chave?: string;
+  cenario?: string;
+}
+
 export interface Proposta {
   id: string;
   criada_em: string;
@@ -126,6 +143,11 @@ interface Alternativa {
 }
 
 interface Execucao {
+  tipo?: string;
+  evento?: EventoResumo | null;
+  alvo?: string | null;
+  sem_manobra?: boolean;
+  destaques?: DestaquesExecucao | null;
   proposta: string | null;
   rodadas: number;
   n_ferramentas?: number;
@@ -148,7 +170,7 @@ interface Agente {
 }
 
 interface Evento {
-  id?: number;
+  id?: string;
   tipo: string;
   cluster: string;
   hora: string;
@@ -224,6 +246,26 @@ export const CENARIO_SIM: Record<string, string> = {
   taquara: "taquara_bocari",
 };
 
+type TipoEventoConsole = "falta_permanente" | "pico_carga" | "chave_indisponivel";
+
+const EVENTOS_CONSOLE: Record<string, Partial<Record<TipoEventoConsole, Record<string, unknown>>>> = {
+  tijuca: {
+    falta_permanente: { cenario: "tijuca_cabofrio_tronco" },
+    pico_carga: { tipo: "pico_carga", cluster: "tijuca", ctmt: "ALC9925" },
+    chave_indisponivel: { tipo: "chave_indisponivel", cluster: "tijuca" },
+  },
+  ipanema: {
+    falta_permanente: { cenario: "ipanema_9210" },
+    pico_carga: { tipo: "pico_carga", cluster: "ipanema", ctmt: "PTS0001" },
+    chave_indisponivel: { tipo: "chave_indisponivel", cluster: "ipanema", chave: "10934177" },
+  },
+  taquara: {
+    falta_permanente: { cenario: "taquara_bocari" },
+    pico_carga: { tipo: "pico_carga", cluster: "taquara", ctmt: "TQR33862" },
+    chave_indisponivel: { tipo: "chave_indisponivel", cluster: "taquara" },
+  },
+};
+
 const INTERVALO_MS = 2000;
 const CHAVE_OPERADOR = "bdgd-light.operador";
 const CHAVE_TOKEN = "bdgd-light.token";
@@ -243,7 +285,7 @@ export interface EstadoCod {
   pronto: Promise<void>;
   /** força uma leitura imediata (smoke/depuração) */
   atualizar: () => Promise<void>;
-  injetar: (cenario?: string) => Promise<unknown>;
+  injetar: (tipo?: TipoEventoConsole) => Promise<unknown>;
   aprovar: (id: string) => Promise<unknown>;
   /** modo passo a passo: aprova (se pendente) e executa só a próxima manobra */
   passo: (id: string) => Promise<unknown>;
@@ -386,6 +428,17 @@ function rotuloTipo(tipo: string): string {
   );
 }
 
+function descricaoEventoEmCurso(ev: Evento): string {
+  if (ev.tipo === "pico_carga") {
+    const loadmult =
+      typeof ev.detalhes.loadmult === "number" ? ` com loadmult ${ev.detalhes.loadmult}` : "";
+    return `⏳ pico de carga em ${ev.ctmt ?? "—"}${loadmult} — o agente roda o fluxo e verifica tensões e sobrecargas…`;
+  }
+  if (ev.tipo === "chave_indisponivel")
+    return `⏳ chave indisponível em ${ev.chave ?? "—"} — o agente registra a restrição operacional e avalia o impacto a jusante…`;
+  return `⏳ ${rotuloTipo(ev.tipo)} em ${ev.trecho ?? ev.chave ?? ev.ctmt ?? "—"} — o agente localiza, isola e avalia opções no gêmeo…`;
+}
+
 function resumoTrecho(t: TrechoCarregado): string {
   return `${t.cod_id ?? t.elemento} · ${pctDireto(t.carregamento_pct)}`;
 }
@@ -411,6 +464,7 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
   const raiz = document.getElementById("cod")!;
   const inputOperador = document.getElementById("cod-operador") as HTMLInputElement;
   const inputToken = document.getElementById("cod-token") as HTMLInputElement;
+  const seletorTipo = document.getElementById("cod-tipo-evento") as HTMLSelectElement;
   const btnInjetar = document.getElementById("cod-injetar") as HTMLButtonElement;
   const cenarioSim = cenario ? CENARIO_SIM[cenario.id] : undefined;
 
@@ -442,10 +496,49 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
   let atualizando = false; // leitura em curso (evita sobrepor polls lentos)
   let propostaEletricaAberta: string | null = null;
   let trechoDestaque: string | null = null;
+  let trechosDestaqueExecucao: string[] = [];
   let detalheAtual: Proposta | null = null;
   let auditoriaAtual: Auditoria | null = null;
   const detalhesEletricos = new Map<string, DetalhesEletricosResposta>();
   const carregandoDetalhes = new Set<string>();
+
+  function tipoSelecionado(): TipoEventoConsole {
+    const tipo = seletorTipo.value as TipoEventoConsole;
+    if (tipo === "pico_carga" || tipo === "chave_indisponivel") return tipo;
+    return "falta_permanente";
+  }
+
+  function eventoConfigAtual(tipo: TipoEventoConsole): Record<string, unknown> {
+    const chave = cenario?.id ?? cod.estado?.cluster_demo ?? "";
+    const base = { ...(EVENTOS_CONSOLE[chave]?.[tipo] ?? { tipo }) };
+    if (!("cenario" in base) && !("tipo" in base)) base.tipo = tipo;
+    if (!("cenario" in base) && !("cluster" in base) && cod.estado?.cluster_demo)
+      base.cluster = cod.estado.cluster_demo;
+    if (cod.estado?.falta) base.recarregar = true;
+    return base;
+  }
+
+  function aplicarDestaqueAtual() {
+    destacarTrechos(mapa, trechoDestaque ? [trechoDestaque] : trechosDestaqueExecucao);
+  }
+
+  function atualizarBotaoInjecao(estado: Estado | null = cod.estado) {
+    const tipo = tipoSelecionado();
+    const podeInjetar = !!(cenarioSim || estado?.cluster);
+    btnInjetar.disabled = !podeInjetar || !!estado?.agente?.ocupado || estado?.autorizacao === "bloqueado";
+    btnInjetar.textContent =
+      tipo === "falta_permanente"
+        ? estado?.falta
+          ? "reiniciar e injetar falta"
+          : "injetar falta"
+        : `injetar ${rotuloTipo(tipo)}`;
+    const corpo = eventoConfigAtual(tipo);
+    btnInjetar.title = podeInjetar
+      ? `POST api/eventos ${JSON.stringify(corpo)}`
+      : "abra um cenário da demo ou conecte o console a um backend com cluster carregado";
+  }
+
+  seletorTipo.addEventListener("change", () => atualizarBotaoInjecao());
 
   function cabecalhos(): Record<string, string> {
     const h: Record<string, string> = {
@@ -492,10 +585,11 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
     }
   }
 
-  async function injetar(nome = cenarioSim): Promise<unknown> {
-    if (!nome) throw new Error("cenário sem evento nomeado no simulador");
-    // com uma falta já tratada, reinicia a demo: recarrega o cluster (rede normal) antes de injetar
-    return acao("eventos", { cenario: nome, recarregar: !!cod.estado?.falta });
+  async function injetar(tipo = tipoSelecionado()): Promise<unknown> {
+    const corpo = eventoConfigAtual(tipo);
+    if (!corpo.cenario && !corpo.cluster && !cod.estado?.cluster)
+      throw new Error("abra um cenário da demo ou carregue um cluster no backend antes de injetar");
+    return acao("eventos", corpo);
   }
 
   function mostrarErro(msg: string | null) {
@@ -514,7 +608,7 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
     try {
       if (!mapa.isStyleLoaded()) await new Promise<void>((r) => mapa.once("idle", () => r()));
       await carregarEstado(mapa, api + "estado.geojson");
-      destacarTrechos(mapa, trechoDestaque ? [trechoDestaque] : []);
+      aplicarDestaqueAtual();
     } catch (e) {
       mostrarErro(e instanceof Error ? e.message : String(e));
     }
@@ -579,6 +673,13 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
     raiz.replaceChildren();
     const ag = estado.agente;
     const clusterCerto = !cenario || !estado.cluster_demo || estado.cluster_demo === cenario.id;
+    if (!detalhe && ag?.ultima?.evento?.tipo === "pico_carga") {
+      trechosDestaqueExecucao = ag.ultima.destaques?.trechos ?? [];
+      if (trechoDestaque && !trechosDestaqueExecucao.includes(trechoDestaque)) trechoDestaque = null;
+    } else {
+      trechosDestaqueExecucao = [];
+      if (!detalhe) trechoDestaque = null;
+    }
 
     // -- situação ------------------------------------------------------------------------------
     const linhas: string[] = [];
@@ -615,34 +716,17 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
     // -- evento em curso -----------------------------------------------------------------------
     if (ag?.ocupado && ag.evento_atual) {
       const ev = ag.evento_atual;
-      raiz.append(
-        el(
-          "p",
-          { class: "cod-evento", id: "cod-evento" },
-          `⏳ ${rotuloTipo(ev.tipo)} em ${ev.trecho ?? ev.chave ?? ev.ctmt ?? "—"} — o agente localiza, ` +
-            "isola e avalia opções no gêmeo…",
-        ),
-      );
+      raiz.append(el("p", { class: "cod-evento", id: "cod-evento" }, descricaoEventoEmCurso(ev)));
     }
 
-    btnInjetar.disabled = !cenarioSim || !!ag?.ocupado || estado.autorizacao === "bloqueado";
-    btnInjetar.textContent = estado.falta ? "reiniciar e injetar falta" : "injetar falta";
-    btnInjetar.title = cenarioSim
-      ? `POST api/eventos {cenario: "${cenarioSim}"${estado.falta ? ", recarregar: true" : ""}}`
-      : "escolha um cenário da demo para injetar a falta";
+    atualizarBotaoInjecao(estado);
+    seletorTipo.disabled = !!ag?.ocupado || estado.autorizacao === "bloqueado";
 
     // -- proposta ------------------------------------------------------------------------------
-    const p = detalhe ?? estado.propostas.find((x) => x.status === "pendente") ?? null;
+    const p =
+      detalhe ?? estado.propostas.find((x) => x.status === "pendente" || x.status === "aprovada") ?? null;
     if (p) raiz.append(cartaoProposta(p, estado));
-    else if (ag?.ultima && !ag.ocupado) {
-      const u = ag.ultima;
-      const texto = u.erro
-        ? `última execução falhou: ${u.erro}`
-        : u.proposta
-          ? `última proposta ${u.proposta} concluída`
-          : (u.resposta ?? "o agente não gerou proposta");
-      raiz.append(el("p", { class: "dica cod-ultima" }, texto));
-    }
+    else if (ag?.ultima && !ag.ocupado) raiz.append(cartaoExecucao(ag.ultima));
 
     // -- histórico curto -----------------------------------------------------------------------
     const anteriores = estado.propostas.filter((x) => x.id !== p?.id).slice(-3).reverse();
@@ -661,6 +745,59 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
 
     // -- auditoria -----------------------------------------------------------------------------
     raiz.append(blocoAuditoria(auditoria, estado));
+    aplicarDestaqueAtual();
+  }
+
+  function cartaoExecucao(u: Execucao): HTMLElement {
+    const evento = u.evento;
+    const card = el("div", { class: "cod-execucao", id: "cod-execucao" });
+    const titulo = evento ? `${evento.id ?? "último evento"} · ${rotuloTipo(evento.tipo)}` : "última execução";
+    card.append(el("h3", {}, titulo));
+    if (evento) {
+      const origem = evento.cenario ? `cenário ${evento.cenario}` : "injeção direta";
+      card.append(
+        el(
+          "div",
+          { class: "dica" },
+          `${u.alvo ?? evento.trecho ?? evento.ctmt ?? evento.chave ?? "—"} · ${origem}`,
+        ),
+      );
+    }
+    if (u.sem_manobra) {
+      card.append(
+        el(
+          "div",
+          { class: "ok" },
+          "veredito: sem manobra · somente diagnóstico e orientação operacional",
+        ),
+      );
+    } else if (u.proposta) {
+      card.append(el("div", { class: "dica" }, `última proposta ${u.proposta} concluída`));
+    }
+    if (u.resposta) card.append(el("p", {}, u.resposta));
+    if (u.destaques) {
+      const partes: string[] = [];
+      if (u.destaques.loadmult != null) partes.push(`loadmult ${u.destaques.loadmult}`);
+      if (u.destaques.n_sobrecargas != null) partes.push(`${u.destaques.n_sobrecargas} sobrecarga(s)`);
+      if (u.destaques.n_subtensao != null) partes.push(`${u.destaques.n_subtensao} nó(s) em subtensão`);
+      if (u.destaques.n_sobretensao) partes.push(`${u.destaques.n_sobretensao} nó(s) em sobretensão`);
+      if (partes.length) card.append(el("div", { class: "rotulo" }, `fluxo previsto · ${partes.join(" · ")}`));
+      if (u.destaques.trechos.length) {
+        const botoes = el("div", { class: "cod-destaques" });
+        for (const codTrecho of u.destaques.trechos) {
+          const botao = el("button", { type: "button" }, codTrecho);
+          botao.addEventListener("click", () => {
+            trechoDestaque = trechoDestaque === codTrecho ? null : codTrecho;
+            aplicarDestaqueAtual();
+            if (cod.estado) render(cod.estado, detalheAtual, auditoriaAtual);
+          });
+          botoes.append(botao);
+        }
+        card.append(el("div", { class: "rotulo" }, "trechos violados destacados no mapa"), botoes);
+      }
+    }
+    if (u.erro) card.append(el("div", { class: "erro" }, `falha: ${u.erro}`));
+    return card;
   }
 
   function blocoDetalhesEletricos(p: Proposta, estado: Estado): HTMLElement {
@@ -679,7 +816,7 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
       propostaEletricaAberta = det.open ? p.id : null;
       if (!det.open) {
         trechoDestaque = null;
-        destacarTrechos(mapa, []);
+        aplicarDestaqueAtual();
         return;
       }
       void carregarDetalhesEletricos(p.id);
@@ -797,7 +934,7 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
         tr.classList.add("clicavel");
         tr.addEventListener("click", () => {
           trechoDestaque = trechoDestaque === trecho.cod_id ? null : trecho.cod_id;
-          destacarTrechos(mapa, trechoDestaque ? [trechoDestaque] : []);
+          aplicarDestaqueAtual();
           render(estado, detalheAtual, auditoriaAtual);
         });
       }

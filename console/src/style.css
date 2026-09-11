@@ -235,6 +235,16 @@ label.item small {
   font-size: 12px;
 }
 
+.cod-identidade select {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--borda);
+  border-radius: 4px;
+  background: var(--bg-2);
+  color: var(--fg);
+  font-size: 12px;
+}
+
 #secao-cod button {
   padding: 6px 10px;
   border: 1px solid var(--acento);
@@ -286,6 +296,17 @@ label.item small {
   line-height: 1.5;
 }
 
+.cod-execucao {
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--borda);
+  border-left: 3px solid #ffd54f;
+  border-radius: 4px;
+  background: var(--bg-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .cod-proposta.status-executada {
   border-left-color: #00e676;
 }
@@ -300,7 +321,13 @@ label.item small {
   font-size: 13px;
 }
 
+.cod-execucao h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
 .cod-proposta .rotulo,
+.cod-execucao .rotulo,
 .cod-auditoria .rotulo {
   margin-top: 6px;
   font-size: 11px;
@@ -328,6 +355,10 @@ label.item small {
   color: #00e676;
 }
 
+.cod-execucao .ok {
+  color: #00e676;
+}
+
 .cod-motivo {
   margin: 6px 0;
   color: var(--fg-2);
@@ -344,6 +375,18 @@ label.item small {
 .cod-rejeicao input {
   width: 100%;
   margin-top: 4px;
+}
+
+.cod-destaques {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.cod-destaques button {
+  border-color: #ffd54f !important;
+  color: #ffd54f !important;
 }
 
 .cod-proposta details ul,
