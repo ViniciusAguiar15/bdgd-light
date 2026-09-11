@@ -535,7 +535,8 @@ def dss(
         bool,
         typer.Option(
             "--estabilizar/--sem-estabilizar",
-            help="Se não convergir, aplica em cascata: maxiterations=100, vminpu=0.9 e model=2.",
+            help="Se não convergir, aplica em cascata maxiterations=100, vminpu=0.9 e model=2 "
+            "e relata só o que foi necessário.",
         ),
     ] = True,
     comando: Annotated[

@@ -71,6 +71,8 @@ scripts/
   converter.py         camada → GeoJSON (EPSG:4326) com recorte por bbox
   listar_modelos.py    lista os modelos do provedor LLM configurado (destaca tool calling)
   regioes_inventario.py tabela por bairro de referência do inventário (docs/escopo-cidade.md)
+  diagnostico_convergencia.py  por que um Master não converge: matriz de ajustes, ciclo-limite,
+                        cargas críticas (docs/spike-opendss.md, issue #44)
 index.html             visor Leaflet legado (arrastar o GeoJSON de scripts/converter.py); o console
                        novo é console/
 docs/                  plano, ADRs (adr/ADR-001-stack.md, ADR-002-console-maplibre-pmtiles.md,
@@ -389,7 +391,7 @@ na primeira reutilização.
 | `--abrir` / `--fechar` | — | chaves avulsas a manobrar antes do `Solve` (vírgula) |
 | `--sem-fluxo` | — | só converte/monta e mostra o Master escolhido |
 | `--vmin` / `--vmax` | `0.93` / `1.05` | faixa de tensão (pu) para contar violações |
-| `--sem-estabilizar` | — | não aplica a cascata `maxiterations=100` → `vminpu=0.9` → `model=2` quando não converge |
+| `--sem-estabilizar` | — | não aplica a cascata `maxiterations=100` → `vminpu=0.9` → `model=2` quando não converge (`ajustes` lista só o degrau que foi necessário; nos Masters da BDGD é `vminpu=0.9`) |
 | `--comando` | — | comando OpenDSS extra antes do `Solve` (repetível) |
 | `--json` / `--top` | — / `10` | grava resumo (com potência por fonte), piores barras e sobrecargas; tamanho das tabelas |
 

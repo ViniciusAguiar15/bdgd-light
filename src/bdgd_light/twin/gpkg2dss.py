@@ -136,6 +136,18 @@ CONEXAO_CARGA: dict[str, str] = {
 }
 ENROLAMENTOS: dict[str, int] = {"M": 2, "B": 2, "T": 2, "MT": 3, "DA": 2, "DF": 2}
 
+# Suspeitos de qualidade de dado que pesam na convergência do fluxo (issue #44), só avisados:
+#   - RAMLIG com COMP acima de RAMAL_LONGO_M é um circuito BT inteiro cadastrado como ramal;
+#   - trafo "de fase única": pelo menos FASE_UNICA_MIN_UC UC monofásicas e FASE_UNICA_FRACAO delas
+#     com o mesmo FAS_CON — a carga toda numa fase leva o neutro a dezenas de volts e faz o
+#     modelo de corrente constante do OpenDSS oscilar (é o que exige ``vminpu=0.9`` em Tijuca).
+#     Não redistribuímos as fases: em vários desses circuitos a rede BT é cadastrada a 2 fios
+#     (SSDBT/RAMLIG ``AN``), e mover UC para B/C criaria nós sem condutor.
+RAMAL_LONGO_M = 300.0
+FASE_UNICA_MIN_UC = 20
+FASE_UNICA_FRACAO = 0.9
+MONOFASICAS = frozenset({"A", "B", "C", "AN", "BN", "CN", "AX", "BX", "CX"})
+
 _CHAVE = "r1=0.001 r0=0.001 x1=0.0 x0=0.0 c1=0.0 c0=0.0  switch = T length=0.00100"
 _ENERGIAS = [f"ENE_{m:02d}" for m in range(1, 13)]
 _POTENCIAS = [f"POT_{i:02d}" for i in range(1, 97)]
@@ -373,6 +385,54 @@ class _Conversor:
             return
         raiz = achar(self.pac_ini)
         self.conectados = {n for n in pai if achar(n) == raiz}
+
+    # ---- suspeitos de qualidade de dado (issue #44) ---------------------------------------------
+    def suspeitos(self) -> None:
+        """Registra em ``avisos``/``contagem`` os ramais longos (``ramais_longos``) e os trafos de
+        fase única (``trafos_fase_unica``)."""
+        ram = self.t["RAMLIG"]
+        if not ram.empty and "COMP" in ram.columns:
+            comp = ram["COMP"].map(_num)
+            longos = ram[comp > RAMAL_LONGO_M]
+            self.contagem["ramais_longos"] = len(longos)
+            if len(longos):
+                pior = longos.loc[comp[longos.index].idxmax()]
+                uc = self.t["UCBT_tab"]
+                n_uc = (
+                    int((uc["RAMAL"].map(_texto) == _texto(pior["COD_ID"])).sum())
+                    if "RAMAL" in uc.columns
+                    else 0
+                )
+                self.avisos.append(
+                    f"{self.ctmt}: {len(longos)} ramais RAMLIG com mais de {RAMAL_LONGO_M:g} m "
+                    f"(maior: {_texto(pior['COD_ID'])}, {_num(pior['COMP']):.0f} m, {n_uc} UC) — "
+                    "provável circuito BT cadastrado como ramal"
+                )
+        uc = self.t["UCBT_tab"]
+        if uc.empty or "FAS_CON" not in uc.columns or "UNI_TR_MT" not in uc.columns:
+            return
+        fas = uc["FAS_CON"].map(_texto)
+        mono = uc[fas.isin(MONOFASICAS)]
+        degenerados: list[tuple[str, int, int, str]] = []
+        for trafo, grupo in mono.groupby(mono["UNI_TR_MT"].map(_texto), sort=True):
+            if len(grupo) < FASE_UNICA_MIN_UC:
+                continue
+            por_fase = fas[grupo.index].str[0].value_counts()
+            fase, n = str(por_fase.index[0]), int(por_fase.iloc[0])
+            if n / len(grupo) >= FASE_UNICA_FRACAO:
+                degenerados.append((trafo, n, len(grupo), fase))
+        self.contagem["trafos_fase_unica"] = len(degenerados)
+        if not degenerados:
+            return
+        degenerados.sort(key=lambda d: -d[1])
+        top = ", ".join(
+            f"{t} ({n} de {tot} UC monofásicas em {f})" for t, n, tot, f in degenerados[:3]
+        )
+        self.avisos.append(
+            f"{self.ctmt}: {len(degenerados)} trafos com >= {FASE_UNICA_FRACAO:.0%} das UC "
+            f"monofásicas na mesma fase ({top}) — desequilíbrio da BDGD que exige o "
+            "estabilizador vminpu=0.9 no fluxo (issue #44)"
+        )
 
     def _ligado(self, *pacs) -> bool:
         return not self.conectados or any(_texto(p) in self.conectados for p in pacs)
@@ -689,7 +749,11 @@ def converter_ctmt(
     meses: Iterable[int] = (1,),
     ano: int = ANO_PADRAO,
 ) -> ConversaoGpkg:
-    """Converte um CTMT do GeoPackage para ``<out>/<ctmt>/`` e devolve os caminhos gerados."""
+    """Converte um CTMT do GeoPackage para ``<out>/<ctmt>/`` e devolve os caminhos gerados.
+
+    Ramais longos e trafos de fase única (suspeitos de qualidade de dado que pesam na
+    convergência, issue #44) saem em ``avisos`` e ``contagem``.
+    """
     gpkg = Path(gpkg)
     if not gpkg.is_file():
         raise FileNotFoundError(gpkg)
@@ -730,6 +794,7 @@ def converter_ctmt(
     pasta.mkdir(parents=True, exist_ok=True)
     c = _Conversor(gpkg, sel.iloc[0], tabelas, ano)
     c._conectividade()
+    c.suspeitos()
     curvas = _Curvas.das_linhas(tabelas["CRVCRG"])
     tipos_cc = [
         _texto(x) or "flat"

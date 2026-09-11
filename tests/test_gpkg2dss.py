@@ -128,6 +128,31 @@ def test_estrutura_e_contagens(convertido):
     assert not any(k.startswith("isolados_") for k in convertido["RJO003"].contagem)
 
 
+def test_suspeitos_ramais_longos_e_trafos_de_fase_unica(convertido, tmp_path, monkeypatch):
+    """Ramais > RAMAL_LONGO_M e trafos com >= 90 % das UC monofásicas na mesma fase saem em
+    `avisos`/`contagem` (issue #44); a fixture (ramais de 15 m, trafos com <= 2 UC 1F) não
+    dispara nada com os limiares padrão."""
+    from bdgd_light.twin import gpkg2dss
+
+    n = convertido["RJO001"].contagem
+    assert n["ramais_longos"] == 0 and n["trafos_fase_unica"] == 0
+    assert not any("RAMLIG" in a or "fase" in a for a in convertido["RJO001"].avisos)
+
+    monkeypatch.setattr(gpkg2dss, "RAMAL_LONGO_M", 10.0)
+    monkeypatch.setattr(gpkg2dss, "FASE_UNICA_MIN_UC", 2)
+    conv = converter_ctmt(FIXTURE, "RJO001", tmp_path, dias=["DU"])
+    assert conv.contagem["ramais_longos"] == 1  # RM001 (15 m) é o único RAMLIG de RJO001
+    assert conv.contagem["trafos_fase_unica"] == 1  # TR001: 2 UC "AN" (+ 1 "ABN", bifásica)
+    avisos = "\n".join(conv.avisos)
+    assert "1 ramais RAMLIG com mais de 10 m (maior: RM001, 15 m, 1 UC)" in avisos
+    assert "1 trafos com >= 90% das UC monofásicas na mesma fase" in avisos
+    assert "(TR001 (2 de 2 UC monofásicas em A))" in avisos
+    # o modelo em si não muda: mesmas cargas, mesmo FAS_CON
+    assert _texto(conv.pasta, "CargasBT_DU01") == _texto(
+        convertido["RJO001"].pasta, "CargasBT_DU01"
+    )
+
+
 def test_conteudo_dss_como_bdgd2opendss(convertido):
     pasta = convertido["RJO001"].pasta
     assert _texto(pasta, "CircuitoMT").strip() == (

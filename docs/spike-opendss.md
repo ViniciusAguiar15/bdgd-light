@@ -65,7 +65,10 @@ bdgd2opendss arrasta customtkinter, plotly, xlsxwriter e holidays, ~40 MB).
    vminpu=0.9` (abaixo de 0,9 pu a carga vira impedância constante; é a recomendação do próprio
    OpenDSS para barras deprimidas) → `batchedit load..* model=2` (último recurso). Em TQR0007 bastou o
    segundo degrau: 5 iterações. `--sem-estabilizar` mostra o resultado bruto e o CLI sai com código 2
-   quando não converge.
+   quando não converge. Desde a issue #44 o rótulo é exato: como a não convergência é um
+   **ciclo-limite** (não lentidão), `maxiterations=100` nunca resolve sozinho e só aparece em `ajustes`
+   quando o `Solve` final precisou de mais iterações que o limite original — todo Master da BDGD sai
+   hoje com `ajustes = ["vminpu=0.9"]` (ver "Diagnóstico de convergência do cluster Tijuca").
 4. **Nós de fase × neutro.** O bdgd2opendss aterra o neutro BT (`.4`) por reator; esses nós ficam a
    ~0 pu e não são violações. `PowerFlowResult.fases` considera só condutores 1–3 com V > 0; nós de
    fase a 0 pu contam como `n_desenergizados`.
@@ -169,7 +172,7 @@ Achados durante a paridade (todos corrigidos no conversor e/ou no recorte):
 ## Resultado em TQR0007 (Master DU01, snapshot de pico)
 
 ```
-Convergiu                 sim (5 iterações, 0,53 s) — estabilizadores: maxiterations=100, vminpu=0.9
+Convergiu                 sim (5 iterações, 0,53 s) — estabilizadores: vminpu=0.9 (o rótulo antigo listava também maxiterations=100; ver #44)
 Elementos                 6.334 barras, 20.313 nós, 6.251 linhas, 82 trafos, 12.312 cargas
 Potência na fonte         3.077 kW / 1.395 kvar
 Perdas                    264 kW (8,6 %)
@@ -262,10 +265,90 @@ Pendência: obter a tabela `COR_NOM` do Manual (Módulo 10) e colocá-la em `cat
 - Fontes fora do cluster (URG29706, ALC740) não são simuladas: saem inviáveis com o motivo
   registrado — o recorte precisa incluir o CTMT para pontuá-las.
 - Tempo: 7 fluxos (compile + solve do cluster de 4 alimentadores, 32 mil cargas) em ≈10 s; todos
-  precisaram de `maxiterations=100` + `vminpu=0.9`, como o Master base do cluster.
+  precisaram do `vminpu=0.9`, como o Master base do cluster (o rótulo da época dizia
+  `maxiterations=100` + `vminpu=0.9`; o diagnóstico do #44 mostrou que o primeiro degrau nunca
+  contribuiu).
 - Na fixture sintética (`tests/test_twin.py::test_score_eletrico_*`): CH003/CH005 viáveis com 16 A num
   tronco de 200 A (margem 92 %); `set loadmult=25` leva a 312 A, 3–5 trechos acima de 100 % e
   margem negativa; `nominais={"RJO002": 10}` e `vmin=1.045` derrubam pelo disjuntor e pela tensão.
+
+## Diagnóstico de convergência do cluster Tijuca (issue #44)
+
+Pergunta da issue: por que o Master do cluster A (`ALC9925,RCP9882,ALC9946,URG29983`, 10.029 barras,
+34.095 nós, 32.132 cargas — metade `model=3`, corrente constante) só convergia com
+`maxiterations=100` + `vminpu=0.9`, e onde estão as barras responsáveis? Ferramenta:
+`scripts/diagnostico_convergencia.py <Master>` (matriz de ajustes → oscilação iteração a iteração →
+cargas críticas; ≈20 s no cluster). Achados, com o Master DU01 do GPKG:
+
+| ajuste (a partir do Master bruto, `vminpu=0.5`) | converge | iterações |
+|---|---|---|
+| padrão (`maxiterations=15`) | não | 15 |
+| `maxiterations=100` | **não** | 100 |
+| `vminpu=0.9` (com `maxiterations=15`) | **sim** | 6 |
+| `vminpu=0.95` / `0.7` / `0.8` / `0.6` | sim / sim / não / não | 5 / 22 / — / — |
+| `model=2` em todas as cargas | sim | 2 |
+| `algorithm=newton` + 100 iterações; `tolerance=1e-3`; `model=1` | não | — |
+| `loadmult` 0,9 / 0,8 / 0,6 + 100 iterações | não | — |
+
+1. **É um ciclo-limite, não convergência lenta.** Rodando `Solve` uma iteração por vez, o
+   `max|ΔV|` repete um padrão de **período 6**: 0,097 pu toda iteração (nó `335019687_2.1`) e 0,24 pu
+   a cada seis nos nós de neutro `11366449_bt_*.4` (0,40 ↔ 0,64 pu). 164 nós oscilam com amplitude
+   > 0,01 pu, quase todos em dois circuitos BT: `TRF_28262926A` (RCP9882, 122 nós) e `TRF_11366449A`
+   (38 nós). Por isso `maxiterations=100` nunca ajudou — e por isso o rótulo antigo era enganoso.
+2. **Quem oscila são as cargas de corrente constante com tensão *terminal* abaixo de 0,9 pu.**
+   Medir a tensão fase-neutro nos terminais da carga (não nó–terra, que o deslocamento do neutro
+   contamina) separa 4.588 cargas < 0,9 pu (2.294 `model=3`; mínima 0,017 pu). Aplicar `vminpu=0.9`
+   **só nessas 2.294** converge em 6 iterações com `maxiterations=15` — o mesmo que aplicar em todas.
+   Circuitos com mais cargas críticas: `TRF_10951643A` (625, Vterm mín 0,017 pu), `TRF_10951769C`
+   (213, 0,405), `TRF_28262926A` (187, 0,399), `TRF_217954888TZ132904A` (162, 0,888),
+   `TRF_10951649TZ143389A` (161, 0,791), `TRF_10908985TZ137308A` (127), `TRF_10951751A` (111),
+   `TRF_10908727A` (83), `TRF_10951427A` (76), `TRF_10951721AP76761A` (54, 0,303).
+3. **A causa é o desequilíbrio de fase cadastrado na BDGD, não a carga nem os ramais longos.**
+   No cluster, `UCBT_tab.FAS_CON` dá 7.229 `ABCN`, 4.170 `AN`, 1.978 `BN`, 1.382 `CN`, 944 `ABN`,
+   273 `BCN`, 272 `CAN`: 14 trafos (com ≥ 20 UC monofásicas) têm ≥ 90 % delas **na mesma fase** —
+   `10951643` (638 de 678 em A), `28262926` (192 de 192 em A), `10951787AP85826` (148 em A),
+   `10951499` (98 em A), `10908727` (95 em A), `10938261` (90 em B), `10938105` (87 em A),
+   `10951751` (57 em A), `10938279` (55 em A), `31178791` (46 em A), `10915053` (34 em A),
+   `10951577AP84296` (30 em A), `10951547` (29 em A), `10909015TZ173889` (21 em B). No modelo, 138
+   das 140 cargas de `28262926`
+   pendem do nó `.1.4`; o neutro desse circuito fica a 0,18 pu e as fases em 0,79 pu na solução
+   convergida. Teste de necessidade: `vminpu=0.9` em **tudo menos** `28262926` não converge; deixar
+   só `11366449` em 0,5 converge no limite (14 iterações). Reduzir a carga (`loadmult`) não muda nada
+   — é a geometria do desequilíbrio, não o carregamento.
+4. **Ramais longos são outro problema de dado, sem relação com a convergência.** O cluster tem 7
+   `RAMLIG` com mais de 300 m; `RBT_589704551` (988 m, 55 UC, trafo `10951721AP76761`) é a barra a
+   **0,303 pu** que aparece como pior tensão — ela já está abaixo de 0,5 pu e não participa do
+   ciclo-limite. Como em TQR0007 (943 m, 714 m…), é o circuito BT inteiro cadastrado como ramal.
+5. **Não é exclusividade da Tijuca.** Nenhum Master da BDGD converge com `vminpu=0.5`: TQR0007
+   (bdgd2opendss) precisa de `vminpu=0.9` e converge em 5 iterações, o cluster TQR em 9, Ipanema em 7
+   (com um único trafo de fase única, `11043897` em PTS9088), Tijuca em 6 — a diferença de rótulo
+   entre eles vinha só da cascata cumulativa.
+
+**Decisões** (marcar e manter, não filtrar):
+
+- `PowerFlowResult.ajustes` passa a listar **só o que foi necessário** (`_rotular_ajustes`):
+  `maxiterations=100` sai do rótulo quando o `Solve` final convergiu dentro do limite original. A
+  cascata continua cumulativa (menos invasivo primeiro), só o relato mudou.
+- O conversor **marca os suspeitos** em `avisos` e `contagem` (`ramais_longos` = `RAMLIG` com
+  `COMP > 300 m`; `trafos_fase_unica` = trafos com ≥ 20 UC monofásicas e ≥ 90 % delas na mesma fase),
+  com os piores casos nominalmente no aviso. O modelo continua fiel à BDGD — o veredito do
+  verificador é MT, e a BT deprimida aparece em `piores_barras` como sempre.
+- `vminpu=0.9` fica como estabilizador padrão e documentado: é o comportamento recomendado pelo
+  OpenDSS para barras deprimidas e, no cluster, muda só as 2.294 cargas que já estavam abaixo de 0,9 pu
+  — o resultado MT (potência 13.250 kW, perdas 766 kW, V MT 1,036–1,045 pu) é o mesmo dos rótulos
+  antigos.
+- **Rejeitado: rebalancear as UC monofásicas entre A/B/C na conversão.** Foi testado (round-robin por
+  trafo degenerado): o OpenDSS "converge" em 2 iterações para lixo (119 pu, −1,2 GW) porque os
+  `SSDBT`/`RAMLIG` desses circuitos são cadastrados como `AN` — **dois fios**; não existe condutor B/C
+  para receber a carga. Uma versão segura teria de olhar as fases disponíveis em cada PAC e ainda
+  assim não removeria a necessidade do `vminpu=0.9` (o circuito `28262926` não tem para onde ir).
+  Também não ajudaram: neutro multiaterrado (reator de 15 Ω em todos os 8.304 nós `.4` da BT) e
+  `algorithm=newton`.
+
+**Pendências para o mantenedor/Light**: (a) confirmar se `FAS_CON = AN` em massa é fase real ou
+padrão de cadastro — se for cadastro, a lista de `trafos_fase_unica` é a fila de correção; (b) os
+ramais > 300 m (`ramais_longos`) seguem como pergunta de qualidade de dado; (c) o registro
+`docs/agent/sessao-tijuca.json` mantém o rótulo antigo (é histórico).
 
 ## Como reproduzir (mantenedor)
 
@@ -289,8 +372,11 @@ uv run bdgd-light dss --ctmt TQR0007,TQR33859,TQR33862 --out data/dss --gpkg $G 
 uv run bdgd-light dss --ctmt TQR0007,TQR33859,TQR33862 --out data/dss --gpkg $G --falha 11798327 \
     --restaurar 789941518                                                                             # via CURUMAU
 # para converter os vizinhos de uma vez (≈5 min), passe --gdb junto com os três --ctmt
-# cluster Tijuca direto do GPKG
+# cluster Tijuca direto do GPKG (--reconverter reimprime os avisos de ramais longos / trafos de fase única)
 uv run bdgd-light dss --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 --restaurar 974020904
+uv run bdgd-light dss --gpkg data/feeders/cluster_tijuca.gpkg --reconverter
+# diagnóstico de convergência de um Master (matriz de ajustes, ciclo-limite, cargas críticas; issue #44)
+uv run scripts/diagnostico_convergencia.py data/dss/gpkg/cluster_ALC9925-RCP9882-ALC9946-URG29983/Master_DU01_base.dss
 # score elétrico de todas as opções de restauração (Masters do GPKG em data/dss/gpkg)
 uv run bdgd-light grafo --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 --score
 uv run python tests/fixtures/dss/gerar_cluster_mini.py   # regenera a fixture sintética do cluster
@@ -301,9 +387,9 @@ uv run pytest tests/test_twin.py tests/test_gpkg2dss.py -q   # a paridade/fumaç
 
 - ~~Score elétrico das opções de `restore_options`~~ — feito (`twin.score_eletrico`, issue #18);
   falta a tabela `COR_NOM` do Manual para a corrente nominal real do disjuntor.
-- Filtro de qualidade de dado antes do fluxo: ramais `COMP > 100 m` e trafos com kVA incompatível
-  com a carga reportados (e opcionalmente truncados) — hoje ficam visíveis em
-  `piores_barras`/`sobrecargas`.
+- Filtro de qualidade de dado antes do fluxo: ramais `COMP > 300 m` e trafos de fase única já saem
+  em `avisos`/`contagem` (#44); falta reportar trafos com kVA incompatível com a carga e decidir se
+  algo é truncado — hoje ficam visíveis em `piores_barras`/`sobrecargas`.
 - Rodar o `mode=daily` completo (24 h × DU/SA/DO) para curvas de tensão por trafo e para saber a hora
   crítica da transferência (o snapshot usa o pico das curvas).
 - ~~Master a partir do recorte GPKG (decisão 9)~~ — feito (#17, `twin.gpkg2dss`).

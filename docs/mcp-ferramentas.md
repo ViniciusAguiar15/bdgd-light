@@ -200,7 +200,7 @@ cada passo — listas longas de nós/trechos resumidas com `"..."`.
     "score": {"fonte": "ALC9946", "convergiu": true, "i_disjuntor_a": 319.5, "i_nominal_a": 591.5,
               "margem_disjuntor": 0.460, "vmin_mt_pu": 1.027, "vmax_mt_pu": 1.045, "sobrecargas_mt": [],
               "carregamento_max_mt_pct": 84.1, "perdas_kw": 803.6, "viavel": true, "motivos": [],
-              "ajustes": ["maxiterations=100", "vminpu=0.9"], "tempo_s": 1.35}},
+              "ajustes": ["vminpu=0.9"], "tempo_s": 1.35}},
    {"chave": "529355823", "fonte": "ALC9946", "tlcd": false, "score": {"margem_disjuntor": 0.460, "viavel": true, "...": "..."}},
    {"chave": "746851189", "fonte": "RCP9882", "tlcd": true,
     "score": {"i_disjuntor_a": 351.4, "i_nominal_a": 438.1, "margem_disjuntor": 0.198, "vmin_mt_pu": 1.018, "viavel": true, "...": "..."}},
@@ -251,8 +251,9 @@ três NA para URG29983 têm margem parecida (42 %) mas o caminho passa pelo garg
 `Line.smt_11051956` (180 %) — o grafo aprovaria, o gêmeo recusa. RCP9882 é viável com margem de
 20 %. Fontes fora do cluster (URG29706, ALC740) não têm modelo e saem como inviáveis. A corrente
 "source" 0 A é o ALC9925 com o religador aberto. Os índices BT do `run_powerflow` do cluster
-(`v_min_pu`, `n_subtensao`) continuam contaminados pelo problema de convergência da BT da Tijuca
-(#44) — o score usa só a MT e não é afetado.
+(`v_min_pu`, `n_subtensao`) refletem a BT deprimida que a BDGD cadastra na Tijuca (ramais longos e
+trafos com toda a carga numa fase — diagnóstico da #44 em `docs/spike-opendss.md`) — o score usa só
+a MT e não é afetado.
 
 ## Auditoria
 
