@@ -12,16 +12,21 @@ O motor (biblioteca DSS C-API) roda num **subprocesso** dedicado por padrão
 
 from __future__ import annotations
 
-import multiprocessing
+import atexit
 import os
 import pickle
+import shutil
 import signal
+import socket
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from multiprocessing.connection import Client, Connection, answer_challenge, deliver_challenge
 from pathlib import Path
 from typing import Any
 
@@ -153,9 +158,10 @@ class PowerFlowResult:
 # O DSS C-API (Free Pascal) só tolera chamadas da thread que o inicializou — de outra thread o
 # processo morre com SIGILL — e a sua finalização na saída do processo derruba o Linux com SIGSEGV
 # (ver docs/console.md). Duas estratégias, escolhidas por ``BDGD_MOTOR``:
-#   processo (padrão): a biblioteca vive num subprocesso ``spawn`` dedicado e o processo pai nunca
-#       a carrega. Se o filho morrer (SIGILL/SIGSEGV) a chamada em curso levanta ``MotorError`` e a
-#       chamada seguinte recria o filho; a saída do pai é a normal.
+#   processo (padrão): a biblioteca vive num subprocesso dedicado (``python -c`` que importa só este
+#       módulo; sem reexecutar o ``__main__`` do pai, ao contrário do ``multiprocessing`` spawn) e o
+#       processo pai nunca a carrega. Se o filho morrer (SIGILL/SIGSEGV) a chamada em curso levanta
+#       ``MotorError`` e a chamada seguinte recria o filho; a saída do pai é a normal.
 #   thread: ``ThreadPoolExecutor`` de uma thread no mesmo processo (estratégia anterior, mantida
 #       na transição); exige ``encerrar_processo`` na saída.
 MODOS_MOTOR = ("processo", "thread")
@@ -188,9 +194,10 @@ def _exportavel(exc: BaseException) -> BaseException:
         return ErroOpenDSS(f"{type(exc).__name__}: {exc}")
 
 
-def _servir_motor(conexao) -> None:
+def _servir_motor(conexao: Connection) -> None:
     """Laço do subprocesso do motor: recebe ``(fn, args, kwargs)``, executa na thread principal
-    (a única) e devolve ``(True, resultado)`` ou ``(False, exceção)``; ``None`` encerra."""
+    (a única) e devolve ``(True, resultado)`` ou ``(False, exceção)``; ``None`` ou o fim da conexão
+    (pai encerrado) terminam o laço."""
     global _sou_motor
     _sou_motor = True
     while True:
@@ -211,6 +218,14 @@ def _servir_motor(conexao) -> None:
             conexao.send((False, MotorError(f"resposta do motor não serializável: {exc}")))
 
 
+def _main_motor() -> None:
+    """Entrada do subprocesso (``python -c``): endereço em ``argv[1]``, chave em stdin."""
+    endereco = sys.argv[1]
+    chave = sys.stdin.buffer.read(_TAMANHO_CHAVE)
+    with Client(endereco, authkey=chave) as conexao:
+        _servir_motor(conexao)
+
+
 def _abortar(sinal: int) -> None:
     """Mata o próprio processo (só faz sentido dentro do subprocesso do motor; ver
     ``simular_falha_do_motor``)."""
@@ -228,17 +243,24 @@ def _descrever_saida(codigo: int | None) -> str:
     return f"código {codigo}"
 
 
-class MotorProcesso:
-    """Motor OpenDSS num subprocesso ``spawn``: uma chamada por vez, filho recriado se morrer.
+_TAMANHO_CHAVE = 32
+_TIMEOUT_INICIO_S = 60.0
 
+
+class MotorProcesso:
+    """Motor OpenDSS num subprocesso dedicado: uma chamada por vez, filho recriado se morrer.
+
+    O filho é ``python -c "from bdgd_light.twin.powerflow import _main_motor; …"`` ligado ao pai por
+    um socket local autenticado (``multiprocessing.connection``, chave aleatória passada por stdin).
     ``timeout_s`` (``BDGD_MOTOR_TIMEOUT``, padrão 600 s) limita a espera por uma resposta;
     estourado, o filho é morto e a chamada levanta ``MotorError``.
     """
 
     def __init__(self, timeout_s: float | None = None) -> None:
         self._trava = threading.Lock()
-        self._proc: multiprocessing.process.BaseProcess | None = None
-        self._conexao = None
+        self._proc: subprocess.Popen[bytes] | None = None
+        self._conexao: Connection | None = None
+        self._pasta: str | None = None
         self.timeout_s = (
             float(os.environ.get("BDGD_MOTOR_TIMEOUT", "600")) if timeout_s is None else timeout_s
         )
@@ -247,36 +269,81 @@ class MotorProcesso:
 
     @property
     def ativo(self) -> bool:
-        return self._proc is not None and self._proc.is_alive()
+        return self._proc is not None and self._proc.poll() is None
+
+    @property
+    def pid(self) -> int | None:
+        return self._proc.pid if self._proc is not None else None
 
     @property
     def reinicios(self) -> int:
         """Quantas vezes o filho precisou ser recriado depois de morrer."""
         return max(self.inicios - 1, 0)
 
-    @property
-    def pid(self) -> int | None:
-        return self._proc.pid if self._proc is not None else None
-
     def _iniciar(self) -> None:
-        contexto = multiprocessing.get_context("spawn")
-        pai, filho = contexto.Pipe()
-        proc = contexto.Process(
-            target=_servir_motor, args=(filho,), name=_PREFIXO_MOTOR, daemon=True
-        )
-        proc.start()
-        filho.close()
-        self._proc, self._conexao = proc, pai
+        self._pasta = tempfile.mkdtemp(prefix="bdgd-motor-")
+        endereco = os.path.join(self._pasta, "motor.sock")
+        chave = os.urandom(_TAMANHO_CHAVE)
+        ouvinte = socket.socket(socket.AF_UNIX)
+        try:
+            ouvinte.bind(endereco)
+            ouvinte.listen(1)
+            ouvinte.settimeout(1.0)
+            proc = subprocess.Popen(  # noqa: S603 — executável e código fixos
+                [
+                    sys.executable,
+                    "-c",
+                    "from bdgd_light.twin.powerflow import _main_motor; _main_motor()",
+                    endereco,
+                ],
+                stdin=subprocess.PIPE,
+            )
+            self._proc = proc
+            assert proc.stdin is not None
+            proc.stdin.write(chave)
+            proc.stdin.close()
+            limite = time.monotonic() + _TIMEOUT_INICIO_S
+            while True:
+                try:
+                    ligacao, _ = ouvinte.accept()
+                    break
+                except TimeoutError:
+                    if proc.poll() is not None:
+                        raise MotorError(
+                            "o motor OpenDSS (subprocesso) morreu ao iniciar "
+                            f"({_descrever_saida(proc.returncode)})"
+                        ) from None
+                    if time.monotonic() > limite:
+                        proc.kill()
+                        raise MotorError(
+                            f"o motor OpenDSS (subprocesso) não se ligou em {_TIMEOUT_INICIO_S:g} s"
+                        ) from None
+        except BaseException:
+            self._encerrar()
+            raise
+        finally:
+            ouvinte.close()
+        ligacao.setblocking(True)
+        conexao = Connection(ligacao.detach())
+        deliver_challenge(conexao, chave)
+        answer_challenge(conexao, chave)
+        self._conexao = conexao
         self.inicios += 1
+        _registrar_encerramento()
 
     def _encerrar(self) -> None:
         if self._conexao is not None:
             self._conexao.close()
         if self._proc is not None:
-            if self._proc.is_alive():
+            if self._proc.poll() is None:
                 self._proc.kill()
-            self._proc.join(5)
-        self._proc = self._conexao = None
+            try:
+                self._proc.wait(5)
+            except subprocess.TimeoutExpired:  # pragma: no cover
+                pass
+        if self._pasta is not None:
+            shutil.rmtree(self._pasta, ignore_errors=True)
+        self._proc = self._conexao = self._pasta = None
 
     def chamar(self, fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
         """Executa ``fn(*args, **kwargs)`` no subprocesso e devolve o resultado (ou relança a
@@ -285,6 +352,7 @@ class MotorProcesso:
             if not self.ativo:
                 self._encerrar()  # primeira chamada ou filho morto entre duas chamadas
                 self._iniciar()
+            assert self._conexao is not None and self._proc is not None
             self.chamadas += 1
             try:
                 self._conexao.send((fn, args, kwargs))
@@ -292,8 +360,11 @@ class MotorProcesso:
                     raise TimeoutError(f"sem resposta em {self.timeout_s:g} s")
                 ok, carga = self._conexao.recv()
             except (EOFError, OSError, TimeoutError) as exc:
-                self._proc.join(1)  # dá tempo de o código de saída ficar disponível
-                saida = _descrever_saida(self._proc.exitcode)
+                try:
+                    self._proc.wait(1)  # dá tempo de o código de saída ficar disponível
+                except subprocess.TimeoutExpired:
+                    pass
+                saida = _descrever_saida(self._proc.returncode)
                 self._encerrar()
                 nome = getattr(fn, "__qualname__", repr(fn))
                 detalhe = f"{saida}; {exc}" if str(exc) else saida
@@ -311,10 +382,28 @@ class MotorProcesso:
             if self._conexao is not None and self.ativo:
                 try:
                     self._conexao.send(None)
-                except OSError:
+                    self._proc.wait(5)  # type: ignore[union-attr]
+                except (OSError, subprocess.TimeoutExpired):
                     pass
-                self._proc.join(5)
             self._encerrar()
+
+
+_encerramento_registrado = False
+
+
+def _registrar_encerramento() -> None:
+    """Na saída do processo pai, mata o filho do motor global (o filho também sai sozinho quando a
+    conexão cai, mas assim não fica órfão nem por instantes)."""
+    global _encerramento_registrado
+    if not _encerramento_registrado:
+        _encerramento_registrado = True
+        atexit.register(_encerrar_motor_global)
+
+
+def _encerrar_motor_global() -> None:
+    m = _MOTOR_PROCESSO
+    if m is not None and m.ativo:
+        m._encerrar()
 
 
 def _motor_processo() -> MotorProcesso:

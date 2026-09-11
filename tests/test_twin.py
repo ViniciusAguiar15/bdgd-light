@@ -196,7 +196,7 @@ def test_motor_recria_o_subprocesso_depois_de_morrer():
         assert motor.pid != pid1 and motor.reinicios == 1
         # morte entre chamadas: recriado em silêncio
         os.kill(motor.pid, signal.SIGKILL)
-        motor._proc.join(5)
+        motor._proc.wait(5)
         assert motor.chamar(_run_powerflow, IEEE13, **kw).convergiu
         assert motor.reinicios == 2 and motor.chamadas == 4
     finally:
