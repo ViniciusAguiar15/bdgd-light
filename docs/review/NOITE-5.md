@@ -105,3 +105,40 @@ o que custou caro na rodada 4 (ver `docs/review/MANHA-4.md`, seção "Processo")
 - **Testes/documentação da mudança:** `tests/fixtures/bench_mini.yaml` ganhou um caso mínimo de
   `rejeicao_previa` e `tests/test_bench.py` cobre o novo schema, o filtro de opções bloqueadas /
   indisponíveis, a métrica de chamadas extras e a execução fake do replanejamento.
+
+## 4. Issue #83 — replay da auditoria do agente (19:40)
+
+- **Branch/PR:** `feat/83-replay-auditoria`, PR desta issue.
+- **O que mudou no código:** acrescentei em `src/bdgd_light/agent/audit.py` as utilidades
+  `listar_arquivos`, `verificar_origem`, `reconstruir_evento` e a montagem de linha do tempo por
+  `RegistroArquivo`. O replay identifica todas as execuções ligadas ao mesmo `evento.id`
+  (`agente.inicio`/`agente.replanejamento`), puxa também os preparos imediatamente anteriores
+  (`load_cluster` e `inject_fault`) e expande o conjunto relevante pelos ids de proposta (`P-0001`,
+  `P-0002` etc.) para capturar aprovação, rejeição e `set_switch`, inclusive quando essas decisões
+  também estão em `hitl.jsonl`.
+- **Novo comando CLI:** `bdgd-light replay <id-do-evento>` entrou em `src/bdgd_light/cli.py` com
+  `--origem` (arquivo ou diretório de JSONL, padrão `data/`), `--verificar-cadeia` e `--json`.
+  Sem `--json`, a saída é uma timeline em pt-BR: preparo, ferramentas na ordem, opções com score,
+  verificador (gates aprovados/falhos), rejeição humana, replanejamento, aprovação e execução.
+  Com `--json`, a estrutura traz `evento`, `cadeia`, `linha_do_tempo`, `registros` e
+  `resposta_final`.
+- **Decisões de design:** preferi verificar a cadeia **por arquivo** e não num merge global, porque
+  `audit.jsonl` e `hitl.jsonl` têm cadeias independentes. Para evitar duplicar eventos humanos na
+  timeline, quando `hitl.jsonl` está presente ele vira a fonte canônica de `hitl.aprovacao`,
+  `hitl.rejeicao` e `hitl.passo`; a cópia desses eventos no `audit.jsonl` continua disponível em
+  `registros`, mas não polui a leitura humana. Ajustei a ordenação para que a aprovação apareça
+  antes dos `set_switch` quando caem no mesmo milissegundo.
+- **Teste novo:** criei `tests/test_replay.py`. O teste positivo gera um evento real com
+  `Simulador` + `Orquestrador(..., provider="fake")`, rejeita a primeira proposta, dispara
+  `replanejar_apos_rejeicao`, aprova a segunda via `humano.aprovar` e valida tanto a saída textual
+  quanto a JSON do replay. O teste negativo adultera o registro `restore_options` em
+  `audit.jsonl` e confirma que `--verificar-cadeia` retorna erro apontando a primeira divergência
+  (`seq=8: hash não bate`).
+- **Documentação commitada no mesmo PR:** `docs/comandos.md` agora tem uma seção própria do
+  `bdgd-light replay`, exemplo no fluxo `mcp`/`aprovar` e a lista de comandos atualizada; em
+  `docs/demo-profissional.md`, a seção "Trilha" passou a citar o replay como resposta operacional
+  para provar o que o agente fez após a aprovação da manobra.
+- **Validação local dirigida:** `uv run ruff check src/bdgd_light/agent/audit.py
+  src/bdgd_light/cli.py tests/test_replay.py`, `uv run pytest tests/test_replay.py -q` e uma
+  execução manual do comando sobre uma trilha sintética (`uv run bdgd-light replay E-0001 --origem
+  .scratch_issue83/estado --verificar-cadeia`) para conferir a narrativa da timeline.

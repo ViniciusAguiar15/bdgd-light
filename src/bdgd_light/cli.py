@@ -893,6 +893,44 @@ def audit(
 
 
 @app.command()
+def replay(
+    evento_id: Annotated[str, typer.Argument(help="Id do evento (ex.: E-0001).")],
+    origem: Annotated[
+        Path,
+        typer.Option(
+            "--origem",
+            help="Arquivo ou diretório com os JSONL da auditoria (padrão: procura em data/).",
+        ),
+    ] = Path("data"),
+    verificar_cadeia: Annotated[
+        bool,
+        typer.Option(
+            "--verificar-cadeia",
+            help="Recalcula a cadeia dos arquivos usados e aponta a primeira divergência.",
+        ),
+    ] = False,
+    json_: Annotated[
+        bool, typer.Option("--json", help="Imprime a reconstrução em JSON estruturado.")
+    ] = False,
+) -> None:
+    """Reconstrói um evento a partir da trilha auditada: evento, ferramentas, veredito,
+    rejeições/replanejamentos, aprovação humana e execução."""
+    from bdgd_light.agent.audit import AuditError, reconstruir_evento
+
+    try:
+        replay_evento = reconstruir_evento(evento_id, origem)
+    except (AuditError, FileNotFoundError) as erro:
+        _erro(str(erro))
+        return
+    if json_:
+        console.print_json(json.dumps(replay_evento, ensure_ascii=False, default=str))
+    else:
+        _imprimir_replay(replay_evento, verificar_cadeia=verificar_cadeia)
+    if verificar_cadeia and not replay_evento["cadeia"]["integra"]:
+        raise typer.Exit(code=1)
+
+
+@app.command()
 def mcp(
     cluster: Annotated[
         str | None,
@@ -1883,6 +1921,217 @@ def _imprimir_execucao(d: dict) -> None:
     )
     if d["erro"]:
         console.print(f"[red]Erro:[/] {d['erro']}")
+
+
+def _imprimir_replay(replay: dict[str, object], *, verificar_cadeia: bool) -> None:
+    evento = replay.get("evento") or {}
+    if not isinstance(evento, dict):
+        evento = {}
+    console.print(
+        f"[bold]Replay do evento {replay['evento_id']}[/] "
+        f"{evento.get('tipo') or 'desconhecido'} em {evento.get('cluster') or '—'}"
+        + (f" · trecho {evento['trecho']}" if evento.get("trecho") else "")
+        + (f" · CTMT {evento['ctmt']}" if evento.get("ctmt") else "")
+        + (f" · chave {evento['chave']}" if evento.get("chave") else "")
+    )
+    console.print(f"[dim]origem: {replay['origem']}[/]")
+    if verificar_cadeia:
+        cadeia = replay.get("cadeia") or {}
+        integra = bool(cadeia.get("integra"))
+        rotulo = "[green]✔ íntegra[/]" if integra else "[red]✘ inválida[/]"
+        console.print(f"Cadeia: {rotulo}")
+        for info in cadeia.get("arquivos") or []:
+            arquivo = info["arquivo"]
+            if info["integra"]:
+                console.print(f"  [green]✔[/] {arquivo}: {info['registros']} registro(s)")
+            else:
+                console.print(f"  [red]✘[/] {arquivo}: {info['erro']}")
+    console.print("\n[bold]Linha do tempo[/]")
+    for item in replay.get("linha_do_tempo") or []:
+        _imprimir_item_replay(item)
+
+
+def _imprimir_item_replay(item: dict[str, object]) -> None:
+    ts = str(item.get("ts") or "")
+    horario = ts[11:23] if "T" in ts else ts
+    prefixo = f"[dim]{horario}[/] "
+    tipo = item.get("tipo")
+    if tipo == "evento":
+        evento = item.get("evento") or {}
+        if not isinstance(evento, dict):
+            evento = {}
+        console.print(
+            prefixo
+            + f"[bold]evento[/] {evento.get('id') or '—'} · {evento.get('tipo') or '—'} "
+            + (
+                f"· alvo {evento.get('trecho') or evento.get('chave') or evento.get('ctmt')}"
+                if (evento.get("trecho") or evento.get("chave") or evento.get("ctmt"))
+                else ""
+            )
+        )
+        return
+    if tipo == "ferramenta":
+        ferramenta = item.get("ferramenta")
+        argumentos = _resumir(item.get("argumentos") or {}, 80)
+        descricao = _resumir(_resumo_resultado_replay(item), 120)
+        console.print(prefixo + f"[cyan]{ferramenta}[/]({argumentos}) → {descricao}")
+        return
+    if tipo == "opcoes":
+        argumentos = _resumir(item.get("argumentos") or {}, 80)
+        console.print(prefixo + f"[cyan]restore_options[/]({argumentos})")
+        for opcao in item.get("opcoes") or []:
+            if not isinstance(opcao, dict):
+                continue
+            score = opcao.get("score") if isinstance(opcao.get("score"), dict) else {}
+            margem = score.get("margem_disjuntor_pct")
+            if margem is None and isinstance(score.get("margem_disjuntor"), int | float):
+                margem = round(100 * score["margem_disjuntor"], 1)
+            margem_txt = f"{margem}%" if margem is not None else "—"
+            viavel = "viável" if score.get("viavel") else "inviável"
+            console.print(
+                "  - "
+                + f"{opcao.get('chave')} → fonte {opcao.get('fonte')} · {viavel} · "
+                + (
+                    f"{(opcao.get('clientes') or {}).get('total', '—')} clientes "
+                    f"· margem {margem_txt}"
+                )
+            )
+            motivos = list(score.get("motivos") or [])
+            if opcao.get("bloqueada"):
+                console.print(f"    bloqueada: {opcao['bloqueada']}")
+            elif motivos:
+                console.print(f"    motivo: {motivos[0]}")
+        return
+    if tipo == "verificador":
+        status = "[green]ok[/]" if item.get("status") == "ok" else "[yellow]recusou[/]"
+        gates_ok = ", ".join(item.get("gates_ok") or []) or "nenhum"
+        gates_falhos = ", ".join(item.get("gates_falhos") or []) or "nenhum"
+        console.print(
+            prefixo
+            + f"[bold]verificador[/] {status} · proposta {item.get('proposta') or '—'} "
+            + f"· gates ok: {gates_ok} · falhos: {gates_falhos}"
+        )
+        for problema in item.get("problemas") or []:
+            console.print(f"    [red]problema:[/] {problema}")
+        for aviso in item.get("avisos") or []:
+            console.print(f"    [yellow]aviso:[/] {aviso}")
+        return
+    if tipo == "rejeicao":
+        console.print(
+            prefixo
+            + f"[bold]rejeição humana[/] {item.get('proposta') or '—'} por "
+            + f"{item.get('operador') or '—'}"
+            + (f": {item.get('motivo')}" if item.get("motivo") else "")
+        )
+        return
+    if tipo == "replanejamento":
+        console.print(
+            prefixo
+            + f"[bold]replanejamento[/] após {item.get('proposta_id') or '—'} "
+            + f"(#{item.get('n_replanejamento') or 0})"
+            + (f": {item.get('motivo')}" if item.get("motivo") else "")
+        )
+        return
+    if tipo == "aprovacao":
+        console.print(
+            prefixo
+            + f"[bold]aprovação humana[/] {item.get('proposta') or '—'} por "
+            + f"{item.get('operador') or '—'}"
+            + (" · com execução" if item.get("executar") else " · sem execução")
+        )
+        return
+    if tipo == "passo_humano":
+        manobra = item.get("manobra") or {}
+        if not isinstance(manobra, dict):
+            manobra = {}
+        console.print(
+            prefixo
+            + f"[bold]passo HITL[/] {item.get('proposta') or '—'} "
+            + f"({item.get('passo') or '?'} / {item.get('n_passos') or '?'}) · "
+            + f"{manobra.get('acao') or '—'} {manobra.get('chave') or '—'}"
+        )
+        if item.get("erro"):
+            console.print(f"    [red]erro:[/] {item['erro']}")
+        return
+    if tipo == "ferramenta_erro":
+        console.print(
+            prefixo
+            + (
+                f"[red]{item.get('ferramenta')}[/] recusada: "
+                f"{item.get('erro') or 'erro desconhecido'}"
+            )
+        )
+        return
+    if tipo == "encerramento":
+        console.print(
+            prefixo
+            + f"[bold]encerramento[/] proposta {item.get('proposta') or '—'} · "
+            + (
+                f"{item.get('rodadas') or 0} rodada(s), "
+                f"{item.get('replanejamentos') or 0} replanejamento(s)"
+            )
+        )
+        resposta = item.get("resposta")
+        if resposta:
+            console.print("    " + _resumir(resposta, 160))
+        if item.get("erro"):
+            console.print(f"    [red]erro:[/] {item['erro']}")
+
+
+def _resumo_resultado_replay(item: dict[str, object]) -> object:
+    ferramenta = item.get("ferramenta")
+    resultado = item.get("resultado")
+    if not isinstance(resultado, dict):
+        return resultado
+    if ferramenta == "load_cluster":
+        resumo = resultado.get("resumo") if isinstance(resultado.get("resumo"), dict) else {}
+        return {
+            "cluster": resultado.get("cluster"),
+            "ctmt": resumo.get("ctmt"),
+            "chaves": resumo.get("chaves"),
+            "ties": resumo.get("ties"),
+        }
+    if ferramenta == "inject_fault":
+        return {
+            "trecho": resultado.get("trecho"),
+            "religador": resultado.get("religador"),
+            "clientes_sem_tensao": ((resultado.get("sem_tensao") or {}).get("clientes") or {}).get(
+                "total"
+            ),
+        }
+    if ferramenta == "locate_fault":
+        return {
+            "trecho": resultado.get("trecho"),
+            "fronteira": resultado.get("chaves_fronteira"),
+            "ultima_indicacao": resultado.get("ultima_indicacao"),
+        }
+    if ferramenta == "isolate_fault":
+        return {
+            "sequencia": resultado.get("sequencia"),
+            "clientes_desligados": ((resultado.get("clientes_desligados") or {}).get("total")),
+        }
+    if ferramenta == "propose_plan":
+        return {
+            "id": resultado.get("id"),
+            "chave": resultado.get("chave"),
+            "manobras": resultado.get("manobras"),
+            "status": resultado.get("status"),
+        }
+    if ferramenta == "set_switch":
+        return {
+            "proposta": resultado.get("proposta"),
+            "passo": f"{resultado.get('passo')}/{resultado.get('n_passos')}",
+            "manobra": f"{resultado.get('estado')} {resultado.get('chave')}",
+            "status": resultado.get("proposta_status"),
+        }
+    if ferramenta == "run_powerflow":
+        return {
+            "convergiu": resultado.get("convergiu"),
+            "vmin_pu": resultado.get("vmin_pu") or resultado.get("vmin_mt_pu"),
+            "vmax_pu": resultado.get("vmax_pu") or resultado.get("vmax_mt_pu"),
+            "sobrecargas": len(resultado.get("sobrecargas") or []),
+        }
+    return resultado
 
 
 def _imprimir_eventos(eventos, como_json: bool, titulo: str | None) -> None:
