@@ -33,6 +33,7 @@ import networkx as nx
 
 from bdgd_light.grid.rede import CHAVE, TRECHO, OpcaoRestauracao, Rede
 from bdgd_light.twin.cluster import comandos_manobras
+from bdgd_light.twin.gpkg2dss import cod_id_trecho_mt_de_elemento, nome_elemento_trecho_mt
 from bdgd_light.twin.powerflow import PowerFlowResult, _dss, no_motor, run_powerflow
 
 _NAN = float("nan")
@@ -159,7 +160,7 @@ def _ampacidade_tronco(cods: list[str]) -> float:
     dss = _dss()
     ampacidades = [
         a
-        for a in (_normamps(dss, f"Line.SMT_{cod}") for cod in cods)
+        for a in (_normamps(dss, nome_elemento_trecho_mt(cod)) for cod in cods)
         if not math.isnan(a) and a > 0
     ]
     return sum(ampacidades) if ampacidades else _NAN
@@ -185,14 +186,14 @@ def _corrente_fonte(resultado: PowerFlowResult, barra: str) -> float:
 
 
 def _elementos_mt(rede: Rede, fonte: str, nos: Iterable[str]) -> set[str]:
-    """Nomes (minúsculos) das ``Line.SMT_*`` da fonte e da zona transferida."""
+    """Nomes (minúsculos) dos trechos MT da fonte e da zona transferida."""
     nos = set(nos)
     nomes: set[str] = set()
     for u, v, d in rede.grafo.edges(data=True):
         if d["tipo"] != TRECHO:
             continue
         if d["ctmt"] == fonte or (u in nos and v in nos):
-            nomes.add(f"line.smt_{d['cod']}".lower())
+            nomes.add(nome_elemento_trecho_mt(d["cod"]).lower())
     return nomes
 
 
@@ -216,14 +217,6 @@ def _extremo_tensao(sel, *, maior: bool) -> tuple[float, str | None]:
     return float(linha["v_pu"]), str(linha["barra"])
 
 
-def _cod_id_trecho(elemento: str) -> str | None:
-    prefixo = "line.smt_"
-    nome = elemento.lower()
-    if not nome.startswith(prefixo):
-        return None
-    return nome.split(prefixo, 1)[1].upper()
-
-
 def _trechos_carregados_mt(
     rede: Rede, fonte: str, nos: Iterable[str], correntes, *, limite: int = 5
 ) -> list[dict[str, Any]]:
@@ -233,7 +226,7 @@ def _trechos_carregados_mt(
     return [
         {
             "elemento": str(r.elemento),
-            "cod_id": _cod_id_trecho(str(r.elemento)),
+            "cod_id": cod_id_trecho_mt_de_elemento(str(r.elemento)),
             "i_max_a": float(r.i_max_a),
             "i_nominal_a": float(r.i_nominal_a),
             "carregamento_pct": float(r.carregamento_pct),
