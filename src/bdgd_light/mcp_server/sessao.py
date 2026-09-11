@@ -684,6 +684,15 @@ class SessaoCOD:
         apagados = [n for n in rede.nos() if n not in energizados]
         return {"n_nos": len(apagados), "clientes": rede.customers(apagados).to_dict()}
 
+    def _estado_rede_score(self, rede: Rede) -> dict[str, Any]:
+        """Resumo serializável do estado-base usado pelo último lote de score elétrico."""
+        return {
+            "cluster": self.nome,
+            "falta": self.falta,
+            "religador": self.religador,
+            "manobras": self._manobras_estado(rede),
+        }
+
     def _manobras_estado(self, rede: Rede) -> list[dict]:
         """Manobras que levam do estado normal (P_N_OPE) ao estado atual das chaves."""
         passos = []
@@ -989,8 +998,15 @@ class SessaoCOD:
                 master = self.master_base()
                 inicio = perf_counter()
                 avaliados = score_eletrico(opcoes, plano, master, vmin=vmin, vmax=vmax)
+                contexto_score = {
+                    "simulado_em": _iso(self._agora()),
+                    "estado_rede": self._estado_rede_score(plano),
+                }
                 scores = {
-                    s.chave: {k: v for k, v in s.to_dict().items() if k not in ("chave", "opcao")}
+                    s.chave: {
+                        **{k: v for k, v in s.to_dict().items() if k not in ("chave", "opcao")},
+                        **contexto_score,
+                    }
                     for s in avaliados
                 }
                 self._scores = scores
@@ -1002,6 +1018,7 @@ class SessaoCOD:
                     "vmax": vmax,
                     "tempo_s": round(perf_counter() - inicio, 2),
                     "viaveis": sum(1 for s in avaliados if s.viavel),
+                    **contexto_score,
                 }
             except (ImportError, SessaoError, FileNotFoundError, RuntimeError) as exc:
                 saida["aviso"] = f"sem score elétrico: {exc}"

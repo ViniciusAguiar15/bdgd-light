@@ -36,6 +36,8 @@ interface Score {
   convergencia?: ConvergenciaEletrica | null;
   perdas_kw?: number | null;
   motivos: string[];
+  simulado_em?: string | null;
+  estado_rede?: EstadoRedeScore | null;
 }
 
 interface TrechoCarregado {
@@ -77,6 +79,13 @@ interface ImpactoEstimado {
   consumidor_minutos_evitados: number;
   premissa: string;
   dec_conjunto: ImpactoDECConjunto | null;
+}
+
+interface EstadoRedeScore {
+  cluster: string | null;
+  falta: string | null;
+  religador: string | null;
+  manobras: { acao: string; chave: string }[];
 }
 
 interface Verificador {
@@ -229,6 +238,8 @@ interface DetalhesEletricosResposta {
   status: string;
   falta: string | null;
   escolhida: string | null;
+  simulado_em?: string | null;
+  estado_rede?: EstadoRedeScore | null;
   opcoes: {
     chave: string;
     fonte: string;
@@ -343,6 +354,14 @@ function hora(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleTimeString("pt-BR");
+}
+
+function horaCurta(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
 function milConsumidorMinutos(valor: number | null | undefined): string {
@@ -808,12 +827,11 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
     if (propostaEletricaAberta === p.id) det.open = true;
     const cache = detalhesEletricos.get(p.id);
     const nOpcoes = cache?.opcoes.length ?? p.alternativas?.filter((a) => a.score).length ?? 0;
+    const cabecalho = `detalhes elétricos${nOpcoes ? ` (${nOpcoes} opção${nOpcoes > 1 ? "ões" : ""})` : ""}${
+      cache?.simulado_em ? ` · simulado às ${horaCurta(cache.simulado_em)}` : ""
+    }`;
     det.append(
-      el(
-        "summary",
-        {},
-        `detalhes elétricos${nOpcoes ? ` (${nOpcoes} opção${nOpcoes > 1 ? "ões" : ""})` : ""}`,
-      ),
+      el("summary", {}, cabecalho),
     );
     det.addEventListener("toggle", () => {
       propostaEletricaAberta = det.open ? p.id : null;
@@ -926,7 +944,9 @@ export function montarCod(mapa: MapaLibre, api: string, cenario: Cenario | undef
         "tr",
         {
           class: trecho.cod_id === trechoDestaque ? "selecionado" : "",
-          title: trecho.cod_id ? `destacar ${trecho.cod_id} no mapa` : trecho.elemento,
+          title: trecho.cod_id
+            ? `destacar ${trecho.cod_id} no mapa`
+            : "trecho sem correspondência no mapa",
         },
         el("td", {}, trecho.cod_id ?? trecho.elemento),
         el("td", {}, pctDireto(trecho.carregamento_pct)),
