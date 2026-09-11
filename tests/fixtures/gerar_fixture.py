@@ -19,7 +19,9 @@ SIRGAS 2000 — EPSG:4674), com poucas feições por camada e valores inventados
 - ``RJO003`` (LSA, 25 kV) sai de ``SE002``, em outro município, e não tem interligação.
 
 Também há uma UCBT (``UC00007``) cuja coluna ``CTMT`` diverge do CTMT do transformador (como em
-0,09 % da base real): o inventário/recorte seguem o transformador (``UNI_TR_MT``).
+0,09 % da base real): o inventário/recorte seguem o transformador (``UNI_TR_MT``). O poste dela
+(``PN107``) fica a ~40 km da rede, como os ``PN_CON`` errados da base real (issue #40): o recorte
+o descarta pelo *bbox* da rede, e ``UC00007`` segue em ``UCBT_tab`` sem poste.
 
 Uso: ``uv run tests/fixtures/gerar_fixture.py [destino.gpkg]``
 """
@@ -483,6 +485,9 @@ def ponnot() -> gpd.GeoDataFrame:
     for tabela in (ucbt_tab(), ucmt_tab(), ugbt_tab(), ugmt_tab()):
         for _, u in tabela.iterrows():
             pontos.setdefault(u.PN_CON, (-43.2, -22.91))
+    # poste de UC00007 a ~40 km da rede, como os PN_CON errados da Light 2025 (issue #40): o
+    # recorte deve descartá-lo pelo bbox da rede
+    pontos["PN107"] = (-43.6000, -23.0000)
     pontos["PN999"] = (-43.2300, -22.9500)  # poste sem nada ligado (não deve entrar em recortes)
     linhas = [
         {

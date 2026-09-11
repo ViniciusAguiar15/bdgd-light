@@ -36,7 +36,7 @@ from bdgd_light.ingest.interligacoes import (
 )
 from bdgd_light.ingest.inventario import carregar_bairro, gravar_csv, inventariar, tabela_top
 from bdgd_light.ingest.parquet import CamadaAusenteError, DiretorioParquet
-from bdgd_light.ingest.recorte import CtmtInexistenteError, recortar
+from bdgd_light.ingest.recorte import FOLGA_BBOX_M, CtmtInexistenteError, recortar
 from bdgd_light.ingest.tiles import (
     ZOOM_MAX_PADRAO,
     ZOOM_MIN_PADRAO,
@@ -126,6 +126,18 @@ OpcaoRaioTie = Annotated[
         help="Raio (m) entre chave NA e extremidade de SSDMT de outro CTMT para ser interligação.",
     ),
 ]
+OpcaoFolgaBbox = Annotated[
+    float,
+    typer.Option(
+        "--folga-bbox",
+        help="Folga (m) do bbox da rede que limita PONNOT/UCBT — postes de UCBT_tab.PN_CON longe "
+        "do alimentador ficam de fora (issue #40). Negativo desliga o filtro.",
+    ),
+]
+
+
+def _folga_bbox(valor: float) -> float | None:
+    return None if valor < 0 else valor
 
 
 def _erro(mensagem: str) -> None:
@@ -271,6 +283,7 @@ def recortar_cmd(
         typer.Option("--nome-cluster", help="Nome do GPKG do cluster (padrão: cluster_<A>-<B>…)."),
     ] = None,
     raio_tie: OpcaoRaioTie = RAIO_PADRAO_M,
+    folga_bbox: OpcaoFolgaBbox = FOLGA_BBOX_M,
 ) -> None:
     """Recorta todas as camadas por alimentador (CTMT) para GeoPackage(s) + meta.json.
 
@@ -293,6 +306,7 @@ def recortar_cmd(
             out_dir,
             nome_cluster_=nome_cluster,
             raio_tie_m=raio_tie,
+            folga_bbox_m=_folga_bbox(folga_bbox),
             console=console,
         )
     except (FileNotFoundError, ValueError) as erro:  # CamadaAusenteError, CtmtInexistenteError
@@ -666,6 +680,7 @@ def tiles(
     ] = False,
     zoom_min: Annotated[int, typer.Option("--zoom-min", min=0, max=22)] = ZOOM_MIN_PADRAO,
     zoom_max: Annotated[int, typer.Option("--zoom-max", min=0, max=22)] = ZOOM_MAX_PADRAO,
+    folga_bbox: OpcaoFolgaBbox = FOLGA_BBOX_M,
 ) -> None:
     """Gera tiles vetoriais (PMTiles) de um recorte para o console MapLibre: exporta cada camada
     geográfica para GeoJSON em EPSG:4326 (com atributos derivados para o estilo: TEN_KV, TIE,
@@ -678,6 +693,7 @@ def tiles(
             zoom_min=zoom_min,
             zoom_max=zoom_max,
             apenas_geojson=apenas_geojson,
+            folga_bbox_m=_folga_bbox(folga_bbox),
         )
     except TippecanoeAusenteError as erro:
         _erro(str(erro))

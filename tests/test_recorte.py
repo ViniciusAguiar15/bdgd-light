@@ -22,8 +22,10 @@ from bdgd_light.ingest.recorte import (
     CAMADA_INTERLIGACOES,
     CAMADAS_POR_CTMT,
     CAMADAS_POR_TRAFO,
+    FOLGA_BBOX_M,
     CtmtInexistenteError,
     FonteMemoria,
+    bbox_rede,
     recortar,
     selecionar,
 )
@@ -112,13 +114,15 @@ def test_nada_de_outro_ctmt_vaza_para_o_recorte(recorte_cluster, trafo_ctmt, bdg
         if camada in camadas:
             # BT liga pelo transformador; a coluna CTMT da própria camada pode divergir (UC00007)
             assert set(camadas[camada]["UNI_TR_MT"].map(trafo_ctmt)) == {cod}, camada
-    # postes: exatamente os PN_CON* das feições do recorte, e nunca o órfão PN999
+    # postes: os PN_CON* das feições do recorte dentro do bbox da rede — nunca o órfão PN999 nem
+    # PN107, poste de UC00007 a ~40 km da rede (issue #40)
     pns: set[str] = set()
     for dados in camadas.values():
         for coluna in ("PN_CON", "PN_CON_1", "PN_CON_2"):
             if coluna in dados.columns:
                 pns |= set(dados[coluna].dropna()) - {""}
-    assert set(camadas["PONNOT"]["COD_ID"]) == pns and "PN999" not in pns
+    assert set(camadas["PONNOT"]["COD_ID"]) == pns - {"PN107"} and "PN999" not in pns
+    assert ("PN107" in pns) == (cod == "RJO001")  # referenciado por UCBT_tab, mas fora do bbox
     # subestação inteira do CTMT (SUB + todos os UNTRAT dela), e só ela
     assert camadas["SUB"]["COD_ID"].tolist() == ["SE001"]
     assert sorted(camadas["UNTRAT"]["COD_ID"]) == ["TRAT001", "TRAT003"]
@@ -164,7 +168,7 @@ def test_contagens_esperadas_por_alimentador(recorte_cluster):
         "UCBT": 4,
         "UCBT_tab": 4,
         "UGBT_tab": 1,
-        "PONNOT": 15,
+        "PONNOT": 14,  # 15 referenciados, PN107 fora do bbox da rede (issue #40)
         "EQTRMT": 2,
         "EQSE": 4,
         "SEGCON": 2,
@@ -209,6 +213,10 @@ def test_meta_json(recorte_cluster):
         }
     ]
     assert "gerado_em" in meta and meta["bdgd_light"]
+    assert meta["bbox_folga_m"] == FOLGA_BBOX_M == 500.0
+    assert meta["avisos"] == [
+        "PONNOT: 1 feição(ões) fora do bbox da rede (folga 500 m) descartada(s)"
+    ]
     meta_cluster = json.loads(recorte_cluster.cluster.meta.read_text(encoding="utf-8"))
     assert [c["COD_ID"] for c in meta_cluster["ctmt"]] == CLUSTER
     assert len(meta_cluster["interligacoes"]) == 1  # o par interno ao cluster aparece uma vez
@@ -244,6 +252,41 @@ def test_referencias_em_branco_nao_puxam_postes(parquet_mini):
     derivado = selecionar(FonteMemoria(camadas), ["RJO001"])["PONNOT"]
     assert set(derivado["COD_ID"]) <= set(esperado["COD_ID"])
     assert " " not in set(derivado["COD_ID"]) and not derivado["COD_ID"].str.strip().eq("").any()
+
+
+def test_postes_longe_da_rede_ficam_fora_do_recorte(parquet_mini):
+    # UCBT_tab.PN_CON de UC00007 aponta para PN107, a ~40 km da rede (como na Light 2025)
+    fonte = DiretorioParquet(parquet_mini)
+    avisos: list[str] = []
+    com_filtro = selecionar(fonte, ["RJO001"], avisos=avisos)
+    sem_filtro = selecionar(fonte, ["RJO001"], folga_bbox_m=None)
+    assert "PN107" in set(sem_filtro["PONNOT"]["COD_ID"])
+    assert set(sem_filtro["PONNOT"]["COD_ID"]) - set(com_filtro["PONNOT"]["COD_ID"]) == {"PN107"}
+    assert avisos == ["PONNOT: 1 feição(ões) fora do bbox da rede (folga 500 m) descartada(s)"]
+    # a UC continua em UCBT_tab (carga do trafo), só o poste sai
+    assert "UC00007" in set(com_filtro["UCBT_tab"]["COD_ID"])
+    # folga enorme mantém o poste; UCBT com geometria também passa pelo filtro
+    assert "PN107" in set(selecionar(fonte, ["RJO001"], folga_bbox_m=100_000)["PONNOT"]["COD_ID"])
+    ucbt = com_filtro["UCBT"].copy()
+    ucbt.loc[ucbt["COD_ID"] == "UC00007", "geometry"] = gpd.points_from_xy([-43.6], [-23.0])[0]
+    ucbt.loc[ucbt["COD_ID"] == "UC00001", "geometry"] = None
+    camadas = dict(com_filtro, UCBT=ucbt)
+    avisos.clear()
+    filtrado = selecionar(FonteMemoria(camadas), ["RJO001"], avisos=avisos)["UCBT"]
+    assert sorted(filtrado["COD_ID"]) == ["UC00001", "UC00002", "UC00003"]  # sem geometria fica
+    assert avisos == ["UCBT: 1 feição(ões) fora do bbox da rede (folga 500 m) descartada(s)"]
+
+
+def test_bbox_rede_com_folga():
+    rede = gpd.GeoDataFrame(
+        geometry=gpd.points_from_xy([-43.20, -43.19], [-22.92, -22.91]), crs="EPSG:4674"
+    )
+    assert bbox_rede({"SSDMT": rede}, 0.0) == pytest.approx((-43.20, -22.92, -43.19, -22.91))
+    minx, miny, maxx, maxy = bbox_rede({"SSDMT": rede}, 500.0)
+    assert miny == pytest.approx(-22.92 - 500 / 111_320, abs=1e-6)
+    assert maxx - (-43.19) == pytest.approx(500 / 111_320 / 0.9215, rel=1e-2)  # cos(-22.915°)
+    assert bbox_rede({"UCBT_tab": pd.DataFrame({"a": [1]})}) is None
+    assert bbox_rede({"SSDMT": rede.iloc[0:0]}) is None
 
 
 def test_regravar_substitui_o_gpkg(parquet_mini, tmp_path):
@@ -317,6 +360,21 @@ def test_cli_recortar_varios_ctmt(parquet_mini, tmp_path):
     texto = saida(resultado)
     assert "Feições por camada e recorte" in texto and "meu_cluster" in texto
     assert "INTERLIGACOES" in texto
+    assert "⚠ RJO001: PONNOT: 1 feição(ões) fora do bbox da rede" in texto
+    assert pyogrio.read_info(out / "RJO001.gpkg", layer="PONNOT")["features"] == 14
+
+    # --folga-bbox negativo desliga o filtro (comportamento anterior à issue #40)
+    out2 = tmp_path / "sem_filtro"
+    resultado = runner.invoke(
+        app,
+        ["recortar", "--parquet", str(parquet_mini), "--ctmt", "RJO001", "--out", str(out2)]
+        + ["--folga-bbox", "-1"],
+    )
+    assert resultado.exit_code == 0, saida(resultado)
+    assert "fora do bbox" not in saida(resultado)
+    assert pyogrio.read_info(out2 / "RJO001.gpkg", layer="PONNOT")["features"] == 15
+    meta = json.loads((out2 / "RJO001.meta.json").read_text(encoding="utf-8"))
+    assert meta["bbox_folga_m"] is None and meta["avisos"] == []
 
 
 def test_cli_recortar_um_ctmt_com_out_gpkg(parquet_mini, tmp_path):

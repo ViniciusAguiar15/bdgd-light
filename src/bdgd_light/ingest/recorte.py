@@ -8,7 +8,10 @@ Cada camada é filtrada pela regra de junção documentada em ``docs/bdgd-relaco
 - Camadas BT (SSDBT, UNSEBT, RAMLIG, UCBT/UCBT_tab, UGBT/UGBT_tab, PIP): pelo transformador
   (``UNI_TR_MT`` ∈ UNTRMT selecionados), que é quem define o alimentador; a coluna ``CTMT`` dessas
   camadas só é usada se não houver UNTRMT.
-- ``PONNOT`` (postes): ``COD_ID`` ∈ ``PN_CON``/``PN_CON_1``/``PN_CON_2`` das feições selecionadas.
+- ``PONNOT`` (postes): ``COD_ID`` ∈ ``PN_CON``/``PN_CON_1``/``PN_CON_2`` das feições selecionadas
+  **e** dentro do *bbox* da rede do recorte com folga (``FOLGA_BBOX_M``): na Light 2025
+  ``UCBT_tab.PN_CON`` aponta para postes a dezenas de km do alimentador, que inflariam o recorte e
+  o *bbox* dos tiles. O mesmo filtro vale para ``UCBT`` com geometria.
 - ``UNTRAT`` e ``SUB``: toda a subestação do CTMT (``SUB`` ∈ ``CTMT.SUB``).
 - Equipamentos (EQTRMT, EQSE, EQRE, EQCR): ``UNI_TR_MT``/``UN_SE``/``UN_RE``/``UN_CR`` das unidades.
 - Catálogos (SEGCON, CRVCRG): só os códigos usados (``TIP_CND``, ``TIP_CC``).
@@ -22,6 +25,7 @@ recortes individuais são derivados em memória com as mesmas regras.
 from __future__ import annotations
 
 import json
+import math
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -32,6 +36,7 @@ from typing import Protocol
 import geopandas as gpd
 import pandas as pd
 import pyogrio
+import shapely
 from rich.console import Console
 from rich.table import Table
 
@@ -56,6 +61,10 @@ CAMADAS_POR_CTMT = [
     "UGMT_tab",
 ]
 CAMADAS_POR_TRAFO = ["SSDBT", "UNSEBT", "RAMLIG", "UCBT", "UCBT_tab", "UGBT", "UGBT_tab", "PIP"]
+# camadas que definem a extensão física da rede (para o bbox que filtra postes e UCs)
+CAMADAS_BBOX = ["SSDMT", "SSDBT", "UNSEMT", "UNSEBT", "UNTRMT", "UNREMT", "UNCRMT", "RAMLIG"]
+CAMADAS_FILTRADAS_POR_BBOX = ["PONNOT", "UCBT"]
+FOLGA_BBOX_M = 500.0
 EQUIPAMENTOS = {  # camada de equipamento → (coluna de ligação, camadas de unidades)
     "EQTRMT": ("UNI_TR_MT", ["UNTRMT"]),
     "EQSE": ("UN_SE", ["UNSEMT", "UNSEBT"]),
@@ -139,6 +148,7 @@ class Recorte:
     gpkg: Path | None = None
     meta: Path | None = None
     segundos: float = 0.0
+    avisos: list[str] = field(default_factory=list)
 
     @property
     def contagens(self) -> dict[str, int]:
@@ -168,16 +178,88 @@ def _valores(
     return sorted((v for v in valores if not (isinstance(v, str) and not v.strip())), key=str)
 
 
+def bbox_rede(
+    camadas: dict[str, pd.DataFrame],
+    folga_m: float = FOLGA_BBOX_M,
+    nomes: Iterable[str] = CAMADAS_BBOX,
+) -> tuple[float, float, float, float] | None:
+    """*Bbox* (minx, miny, maxx, maxy, no CRS das camadas) da união das camadas de rede presentes,
+    alargado ``folga_m`` metros em cada lado (graus convertidos na latitude do centro; a BDGD está
+    em EPSG:4674). ``None`` sem camada geográfica com feições."""
+    limites: list[float] | None = None
+    for nome in nomes:
+        gdf = camadas.get(nome)
+        if not isinstance(gdf, gpd.GeoDataFrame) or gdf.empty or gdf.geometry.isna().all():
+            continue
+        b = [float(v) for v in gdf.total_bounds]
+        if any(math.isnan(v) for v in b):
+            continue
+        limites = (
+            b
+            if limites is None
+            else [
+                min(limites[0], b[0]),
+                min(limites[1], b[1]),
+                max(limites[2], b[2]),
+                max(limites[3], b[3]),
+            ]
+        )
+    if limites is None:
+        return None
+    minx, miny, maxx, maxy = limites
+    lat = math.radians((miny + maxy) / 2)
+    dy = folga_m / 111_320.0
+    dx = folga_m / (111_320.0 * max(math.cos(lat), 0.01))
+    return (minx - dx, miny - dy, maxx + dx, maxy + dy)
+
+
+def _dentro_do_bbox(
+    gdf: pd.DataFrame, bbox: tuple[float, float, float, float]
+) -> tuple[pd.DataFrame, int]:
+    """Feições que intersectam ``bbox`` (as sem geometria ficam); devolve também quantas saíram."""
+    if not isinstance(gdf, gpd.GeoDataFrame) or gdf.empty:
+        return gdf, 0
+    caixa = shapely.box(*bbox)
+    fica = gdf.geometry.isna() | gdf.geometry.intersects(caixa)
+    return gdf[fica], int((~fica).sum())
+
+
+def filtrar_por_bbox(
+    camadas: dict[str, pd.DataFrame],
+    folga_bbox_m: float | None = FOLGA_BBOX_M,
+    avisos: list[str] | None = None,
+) -> dict[str, pd.DataFrame]:
+    """Restringe ``PONNOT``/``UCBT`` ao *bbox* da rede de ``camadas`` com folga (``None`` devolve
+    tudo); registra em ``avisos`` quantas feições saíram."""
+    bbox = bbox_rede(camadas, folga_bbox_m) if folga_bbox_m is not None else None
+    if bbox is None:
+        return camadas
+    sel = dict(camadas)
+    for camada in CAMADAS_FILTRADAS_POR_BBOX:
+        if camada in sel:
+            sel[camada], fora = _dentro_do_bbox(sel[camada], bbox)
+            if fora and avisos is not None:
+                avisos.append(
+                    f"{camada}: {_fmt_int(fora)} feição(ões) fora do bbox da rede "
+                    f"(folga {folga_bbox_m:g} m) descartada(s)"
+                )
+    return sel
+
+
 def selecionar(
     fonte: Fonte,
     ctmts: Iterable[str],
     *,
     interligacoes: gpd.GeoDataFrame | None = None,
+    folga_bbox_m: float | None = FOLGA_BBOX_M,
+    avisos: list[str] | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Aplica as regras de junção e devolve ``{camada: feições}`` para o conjunto de CTMT.
 
     Só camadas existentes na fonte entram (a ausência é decidida pelo chamador). Levanta
-    ``CtmtInexistenteError`` se algum CTMT pedido não existe na tabela CTMT.
+    ``CtmtInexistenteError`` se algum CTMT pedido não existe na tabela CTMT. ``PONNOT`` e ``UCBT``
+    (com geometria) ficam restritos ao *bbox* da rede com ``folga_bbox_m`` metros (``None``
+    desliga); o que saiu é contado em ``avisos``.
     """
     ctmts = list(dict.fromkeys(ctmts))
     sel: dict[str, pd.DataFrame] = {}
@@ -215,6 +297,8 @@ def selecionar(
         postes = _valores(sel, list(sel), COLUNAS_PN)
         sel["PONNOT"] = fonte.ler("PONNOT", filtros=filtro_in("COD_ID", postes))
 
+    sel = filtrar_por_bbox(sel, folga_bbox_m, avisos)
+
     for camada, (coluna, unidades) in EQUIPAMENTOS.items():
         if fonte.tem(camada):
             codigos = _valores(sel, unidades, ["COD_ID"])
@@ -244,12 +328,14 @@ def recortar(
     *,
     nome_cluster_: str | None = None,
     raio_tie_m: float = RAIO_PADRAO_M,
+    folga_bbox_m: float | None = FOLGA_BBOX_M,
     console: Console | None = None,
 ) -> ResultadoRecorte:
     """Gera ``<out_dir>/<CTMT>.gpkg`` (+ ``.meta.json``) por CTMT e, com vários, o GPKG do cluster.
 
     Camadas ausentes do diretório Parquet são puladas com aviso; ``CTMT`` é obrigatória e
-    ``SSDMT``/``UNSEMT`` são necessárias para a camada ``INTERLIGACOES``.
+    ``SSDMT``/``UNSEMT`` são necessárias para a camada ``INTERLIGACOES``. ``folga_bbox_m`` é a
+    folga do *bbox* da rede que limita ``PONNOT``/``UCBT`` (``None`` desliga o filtro).
     """
     inicio = time.perf_counter()
     fonte = parquet if isinstance(parquet, DiretorioParquet) else DiretorioParquet(parquet)
@@ -279,29 +365,44 @@ def recortar(
 
     console.print(f"Recortando {len(ctmts)} CTMT de [bold]{fonte.caminho}[/] → [bold]{out_dir}[/]")
     t0 = time.perf_counter()
-    camadas_cluster = selecionar(fonte, ctmts, interligacoes=interligacoes)
-    memoria = FonteMemoria(camadas_cluster)
+    # seleção única na fonte, sem filtro de bbox: cada recorte (e o cluster) aplica o seu
+    camadas_brutas = selecionar(fonte, ctmts, interligacoes=interligacoes, folga_bbox_m=None)
+    memoria = FonteMemoria(camadas_brutas)
 
     recortes: list[Recorte] = []
     for cod in ctmts:
         t1 = time.perf_counter()
-        camadas = selecionar(memoria, [cod], interligacoes=interligacoes)
-        recorte = Recorte([cod], cod, camadas)
-        _gravar(recorte, out_dir / f"{cod}.gpkg", fonte, interligacoes)
+        avisos: list[str] = []
+        camadas = selecionar(
+            memoria, [cod], interligacoes=interligacoes, folga_bbox_m=folga_bbox_m, avisos=avisos
+        )
+        recorte = Recorte([cod], cod, camadas, avisos=avisos)
+        _gravar(recorte, out_dir / f"{cod}.gpkg", fonte, interligacoes, folga_bbox_m)
         recorte.segundos = time.perf_counter() - t1
         recortes.append(recorte)
         console.print(_linha_log(recorte))
+        _imprimir_avisos(console, recorte)
 
     cluster = None
     if len(ctmts) > 1:
-        cluster = Recorte(ctmts, nome_cluster_ or nome_cluster(ctmts), camadas_cluster)
-        _gravar(cluster, out_dir / f"{cluster.nome}.gpkg", fonte, interligacoes)
+        avisos_cluster: list[str] = []
+        camadas_cluster = filtrar_por_bbox(camadas_brutas, folga_bbox_m, avisos_cluster)
+        cluster = Recorte(
+            ctmts, nome_cluster_ or nome_cluster(ctmts), camadas_cluster, avisos=avisos_cluster
+        )
+        _gravar(cluster, out_dir / f"{cluster.nome}.gpkg", fonte, interligacoes, folga_bbox_m)
         cluster.segundos = time.perf_counter() - t0
         console.print(_linha_log(cluster))
+        _imprimir_avisos(console, cluster)
 
     total = time.perf_counter() - inicio
     console.print(_tabela_resumo(recortes, cluster))
     return ResultadoRecorte(recortes, cluster, ausentes, segundos=total)
+
+
+def _imprimir_avisos(console: Console, recorte: Recorte) -> None:
+    for aviso in recorte.avisos:
+        console.print(f"  [yellow]⚠ {recorte.nome}: {aviso}[/]")
 
 
 def _gravar(
@@ -309,6 +410,7 @@ def _gravar(
     gpkg: Path,
     fonte: DiretorioParquet,
     interligacoes: gpd.GeoDataFrame | None,
+    folga_bbox_m: float | None = FOLGA_BBOX_M,
 ) -> None:
     gpkg.parent.mkdir(parents=True, exist_ok=True)
     gpkg.unlink(missing_ok=True)
@@ -322,13 +424,17 @@ def _gravar(
     recorte.gpkg = gpkg
     recorte.meta = gpkg.with_suffix(".meta.json")
     recorte.meta.write_text(
-        json.dumps(_meta(recorte, fonte, interligacoes), ensure_ascii=False, indent=2) + "\n",
+        json.dumps(_meta(recorte, fonte, interligacoes, folga_bbox_m), ensure_ascii=False, indent=2)
+        + "\n",
         encoding="utf-8",
     )
 
 
 def _meta(
-    recorte: Recorte, fonte: DiretorioParquet, interligacoes: gpd.GeoDataFrame | None
+    recorte: Recorte,
+    fonte: DiretorioParquet,
+    interligacoes: gpd.GeoDataFrame | None,
+    folga_bbox_m: float | None = FOLGA_BBOX_M,
 ) -> dict:
     ctmt = recorte.camadas["CTMT"].set_index("COD_ID").reindex(recorte.ctmts).reset_index()
     ssdmt = recorte.camadas.get("SSDMT")
@@ -368,7 +474,9 @@ def _meta(
         "parquet": str(fonte.caminho),
         "crs": "EPSG:4674",
         "bbox_4326": bbox,
+        "bbox_folga_m": folga_bbox_m,
         "camadas": recorte.contagens,
+        "avisos": list(recorte.avisos),
         "interligacoes": vizinhos,
     }
 
