@@ -56,7 +56,8 @@ Todas as rotas devolvem JSON; erros de domínio (`SessaoError`) viram **409** co
 | `POST /api/eventos` → **202** | `{evento, agente: iniciado\|ocupado\|desligado}` | corpo: `{cenario}` (nomeado, ex. `tijuca_cabofrio_tronco`) **ou** `{tipo?, trecho?, ctmt?, chave?, cluster?, seed?}` (sem `tipo`, o alvo decide: trecho → falta permanente, CTMT → pico, chave → indisponível); `recarregar: true` recarrega o cluster antes; `agente: false` só publica. Exige operador; **409** se o agente está ocupado; 404 se o recorte do cenário não existe |
 | `GET /api/propostas?status=` | lista sem token | |
 | `GET /api/propostas/{id}` | proposta + `alternativas` (opções de `restore_options` com o último score, a escolhida primeiro) + `verificador` (veredito da execução do agente que a gerou) | `alternativas = []` após executada |
-| `POST /api/propostas/{id}/aprovar` | `{operador, proposta, execucao, erro}` | corpo `{executar?: true, validade_s?: 1800}`; aprova **e executa** por padrão (no transporte MCP http o padrão é só aprovar); grava `hitl.aprovacao` com `origem: console` |
+| `POST /api/propostas/{id}/aprovar` | `{operador, proposta, execucao, erro}` | corpo `{executar?: true, validade_s?: 1800}`; aprova **e executa** por padrão (no transporte MCP http o padrão é só aprovar); grava `hitl.aprovacao` com `origem: console`. Com manobras já aplicadas pelo modo passo a passo, executa só as restantes |
+| `POST /api/propostas/{id}/passo` | `{operador, passo, erro, proposta}` | **modo passo a passo**: aprova a proposta se ainda pendente (`hitl.aprovacao` com `executar: "passo"`) e aplica **só a próxima manobra** (`Proposta.proximo_passo`) com `set_switch` + token da proposta; grava `hitl.passo` (`manobra`, `passo`, `n_passos`). Uma chamada por manobra; a n-ésima marca a proposta `executada`; a seguinte responde 409 |
 | `POST /api/propostas/{id}/rejeitar` | `{operador, proposta}` | corpo `{motivo?}` |
 | `GET /api/auditoria?n=12` | `{n_total, integra, hash, registros[]}` compactos (sem `approval_token`) | `integra` vem de `AuditLog.verificar()` na cadeia inteira |
 | `GET /api/agente?n=5` | estado + últimas execuções (resumo: proposta, rodadas, ferramentas, recusas, tempos, resposta) | |
@@ -78,11 +79,23 @@ ou `X-Console-Token` com `compare_digest` (401 se errado; 503 se o servidor não
 - O botão "injetar falta" manda o cenário nomeado correspondente ao cenário do console
   (`tijuca → tijuca_cabofrio_tronco`, `ipanema → ipanema_9210`, `taquara → taquara_bocari`); se o
   backend está com outro cluster (`cluster_demo`), o painel avisa qual `?cenario=` abrir.
-- `window.cod` expõe `estado`, `atualizar()`, `injetar()`, `aprovar(id)`, `rejeitar(id, motivo)`
-  para depuração e para o smoke.
+- **Modo passo a passo** (pedido da revisão PR-15 / backlog 16): o cartão da proposta traz, além de
+  "Aprovar e executar", o botão `#cod-passo` — "Aprovar e executar a 1ª manobra: abrir X (1/n)" e
+  depois "Próxima manobra: fechar Y (k/n)" — que chama `POST …/passo`. A lista `<ol.cod-manobras>`
+  marca ✓ (`li.feita`) as aplicadas e ▶ (`li.atual`) a próxima; o rótulo mostra `k/n executadas`;
+  "Aprovar e executar" vira "Executar a última"/"Executar as k restantes" e "Rejeitar" desabilita
+  depois da primeira manobra aplicada. Como cada `set_switch` entra na auditoria, o `hash` muda e o
+  mapa recolore a cada passo sem nada especial no front.
+- `window.cod` expõe `estado`, `atualizar()`, `injetar()`, `aprovar(id)`, `passo(id)`,
+  `rejeitar(id, motivo)` para depuração e para o smoke.
 - Smoke ponta a ponta: `SMOKE_FLUXO=1 SMOKE_TOKEN=demo node scripts/smoke.mjs
   "http://127.0.0.1:8000/?cenario=tijuca"` injeta, espera a proposta, aprova e confere que o número
-  de trechos desenergizados no mapa caiu; falha se passar de 60 s ou o mapa não mudar.
+  de trechos desenergizados no mapa caiu; falha se passar de 60 s ou o mapa não mudar. Variáveis:
+  `SMOKE_PASSOS=1` usa o modo passo a passo e **falha se o número de cliques for diferente do de
+  manobras** ou se um clique aplicar mais de uma; `SMOKE_CAPTURAS=<pasta>` grava um PNG por etapa
+  (`1-evento`, `2-proposta` com as alternativas abertas, `2b-passo`, `3-executada`) — são as
+  capturas do README em `docs/img/`; `SMOKE_BASE=base-nenhuma` fotografa sobre o fundo escuro
+  (~315 KB por PNG contra ~1,9 MB com a imagem de satélite); `SMOKE_OPERADOR` (padrão `smoke`).
 
 ## Validação local (2026-09-10, Tijuca, `--provider fake`, macOS arm64)
 
@@ -117,6 +130,18 @@ URG29983). Dois cuidados que saíram dessa rodada:
 - o botão **Aprovar e executar** fica desabilitado enquanto o agente ainda escreve a resposta final
   (alguns segundos com LLM real); o smoke espera `agente.ocupado = false` antes de clicar.
 
+Modo passo a passo (2026-09-11, `SMOKE_PASSOS=1`, sessão nova, Tijuca):
+
+| provedor | proposta em | agente livre em | cliques | trechos MT sem tensão (falta / após abrir / após fechar) | total | rodadas / tokens |
+|---|---|---|---|---|---|---|
+| `fake` | 7,5 s | 7,5 s | 2 = 2 manobras | 467 / 467 / 72 | **11,6 s** | — |
+| `gemini` (`gemini-2.5-flash`) | 19,4 s | 22,7 s | 2 = 2 manobras | 467 / 467 / 72 | **26,9 s** | 5 / 24.253 |
+
+Abrir a chave de isolamento (11035901) não reenergiza nada — o mapa só muda no segundo clique, quando
+o tie 974020904 fecha e ALC9946 assume a carga; é exatamente o que se quer mostrar em aula.
+
+![modo passo a passo: 1/2 executadas, ✓ abrir 11035901, ▶ fechar 974020904](img/2b-passo.png)
+
 ## Decisões
 
 - **Um processo, uma sessão.** `serve` cria a `SessaoCOD`, o `Orquestrador` e a `FilaEventos` e os
@@ -141,7 +166,11 @@ URG29983). Dois cuidados que saíram dessa rodada:
   chamado pelo entry point `bdgd_light.cli:main` e por `pytest_unconfigure` em `tests/conftest.py`.
   Solução definitiva (issue própria): motor em **subprocesso**.
 - **Aprovar = executar** no console (o operador vê e decide num clique); no MCP http o padrão
-  continua "aprovar e devolver o token" para o agente/cliente executar.
+  continua "aprovar e devolver o token" para o agente/cliente executar. O **passo a passo** reutiliza
+  o "passo único" que o servidor MCP já impunha (`set_switch` só aceita a próxima manobra da
+  proposta, incrementa `executadas` e marca `executada` ao fim): o lado humano
+  (`humano.executar_passo`) aprova e executa exatamente um passo por chamada, e a mistura com
+  "Aprovar e executar" é permitida porque `executar_proposta` fatia a partir de `executadas`.
 - **Sem WebSocket**: *polling* de 2 s em `/api/estado` é suficiente para a demo e evita mais um
   canal; o mapa só é recarregado quando o `hash` da auditoria muda.
 - O veredito do verificador vive na **execução** do agente (não na proposta da sessão, que é
@@ -151,6 +180,7 @@ URG29983). Dois cuidados que saíram dessa rodada:
 
 - Vários operadores/sessões simultâneas e persistência do estado do agente entre reinícios.
 - Notificações *push* (SSE/WebSocket) em vez de *polling*, se a fila crescer.
-- Screenshot/vídeo da demo para o README (gerados pelo smoke em `smoke.png`, não versionados).
+- GIF/vídeo da demo (o README tem as 3 capturas PNG do smoke; sem `ffmpeg`/`gifski` na máquina da
+  noite 3 — com eles, `SMOKE_CAPTURAS` + `gifski -o demo.gif *.png`).
 - Benchmark (#36) com OpenAI × Gemini × fake pela mesma API; a demo com OpenAI ainda não foi feita
-  (chave ausente nesta máquina na noite 2).
+  (chave ausente nesta máquina nas noites 2 e 3).

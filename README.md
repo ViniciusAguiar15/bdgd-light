@@ -8,6 +8,17 @@ gêmeo digital em OpenDSS) como ferramentas para um agente de IA que monitora ev
 Plano completo, módulos e fases em [`docs/PLANO.md`](docs/PLANO.md); decisões de stack e
 arquitetura (e alternativas descartadas) em [`docs/adr/ADR-001-stack.md`](docs/adr/ADR-001-stack.md).
 
+## A demo em três telas
+
+Falta no tronco do alimentador ALC9925 (Tijuca): o agente localiza e isola a falta no gêmeo, compara
+as rotas de restauração e propõe uma; o operador aprova — de uma vez ou **uma manobra por clique** —
+e o mapa recolore com o estado da rede. Capturas geradas pelo smoke headless
+(`SMOKE_CAPTURAS`, [`docs/demo-roteiro.md`](docs/demo-roteiro.md) tem o roteiro de 15 min para aula).
+
+| 1 · evento em curso | 2 · proposta, alternativas e motivos | 3 · aprovada e executada |
+|---|---|---|
+| ![falta injetada; 4.036 UCBT sem tensão; agente pensando](docs/img/1-evento.png) | ![proposta P-0001: abrir 11035901, fechar 974020904 → ALC9946; 10 alternativas com motivo do descarte](docs/img/2-proposta.png) | ![rede restaurada: 0 UCBT sem tensão; trilha de auditoria íntegra](docs/img/3-executada.png) |
+
 ## Estrutura
 
 ```
@@ -625,9 +636,12 @@ uma API HTTP (FastAPI, extra `console`) que serve o console compilado (`console/
 **COD · fila e aprovação** do console injeta a falta do cenário, mostra a proposta do agente
 (manobras, clientes recuperados, veredito do gêmeo e do verificador, alternativas descartadas),
 **Aprovar e executar** / **Rejeitar** com a identidade do operador, recolore o mapa com o estado do
-gêmeo e lista a trilha de auditoria ("trilha íntegra ✓ hash"). Decisões que alteram a rede exigem
-`X-Operador` e o segredo `BDGD_CONSOLE_TOKEN` (ou `--sem-segredo` em demo local); tudo vai para
-`audit.jsonl` e `hitl.jsonl`. Detalhes da API e do fluxo em [`docs/console.md`](docs/console.md).
+gêmeo e lista a trilha de auditoria ("trilha íntegra ✓ hash"). Para aula há o **modo passo a passo**:
+o botão **Próxima manobra (k/n)** aprova a proposta e aplica **uma** chave por clique (o "passo único"
+do MCP, `set_switch` com o token da proposta); a sequência marca ✓ as feitas e ▶ a atual, e o mapa
+recolore a cada passo. Decisões que alteram a rede exigem `X-Operador` e o segredo
+`BDGD_CONSOLE_TOKEN` (ou `--sem-segredo` em demo local); tudo vai para `audit.jsonl` e `hitl.jsonl`.
+Detalhes da API e do fluxo em [`docs/console.md`](docs/console.md).
 
 ```bash
 uv sync --extra dev --extra twin --extra agent --extra console && (cd console && npm ci && npm run build)
@@ -637,6 +651,9 @@ uv run bdgd-light serve --cluster tijuca --provider gemini --sem-segredo        
 uv run bdgd-light serve --cluster ipanema --sem-agente                              # só fila + aprovação manual
 cd console && SMOKE_FLUXO=1 SMOKE_TOKEN=demo npm run smoke -- "http://127.0.0.1:8000/?cenario=tijuca"
 #   demo headless: injeta, espera a proposta, aprova e confere o mapa recolorido (falha se > 60 s)
+SMOKE_FLUXO=1 SMOKE_PASSOS=1 SMOKE_TOKEN=demo SMOKE_BASE=base-nenhuma SMOKE_CAPTURAS=../docs/img \
+  npm run smoke -- "http://127.0.0.1:8000/?cenario=tijuca"
+#   modo passo a passo (exige n cliques = n manobras) e grava as capturas 1-evento/2-proposta/3-executada
 ```
 
 ### `bdgd-light bench` — benchmark do agente (pass@k, ordenação, tokens por acerto)
