@@ -641,7 +641,9 @@ o botão **Próxima manobra (k/n)** aprova a proposta e aplica **uma** chave por
 do MCP, `set_switch` com o token da proposta); a sequência marca ✓ as feitas e ▶ a atual, e o mapa
 recolore a cada passo. Decisões que alteram a rede exigem `X-Operador` e o segredo
 `BDGD_CONSOLE_TOKEN` (ou `--sem-segredo` em demo local); tudo vai para `audit.jsonl` e `hitl.jsonl`.
-Detalhes da API e do fluxo em [`docs/console.md`](docs/console.md).
+O motor OpenDSS roda num **subprocesso** dedicado (`BDGD_MOTOR=processo`, padrão): se ele morrer, a
+ferramenta devolve erro ao agente, o servidor segue vivo e a chamada seguinte recria o motor
+(`/api/estado` → `motor`). Detalhes da API e do fluxo em [`docs/console.md`](docs/console.md).
 
 ```bash
 uv sync --extra dev --extra twin --extra agent --extra console && (cd console && npm ci && npm run build)

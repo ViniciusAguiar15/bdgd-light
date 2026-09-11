@@ -72,6 +72,11 @@ bdgd2opendss arrasta customtkinter, plotly, xlsxwriter e holidays, ~40 MB).
 5. **Ampacidade**: `carregamento_pct` vem de `PDElements.AllPctNorm`; reatores e chaves (sem
    `normamps`) ficam com `NaN` e não entram em `sobrecargas`.
 6. **`compile` muda o cwd do processo** (para a pasta do Master). `run_powerflow` restaura; há teste.
+   - **O motor roda num subprocesso** (`twin.powerflow.no_motor`, issue #48): o DSS C-API só aceita
+     chamadas da thread que o importou (`SIGILL`) e a sua finalização derrubava a CI Linux na saída
+     (`SIGSEGV`); por isso `run_powerflow`/`ampacidade_tronco` executam num filho `spawn` dedicado
+     que é recriado se morrer (`MotorError`). `BDGD_MOTOR=thread` usa a thread única antiga. Detalhes
+     em `docs/console.md` (Decisões).
 7. **Chaves NA não estão no modelo** (comentadas) e cada CTMT é um circuito com a própria Vsource.
    Resolvido em `twin/cluster.py`: `montar_master_cluster` escreve um Master único com a `Circuit`
    no barramento do primeiro CTMT e uma `Vsource.<CTMT>` por vizinho (mesma SE, 13,2 kV, 1,045 pu),
