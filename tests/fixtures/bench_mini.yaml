@@ -117,3 +117,15 @@ tarefas:
     unidade: pu
     tolerancia_abs: 0.005
     esperado: 1.0136
+  - id: H04
+    nivel: hard
+    cluster: cluster_RJO001-RJO002
+    falta: SEG001
+    evento: falta_permanente
+    descricao: "Rejeição prévia da CH003: reabrir restore_options e repropor a alternativa remota."
+    referencia: [restore_options, propose_plan]
+    rejeicao_previa:
+      motivo: "a chave CH003 está em manutenção"
+    gabarito: {ferramenta: restore_options, argumentos: {score: true}, campo: melhor_opcao}
+    verificar: proposta
+    esperado: [CH005]

@@ -70,3 +70,38 @@ o que custou caro na rodada 4 (ver `docs/review/MANHA-4.md`, seção "Processo")
 - **Validação local:** `uv run python scripts/gerar_verificador_doc.py`, `uv run pytest
   tests/test_verificador_adversarial.py`, `uv run ruff check .`, `uv run ruff format . --check` e
   `uv run pytest` → `316 passed, 1 warning`.
+
+## 3. Issue #82 — ganho dos exemplos anotados (20:42)
+
+- **Branch/PR:** `bench/82-ganho-exemplos`, PR desta issue.
+- **Regra crítica seguida:** no recorte *hard* já versionado do OpenAI (`docs/bench/2026-09-11-openai-hard-k5.*`
+  e `...-sem-exemplos.*`) o `pass@1` já estava saturado em **55/55** nos dois braços. Em vez de
+  forçar uma conclusão, segui a opção **(a)** do backlog/issue e montei um conjunto **hard+**
+  exploratório para pressionar ordenação e escolha de ferramenta.
+- **O que entrou no harness:** `bench/tarefas.yaml` passou de **34 → 38 tarefas** com H12–H15:
+  restrição ativa persistida na sessão (`restricoes`), chave indisponível (`indisponiveis`) e dois
+  replanejamentos após rejeição (`rejeicao_previa`). Em `src/bdgd_light/bench.py`, o benchmark e o
+  gabarito agora aplicam essas precondições de forma recalculável e registram também **chamadas de
+  ferramenta desnecessárias** (`len(sequência) − LCS`) no CSV/relatório. Corrigi junto um bug da
+  rodada anterior: `--seed` no provider OpenAI estava sendo passado ao construtor do cliente, não ao
+  payload do `chat/completions`; `OpenAICompatClient` agora aceita `seed` e o inclui no JSON da API.
+- **Hard+ construído assim:** H12 = H01 com restrição ativa para evitar ALC9946; H13 = H04 com a
+  única tie viável (`746851189`) indisponível; H14 = H01 após rejeição da proposta com
+  `974020904`; H15 = H04 após rejeição da única tie viável. Mantive `gabarito` recalculável via
+  `restore_options(score=true)` e filtros determinísticos das precondições.
+- **Medição OpenAI (via `zsh -lic`, `seed=42`, `k=n=3` no hard+):**
+  - *hard* original (55 por braço, arquivos já versionados): com exemplos `ordem 100 %`,
+    `precisão 97,3 %`, `0,11` chamadas desnecessárias/exec., `3,64` rodadas/exec., `18.897`
+    tokens/exec.; sem exemplos `ordem 96,4 %`, `precisão 97,8 %`, `0,09`, `3,87`, `17.714`.
+  - *hard+* novo (`docs/bench/2026-09-11-openai-hardplus-k3.*`): com exemplos `12/12`,
+    `ordem 100 %`, `precisão 68,1 %`, `1,42` chamadas desnecessárias/exec., `4,08` rodadas,
+    `41.269` tokens; sem exemplos `12/12`, `ordem 95,8 %`, `precisão 69,2 %`, `1,25`,
+    `4,58` rodadas, `44.417` tokens.
+- **Leitura honesta documentada em `docs/bench.md`:** os sinais seguem mistos. Com exemplos, o
+  OpenAI preserva melhor a ordem e usa menos rodadas/tokens no *hard+*; sem exemplos, fica
+  ligeiramente mais preciso e com menos chamadas extras. Isso **não** sustenta trocar o padrão do
+  agente. O texto final agora diz explicitamente o que foi medido, o `n` de cada braço e o que
+  **não** foi medido (poder estatístico/IC, outros provedores, um hard+ maior).
+- **Testes/documentação da mudança:** `tests/fixtures/bench_mini.yaml` ganhou um caso mínimo de
+  `rejeicao_previa` e `tests/test_bench.py` cobre o novo schema, o filtro de opções bloqueadas /
+  indisponíveis, a métrica de chamadas extras e a execução fake do replanejamento.

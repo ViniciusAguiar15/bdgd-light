@@ -1,4 +1,4 @@
-# Tarefas do benchmark do agente (issues #36 e #52) — 34 tarefas (10 simple / 13 medium / 11 hard)
+# Tarefas do benchmark do agente (issues #36, #52 e #82) — 38 tarefas (10 simple / 13 medium / 15 hard)
 # sobre os clusters da demo (docs/escopo-cidade.md v3): Tijuca (ALC9925, ALC9946, URG29983, RCP9882),
 # Ipanema (PTS0001, PTS9088, PTS9924, PTS4022) e Taquara (TQR0007, TQR33859, TQR33862; regressão).
 #
@@ -336,6 +336,56 @@ tarefas:
     evento: falta_permanente
     descricao: "Falta na ponta do PTS9924 (zona de 163 UCBT a jusante da chave 449470191): isolar e religar o religador 10934149 devolve 1.011 UCBT; sem NA de campo — proposta sem chave."
     referencia: [locate_fault, isolate_fault, restore_options, propose_plan]
+    gabarito: {ferramenta: restore_options, argumentos: {score: true}, campo: melhor_opcao}
+    verificar: proposta
+    esperado: []
+
+  # ---------------------------------------------------------------- hard+: restrição ativa / indisponível / rejeição prévia
+  - id: H12
+    nivel: hard
+    cluster: tijuca
+    falta: "11304252"
+    evento: falta_permanente
+    descricao: "Hard+ (restrição ativa, issue #61): a sessão já traz a restrição de evitar a fonte ALC9946; a proposta deve reabrir por RCP9882."
+    restricoes:
+      - motivo: "rejeição anterior: evitar alimentar pela ALC9946 neste evento"
+        alimentadores_evitar: [ALC9946]
+    referencia: [locate_fault, isolate_fault, restore_options, propose_plan]
+    gabarito: {ferramenta: restore_options, argumentos: {score: true}, campo: melhor_opcao}
+    verificar: proposta
+    esperado: ["746851189", "23313112"]
+  - id: H13
+    nivel: hard
+    cluster: tijuca
+    falta: "1006470677"
+    evento: falta_permanente
+    descricao: "Hard+ (chave indisponível): a única tie viável do caso H04, 746851189, já está indisponível; a resposta correta é manter o isolamento e despachar equipe."
+    indisponiveis: ["746851189"]
+    referencia: [locate_fault, isolate_fault, restore_options, propose_plan]
+    gabarito: {ferramenta: restore_options, argumentos: {score: true}, campo: melhor_opcao}
+    verificar: proposta
+    esperado: []
+  - id: H14
+    nivel: hard
+    cluster: tijuca
+    falta: "11304252"
+    evento: falta_permanente
+    descricao: "Hard+ (rejeição prévia com alternativa): após rejeitar a primeira proposta porque a chave 974020904 está em manutenção, o agente deve replanejar direto para 529355823."
+    rejeicao_previa:
+      motivo: "a chave 974020904 está em manutenção"
+    referencia: [restore_options, propose_plan]
+    gabarito: {ferramenta: restore_options, argumentos: {score: true}, campo: melhor_opcao}
+    verificar: proposta
+    esperado: ["529355823"]
+  - id: H15
+    nivel: hard
+    cluster: tijuca
+    falta: "1006470677"
+    evento: falta_permanente
+    descricao: "Hard+ (rejeição prévia sem alternativa): após rejeitar a única tie viável porque a chave 746851189 está em manutenção, o agente deve ficar só com o isolamento."
+    rejeicao_previa:
+      motivo: "a chave 746851189 está em manutenção"
+    referencia: [restore_options, propose_plan]
     gabarito: {ferramenta: restore_options, argumentos: {score: true}, campo: melhor_opcao}
     verificar: proposta
     esperado: []

@@ -1,4 +1,4 @@
-# Benchmark do agente (`bdgd-light bench`, issues #36 e #52)
+# Benchmark do agente (`bdgd-light bench`, issues #36, #52 e #82)
 
 Mede, no estilo do PowerChain (arXiv 2508.17094), se o agente do COD **acerta** (resposta numérica ou
 proposta de manobra), se **segue a sequência certa de ferramentas** e **quanto custa** (tokens por
@@ -9,7 +9,7 @@ no benchmark além do próprio evento de falta.
 
 ## Tarefas (`bench/tarefas.yaml`)
 
-34 tarefas (10 *simple*, 13 *medium*, 11 *hard*) distribuídas entre Tijuca (ALC9925, ALC9946,
+38 tarefas (10 *simple*, 13 *medium*, 15 *hard*) distribuídas entre Tijuca (ALC9925, ALC9946,
 URG29983, RCP9882), Ipanema (PTS0001, PTS9088, PTS9924, PTS4022) e Taquara (TQR0007, TQR33859,
 TQR33862 — regressão):
 
@@ -17,17 +17,20 @@ TQR33862 — regressão):
 |---|---|---|---|
 | **simple** (S01–S10) | ler uma grandeza de um alimentador | `get_topology` | km de rede MT do ALC9925 (4,246); UCBT do RCP9882 (5.824); chaves NA do PTS0001 (31); trafos do TQR0007 (82) |
 | **medium** (M01–M13) | uma chave ou uma falta já registrada: clientes a jusante, zona de falta, fronteira, isolamento — e dois **eventos sem manobra** (chave indisponível, falta transitória) | `downstream_customers`; `locate_fault` [→ `isolate_fault`]; nenhuma (eventos) | UCBT a jusante da 1006470683 (1.307); nós da zona da falta 11304252 (35); UCBT que continuam sem tensão após isolar 11798327 e religar (2.023); religador do PTS9088 sem telecomando → 1.816 UCBT dependem de equipe |
-| **hard** (H01–H11) | restauração com o gêmeo: opções viáveis, margem, clientes recuperados — e quatro **eventos completos** que terminam em `propose_plan` | `locate_fault → isolate_fault → restore_options(score) [→ propose_plan]` | margem da melhor opção em Tijuca (45,98 %); opções viáveis (4); Ipanema sem opção (∅, 479 UCBT ficam sem tensão); Taquara com 10 equivalentes; ponta do PTS9924 (proposta sem chave) |
+| **hard** (H01–H15) | restauração com o gêmeo: opções viáveis, margem, clientes recuperados — quatro **eventos completos** e um bloco **hard+** com restrição ativa, chave indisponível e replanejamento após rejeição | `locate_fault → isolate_fault → restore_options(score) [→ propose_plan]`; no replanejamento, `restore_options(score) → propose_plan` é a referência mínima | margem da melhor opção em Tijuca (45,98 %); opções viáveis (4); Ipanema sem opção (∅, 479 UCBT ficam sem tensão); Taquara com 10 equivalentes; H12–H15 estressam escolha/ordem sob restrição |
 
 Cada tarefa tem `id, nivel, cluster`, uma `pergunta` **ou** um `evento` (`falta_permanente` e
 `falta_transitoria` com o `falta` — trecho — que o simulador injeta; `chave_indisponivel` com a
 `chave`), a `referencia` (ferramentas na ordem esperada; vazia = nenhuma necessária), o
 `gabarito` (ferramenta + argumentos + `campo` lido do retorno, com caminhos `a.b[0].c` e
-`len(...)`) e `verificar: resposta | proposta | sem_manobra`. O valor `esperado` gravado no YAML é
-**documental** (BDGD 2023 do recorte): o gabarito real é **recalculado em tempo de execução**
-pelas próprias ferramentas da sessão, com a mesma falta injetada que o agente verá —
-`uv run bdgd-light bench --gabarito` recalcula os 34 e acusa divergências (assim uma BDGD nova ou
-um recorte diferente não invalidam o arquivo silenciosamente).
+`len(...)`) e `verificar: resposta | proposta | sem_manobra`. As tarefas *hard+* também podem
+trazer precondições: `restricoes` (estado persistente da issue #61), `indisponiveis` (chaves fora
+de operação) e `rejeicao_previa` (a sessão nasce de uma proposta já rejeitada, e o benchmark mede
+o replanejamento). O valor `esperado` gravado no YAML é **documental** (BDGD 2023 do recorte): o
+gabarito real é **recalculado em tempo de execução** pelas próprias ferramentas da sessão, com a
+mesma falta e as mesmas precondições que o agente verá — `uv run bdgd-light bench --gabarito`
+recalcula os 38 e acusa divergências (assim uma BDGD nova ou um recorte diferente não invalidam o
+arquivo silenciosamente).
 
 As quatro tarefas de Ipanema acrescentadas pela issue #52 (M11–M13, H11) exploram o que a rede
 subterrânea tem de diferente — **nenhuma NA de campo** (as 31 NA do PTS0001 são de pátio de SE):
@@ -69,6 +72,7 @@ conjunto é vazio e a proposta certa é **sem chave** (isolar e despachar).
 | **pass@k** | estimador não enviesado do Codex, `1 − C(n−c, k)/C(n, k)`, por tarefa (n execuções, c acertos), média entre tarefas; com n < k usa k = n |
 | **ordem** | LCS(sequência executada, referência) / len(referência) — quanto da sequência certa apareceu, na ordem |
 | **precisão** | LCS / len(sequência executada) — quanto do que o agente chamou era necessário (penaliza chamadas supérfluas) |
+| **ferr. desnec.** | `len(sequência) − LCS` — número médio de chamadas fora da subsequência de referência |
 | **tokens/pass@1** | tokens médios por execução ÷ pass@1 — custo por acerto (PowerChain); `tokens médios` inclui as rodadas todas de uma execução |
 | **US$/exec.** | custo estimado por execução: tokens informados pelo provedor × **preço de lista** do modelo (`bench.PRECOS_USD_MILHAO`: entrada e saída por milhão; raciocínio conta como saída; sem cache nem lote). Leitura de ordem de grandeza para a apresentação, não fatura — o `.md` de cada rodada registra o preço usado |
 | **chars ferr.** | caracteres de JSON das respostas de ferramenta enviadas ao modelo — proxy de custo que existe também para o fake (0 tokens) e mede a compactação |
@@ -97,14 +101,16 @@ da API), `--nivel`/`--ids`/`--cluster` (filtros), `--sem-exemplos`, `--sem-compa
 (auditoria própria, separada da sessão de demo), `--dia/--mes`.
 
 Saída: `docs/bench/<AAAA-MM-DD>-<provedor>[-sem-exemplos][-sem-compactar].csv` (uma linha por
-execução: acerto, obtido, esperado, sequência, referência, ordem, precisão, rodadas, tokens,
-chars, tempos, recusas, replanejamentos, erro, resposta truncada, modelo, semente) e `.md` (métricas
+execução: acerto, obtido, esperado, sequência, referência, ordem, precisão, chamadas
+desnecessárias, rodadas, tokens, chars, tempos, recusas, replanejamentos, erro, resposta truncada,
+modelo, semente) e `.md` (métricas
 por nível, por tarefa, erros e o **comparativo** com o CSV mais recente de cada provedor·modo da
 pasta). Reprodutibilidade: mesma semente → mesma ordem e mesmas faltas; o fake é determinístico; nos
 modelos reais a semente reduz mas não elimina a variação (o Gemini não expõe `seed`).
 
 O CI roda o harness com o operador fake sobre o cluster de teste (`tests/fixtures/bench_mini.yaml`,
-12 tarefas nos três níveis, inclusive um evento `chave_indisponivel` e um `falta_transitoria`;
+13 tarefas nos três níveis, inclusive um evento `chave_indisponivel`, um `falta_transitoria` e um
+caso de `rejeicao_previa`;
 `tests/test_bench.py`): pass@1 = 100 % em todas é pré-condição para o arquivo de tarefas real
 fazer sentido.
 
@@ -162,18 +168,75 @@ em `docs/bench/2026-09-11-gemini.md` (55 execuções *hard*).
 | gpt-4.1-mini | com exemplos | 55 | 55/55 = 100 % | 0 | 0/55 | 18.897 | 0,0081 | 18,7 |
 | gpt-4.1-mini | sem exemplos | 55 | 55/55 = 100 % | 0 | 0/55 | 17.714 | 0,0075 | 16,4 |
 
-Conclusão: com **n = 55 por braço**, o gatilho é o texto dos exemplos, mas **só no Gemini Flash**:
+Conclusão daquela rodada: com **n = 55 por braço**, o gatilho é o texto dos exemplos, mas **só no Gemini Flash**:
 dentro do mesmo provedor, mesma seed e mesmo n, o braço com exemplos fica em **47/55** e o sem
 exemplos em **55/55**, enquanto no `gpt-4.1-mini` o mesmo prompt fica em **55/55** com e sem
 exemplos e nunca produz a chamada malformada. Logo, não há evidência de que exemplos anotados
 degradem o planejamento em geral — há um parser de *tool call* do Gemini Flash que quebra com esse
 formato textual. Por isso, **não** vale desligá-los por padrão sem uma decisão específica para o
 perfil Gemini (ou uma mudança no formato textual dos exemplos).
-Esta rodada mede se os exemplos **custam** acerto; ela **não** mede se os exemplos **rendem**
+Naquela rodada, o benchmark media se os exemplos **custavam** acerto; ele **não** media se os exemplos **rendiam**
 acerto, porque não há aqui um braço com n comparável que isole eventual ganho de ordenação/precisão
 atribuível aos exemplos. Portanto, ela não confirma nem refuta a premissa do PowerChain de que
 pares tarefa↔workflow anotados ajudam; mostra apenas que, no provedor padrão da demo, eles não
 custam acerto e saem ~6 % mais baratos.
+
+### Ganho dos exemplos anotados (*OpenAI*, issue #82)
+
+Para fechar a lacuna acima sem repetir 110 chamadas reais desnecessárias, reutilizei os dois
+relatórios *hard* já versionados e comparáveis do OpenAI
+(`docs/bench/2026-09-11-openai-hard-k5.*` e
+`docs/bench/2026-09-11-openai-hard-k5-sem-exemplos.*`: **n = 55 por braço**, mesmo modelo,
+mesmo recorte, mesma configuração e mesma semente efetiva `None`). Como o `pass@1` saturou em
+**100 % nos dois braços**, segui a opção **(a)** do backlog e acrescentei um conjunto **hard+**
+exploratório de 4 tarefas, com **k = n = 3** e `seed = 42`, versionado em
+`docs/bench/2026-09-11-openai-hardplus-k3.*` e
+`docs/bench/2026-09-11-openai-hardplus-k3-sem-exemplos.*`.
+
+Como o *hard+* foi construído:
+
+- **H12 — restrição ativa:** parte do caso H01, mas a sessão já nasce com
+  `restricoes = [{alimentadores_evitar: [ALC9946]}]`, forçando a restauração via RCP9882.
+- **H13 — chave indisponível:** parte do caso H04, mas a única tie viável (`746851189`) entra em
+  `indisponiveis`, então a resposta correta passa a ser proposta **sem chave**.
+- **H14 — rejeição prévia com alternativa:** parte do caso H01, cria a proposta inicial, registra
+  a rejeição `"a chave 974020904 está em manutenção"` e mede o replanejamento; o gabarito passa a
+  ser `529355823`.
+- **H15 — rejeição prévia sem alternativa:** parte do caso H04, rejeita a única tie viável pelo
+  mesmo motivo de manutenção e mede o replanejamento até a proposta **sem chave**.
+
+| recorte | modo | n | pass@1 | ordem | precisão | ferr. desnec./exec. | rodadas/exec. | tokens/exec. | US$/exec. |
+|---|---|---|---|---|---|---|---|---|---|
+| *hard* original | com exemplos | 55 | 55/55 = 100 % | **100,0 %** | 97,3 % | 0,11 | **3,64** | 18.897 | 0,0081 |
+| *hard* original | sem exemplos | 55 | 55/55 = 100 % | 96,4 % | **97,8 %** | **0,09** | 3,87 | **17.714** | **0,0075** |
+| *hard+* | com exemplos | 12 | 12/12 = 100 % | **100,0 %** | 68,1 % | 1,42 | **4,08** | **41.269** | **0,0172** |
+| *hard+* | sem exemplos | 12 | 12/12 = 100 % | 95,8 % | **69,2 %** | **1,25** | 4,58 | 44.417 | 0,0184 |
+
+Leitura honesta:
+
+1. **No *hard* original, nenhum ganho detectável apesar de n=55.** `pass@1` saturou em 100 % nos
+   dois braços; as métricas secundárias ficaram em direções diferentes: com exemplos a **ordem**
+   e o número de **rodadas** ficam um pouco melhores, sem exemplos a **precisão**, as
+   **chamadas desnecessárias** e os **tokens** ficam um pouco melhores. Isso é compatível com
+   efeito pequeno ou nulo nesse recorte, não com benefício claro.
+2. **O *hard+* força a hipótese certa, mas ainda não mostra um vencedor claro.** Nos cenários com
+   restrição ativa, chave indisponível e replanejamento após rejeição, o OpenAI continuou em
+   **12/12** com e sem exemplos. Com exemplos, a **ordem** ficou perfeita e houve menos
+   **rodadas** e **tokens**; sem exemplos, a **precisão** e as **chamadas desnecessárias** ficaram
+   ligeiramente melhores. De novo, os sinais se cancelam.
+3. **O gargalo observado no *hard+* é o replanejamento, não o acerto final.** H14 e H15 ainda
+   fazem `locate_fault` + `isolate_fault` antes de `restore_options`, embora a sessão já esteja em
+   modo de replanejamento; isso derruba a precisão para ~50 % em ambos os braços. Em H13 sem
+   exemplos, 1 execução pulou `isolate_fault` e foi direto a `restore_options`, reduzindo a ordem
+   para 83 %, mas sem errar a proposta.
+4. **O padrão do agente não muda.** Não há evidência suficiente, no provedor padrão da demo, para
+   ligar ou desligar exemplos anotados por padrão com base em “ganho de planejamento”.
+
+O que **não** foi medido aqui: intervalo de confiança formal, poder estatístico para diferenças
+pequenas (especialmente no *hard+*, onde **n = 12 por braço** é exploratório), outros provedores
+além do OpenAI, e um *hard+* maior cobrindo mais combinações de restrição/fonte. A conclusão
+correta, hoje, é: no OpenAI não apareceu **efeito consistente e detectável** dos exemplos nem no
+*hard* original (n=55) nem no *hard+* exploratório (n=12).
 
 ### Leitura para a apresentação
 

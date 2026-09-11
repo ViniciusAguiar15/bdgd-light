@@ -399,6 +399,7 @@ class OpenAICompatClient:
         url_modelos: str | None = None,
         cabecalhos: Mapping[str, str] | None = None,
         temperatura: float | None = 0.0,
+        seed: int | None = None,
         timeout: float = 60.0,
         max_tentativas: int = 1,
         dormir: Callable[[float], None] = time.sleep,
@@ -415,6 +416,7 @@ class OpenAICompatClient:
                 f"defina a variável de ambiente {env_token} (nunca coloque o token no código)."
             )
         self.temperatura = temperatura
+        self.seed = seed
         self.max_tentativas = max(1, max_tentativas)
         self._dormir = dormir
         self._cabecalhos = {
@@ -453,6 +455,8 @@ class OpenAICompatClient:
         temperatura = self.temperatura if temperatura is None else temperatura
         if temperatura is not None:
             payload["temperature"] = temperatura
+        if self.seed is not None:
+            payload["seed"] = self.seed
         return payload
 
     def temperatura_da_tentativa(self, tentativa: int) -> float | None:

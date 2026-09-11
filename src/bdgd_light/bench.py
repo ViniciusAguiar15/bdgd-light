@@ -1,8 +1,8 @@
 """Benchmark do agente no estilo PowerChain (issue #36): tarefas com resposta esperada e sequência
 de ferramentas de referência, executadas ``n`` vezes por provedor; métricas pass@1, pass@k,
-ordenação/precisão da sequência de ferramentas, tokens por acerto e tempo; CSV por execução e
-relatório Markdown com tabela comparativa entre provedores e modos (com/sem exemplos anotados,
-com/sem compactação).
+ordenação/precisão da sequência de ferramentas, chamadas desnecessárias, tokens por acerto e
+tempo; CSV por execução e relatório Markdown com tabela comparativa entre provedores e modos
+(com/sem exemplos anotados, com/sem compactação).
 
 Tarefas (``bench/tarefas.yaml``): ``id``, ``nivel`` (simple/medium/hard), ``cluster``,
 ``pergunta`` (ou ``evento``: ``falta_permanente``, ``falta_transitoria`` ou ``chave_indisponivel``,
@@ -12,9 +12,10 @@ injetado antes da pergunta; alvo do evento de falta), ``chave`` (alvo de ``chave
 (ferramenta + argumentos + ``campo`` lido do retorno; ``melhor_opcao`` = conjunto de chaves
 eletricamente equivalentes à melhor de ``restore_options``), ``verificar`` (``resposta`` numérica,
 ``proposta`` ou ``sem_manobra`` — o agente não pode criar proposta nem chamar ferramentas de
-manobra, e a resposta deve citar o número do gabarito), tolerâncias, ``escala`` e ``esperado``
-(documental; ``bdgd-light bench --gabarito`` confere). O gabarito é **calculado** na hora chamando
-a ferramenta na sessão — o mesmo arquivo serve ao recorte real e ao cluster de teste.
+manobra, e a resposta deve citar o número do gabarito), tolerâncias, ``escala``, além das
+precondições opcionais ``restricoes`` (issue #61), ``indisponiveis`` e ``rejeicao_previa``.
+O gabarito é **calculado** na hora chamando a ferramenta na sessão — o mesmo arquivo serve ao
+recorte real e ao cluster de teste.
 """
 
 from __future__ import annotations
@@ -85,11 +86,23 @@ class Tarefa:
     escala: float | None = None
     esperado: Any = None
     descricao: str | None = None
+    restricoes: tuple[Mapping[str, Any], ...] = ()
+    indisponiveis: tuple[str, ...] = ()
+    rejeicao_previa: Mapping[str, Any] | None = None
 
     @property
     def gabarito_chave(self) -> str:
         return json.dumps(
-            [self.cluster, self.falta, self.chave, self.evento, dict(self.gabarito)],
+            [
+                self.cluster,
+                self.falta,
+                self.chave,
+                self.evento,
+                dict(self.gabarito),
+                list(self.restricoes),
+                list(self.indisponiveis),
+                dict(self.rejeicao_previa or {}),
+            ],
             sort_keys=True,
             ensure_ascii=False,
         )
@@ -97,6 +110,27 @@ class Tarefa:
 
 def _opcional_float(valor: Any) -> float | None:
     return None if valor is None else float(valor)
+
+
+def _lista_texto(valor: Any) -> tuple[str, ...]:
+    if valor in ("", None):
+        return ()
+    if not isinstance(valor, Sequence) or isinstance(valor, str):
+        raise ValueError("esperada lista")
+    return tuple(str(x) for x in valor if str(x).strip())
+
+
+def _lista_mapeamentos(valor: Any) -> tuple[Mapping[str, Any], ...]:
+    if valor in ("", None):
+        return ()
+    if not isinstance(valor, Sequence) or isinstance(valor, str):
+        raise ValueError("esperada lista")
+    saida: list[Mapping[str, Any]] = []
+    for item in valor:
+        if not isinstance(item, Mapping):
+            raise ValueError("esperado mapeamento")
+        saida.append(dict(item))
+    return tuple(saida)
 
 
 def carregar_tarefas(caminho: Path | str = TAREFAS_PADRAO) -> list[Tarefa]:
@@ -157,6 +191,16 @@ def _tarefa(item: Mapping[str, Any]) -> Tarefa:
     referencia = tuple(str(x) for x in item.get("referencia") or ())
     if not referencia and verificar != "sem_manobra":
         raise ValueError("referencia vazia")
+    rejeicao_previa = item.get("rejeicao_previa")
+    if rejeicao_previa is not None:
+        if not isinstance(rejeicao_previa, Mapping):
+            raise ValueError("rejeicao_previa deve ser um mapeamento")
+        if evento != FALTA_PERMANENTE or verificar != "proposta":
+            raise ValueError(
+                "rejeicao_previa só com evento: falta_permanente e verificar: proposta"
+            )
+        if not str(rejeicao_previa.get("motivo") or "").strip():
+            raise ValueError("rejeicao_previa exige 'motivo'")
     return Tarefa(
         id=str(item["id"]),
         nivel=nivel,
@@ -174,6 +218,9 @@ def _tarefa(item: Mapping[str, Any]) -> Tarefa:
         escala=None if item.get("escala") is None else float(item["escala"]),
         esperado=item.get("esperado"),
         descricao=item.get("descricao"),
+        restricoes=_lista_mapeamentos(item.get("restricoes")),
+        indisponiveis=_lista_texto(item.get("indisponiveis")),
+        rejeicao_previa=None if rejeicao_previa is None else dict(rejeicao_previa),
     )
 
 
@@ -226,13 +273,42 @@ def ler_campo(dados: Any, campo: str) -> Any:
     return atual
 
 
-def melhor_opcao(resultado: Mapping[str, Any], tolerancia: float = TOLERANCIA_MARGEM) -> list[str]:
+def _usa_chave_indisponivel(opcao: Mapping[str, Any], indisponiveis: set[str]) -> bool:
+    chaves = [str(opcao.get("chave") or "")]
+    chaves.extend(
+        str(m.get("chave") or "")
+        for m in list(opcao.get("manobras") or [])
+        if isinstance(m, Mapping) and m.get("chave")
+    )
+    return any(chave in indisponiveis for chave in chaves if chave)
+
+
+def _opcoes_viaveis(
+    resultado: Mapping[str, Any], *, indisponiveis: Sequence[str] = ()
+) -> list[Mapping[str, Any]]:
+    indisponiveis_set = {str(chave) for chave in indisponiveis if str(chave).strip()}
+    opcoes = []
+    for opcao in resultado.get("opcoes") or []:
+        if (opcao.get("score") or {}).get("viavel") is not True:
+            continue
+        if opcao.get("bloqueada") is not None:
+            continue
+        if indisponiveis_set and _usa_chave_indisponivel(opcao, indisponiveis_set):
+            continue
+        opcoes.append(opcao)
+    return opcoes
+
+
+def melhor_opcao(
+    resultado: Mapping[str, Any],
+    tolerancia: float = TOLERANCIA_MARGEM,
+    *,
+    indisponiveis: Sequence[str] = (),
+) -> list[str]:
     """Chaves de ``restore_options`` eletricamente equivalentes à melhor: viáveis, mesmos clientes
     recuperados e margem do disjuntor a menos de ``tolerancia`` da maior (o mesmo critério do
     verificador). Lista vazia = não há opção viável (proposta sem chave)."""
-    opcoes = [
-        o for o in resultado.get("opcoes") or [] if (o.get("score") or {}).get("viavel") is True
-    ]
+    opcoes = _opcoes_viaveis(resultado, indisponiveis=indisponiveis)
     if not opcoes:
         return []
 
@@ -277,6 +353,14 @@ class Gabarito:
             self.feeders,
             injetar_falta=tarefa.evento in (None, FALTA_PERMANENTE),
         )
+        if tarefa.rejeicao_previa is not None:
+            preparar_rejeicao_previa(
+                self.sessao,
+                tarefa,
+                exigir_score=True,
+                compactar=True,
+                aplicar_restricao=True,
+            )
         nome = tarefa.gabarito["ferramenta"]
         metodo = getattr(self.sessao, nome, None)
         if metodo is None:
@@ -284,7 +368,7 @@ class Gabarito:
         resultado = metodo(**dict(tarefa.gabarito.get("argumentos") or {}))
         campo = tarefa.gabarito["campo"]
         if campo == "melhor_opcao":
-            return melhor_opcao(resultado)
+            return melhor_opcao(resultado, indisponiveis=tarefa.indisponiveis)
         valor = ler_campo(resultado, campo)
         if valor is None:
             raise BenchError(f"{tarefa.id}: campo {campo!r} ausente no retorno de {nome}")
@@ -302,6 +386,55 @@ def preparar_sessao(
     sessao.load_cluster(str(gpkg))
     if tarefa.falta and injetar_falta:
         sessao.inject_fault(tarefa.falta)
+    for restricao in tarefa.restricoes:
+        dados = dict(restricao)
+        motivo = str(dados.pop("motivo", "")).strip() or "restrição ativa do benchmark"
+        sessao.aplicar_restricao(dados, motivo=motivo)
+
+
+def evento_tarefa(sessao: SessaoCOD, tarefa: Tarefa, repeticao: int, seed: int | None):
+    sim = Simulador(sessao.rede, tarefa.cluster, seed=None if seed is None else seed + repeticao)
+    if tarefa.evento == FALTA_PERMANENTE:
+        return sim.falta_permanente(tarefa.falta)
+    if tarefa.evento == FALTA_TRANSITORIA:
+        return sim.falta_transitoria(tarefa.falta)
+    return sim.chave_indisponivel(tarefa.chave)
+
+
+def preparar_rejeicao_previa(
+    sessao: SessaoCOD,
+    tarefa: Tarefa,
+    *,
+    exigir_score: bool,
+    compactar: bool,
+    aplicar_restricao: bool = False,
+) -> tuple[str, Any]:
+    if tarefa.rejeicao_previa is None:
+        raise BenchError(f"{tarefa.id}: rejeicao_previa ausente")
+    if sessao.rede is None:
+        raise BenchError(f"{tarefa.id}: sessão sem cluster carregado para a rejeição prévia")
+    ev = evento_tarefa(sessao, tarefa, 0, None)
+    base = Orquestrador(
+        sessao,
+        fake_operador("fake-operador-bench"),
+        provider="fake",
+        exigir_score=exigir_score,
+        compactar=compactar,
+    )
+    execucao = base.executar_evento(ev)
+    proposta = execucao.proposta or {}
+    proposta_id = proposta.get("id")
+    if not proposta_id:
+        raise BenchError(f"{tarefa.id}: rejeição prévia sem proposta inicial")
+    motivo = str(tarefa.rejeicao_previa.get("motivo") or "").strip()
+    sessao.reject(proposta_id, operador="benchmark", motivo=motivo)
+    if aplicar_restricao:
+        chave = str(proposta.get("chave") or "").strip()
+        sessao.aplicar_restricao(
+            {"chaves_proibidas": [chave] if chave else []},
+            motivo=motivo or "rejeição prévia do benchmark",
+        )
+    return proposta_id, ev
 
 
 # -- extração de números e acerto ------------------------------------------------------------------
@@ -415,6 +548,11 @@ def ordenacao(sequencia: Sequence[str], referencia: Sequence[str]) -> tuple[floa
     return round(ordem, 4), round(precisao, 4)
 
 
+def chamadas_desnecessarias(sequencia: Sequence[str], referencia: Sequence[str]) -> int:
+    """Chamadas fora da maior subsequência comum com a referência."""
+    return max(len(sequencia) - lcs(list(sequencia), list(referencia)), 0)
+
+
 # -- métricas --------------------------------------------------------------------------------------
 
 
@@ -443,6 +581,7 @@ class Rodada:
     referencia: list[str]
     ordem: float
     precisao: float
+    desnecessarias: int
     rodadas: int
     tokens_prompt: int
     tokens_completion: int
@@ -539,6 +678,7 @@ def resumir(rodadas: Sequence[Rodada], k: int) -> dict[str, dict[str, Any]]:
             f"pass@{k}": round(pk, 4),
             "ordem": round(statistics.fmean(r.ordem for r in grupo), 4),
             "precisao": round(statistics.fmean(r.precisao for r in grupo), 4),
+            "desnecessarias_media": round(statistics.fmean(r.desnecessarias for r in grupo), 2),
             "tokens_medio": round(tokens, 1),
             "tokens_por_pass1": None if p1 == 0 else round(tokens / p1, 1),
             "usd_medio": None if usd is None else round(usd, 5),
@@ -651,18 +791,34 @@ class Benchmark:
         execucao: Execucao | None = None
         erro: str | None = None
         try:
-            preparar_sessao(self.sessao, tarefa, self.feeders, injetar_falta=tarefa.evento is None)
+            preparar_sessao(
+                self.sessao,
+                tarefa,
+                self.feeders,
+                injetar_falta=(
+                    tarefa.evento is None
+                    or (tarefa.evento == FALTA_PERMANENTE and bool(tarefa.restricoes))
+                ),
+            )
             orq = self.orquestrador()
-            if tarefa.evento is not None:
-                seed = None if cfg.seed is None else cfg.seed + repeticao
-                sim = Simulador(self.sessao.rede, tarefa.cluster, seed=seed)
-                if tarefa.evento == FALTA_PERMANENTE:
-                    ev = sim.falta_permanente(tarefa.falta)
-                elif tarefa.evento == FALTA_TRANSITORIA:
-                    ev = sim.falta_transitoria(tarefa.falta)
-                else:
-                    ev = sim.chave_indisponivel(tarefa.chave)
-                execucao = orq.executar_evento(ev)
+            orq.indisponiveis.update(tarefa.indisponiveis)
+            if tarefa.rejeicao_previa is not None:
+                proposta_id, ev = preparar_rejeicao_previa(
+                    self.sessao,
+                    tarefa,
+                    exigir_score=cfg.exigir_score,
+                    compactar=cfg.compactar,
+                )
+                orq.indisponiveis.update(tarefa.indisponiveis)
+                execucao = orq.replanejar_apos_rejeicao(
+                    proposta_id,
+                    str(tarefa.rejeicao_previa.get("motivo") or ""),
+                    evento=ev,
+                )
+            elif tarefa.evento is not None:
+                execucao = orq.executar_evento(
+                    evento_tarefa(self.sessao, tarefa, repeticao, cfg.seed)
+                )
             else:
                 execucao = orq.responder(tarefa.pergunta or "")
             erro = execucao.erro
@@ -680,6 +836,7 @@ class Benchmark:
         else:
             acerto, obtido = acerto_resposta(execucao.resposta, esperado, tarefa)
         ordem, precisao = ordenacao(execucao.sequencia, tarefa.referencia)
+        desnecessarias = chamadas_desnecessarias(execucao.sequencia, tarefa.referencia)
         uso = execucao.uso or {}
         return Rodada(
             tarefa=tarefa.id,
@@ -693,6 +850,7 @@ class Benchmark:
             referencia=list(tarefa.referencia),
             ordem=ordem,
             precisao=precisao,
+            desnecessarias=desnecessarias,
             rodadas=execucao.rodadas,
             tokens_prompt=int(uso.get("prompt_tokens") or 0),
             tokens_completion=int(uso.get("completion_tokens") or 0),
@@ -728,6 +886,7 @@ class Benchmark:
             referencia=list(tarefa.referencia),
             ordem=0.0,
             precisao=0.0,
+            desnecessarias=0,
             rodadas=0,
             tokens_prompt=0,
             tokens_completion=0,
@@ -845,6 +1004,11 @@ def _rodada_de_csv(linha: Mapping[str, str]) -> Rodada:
         referencia=lista("referencia"),
         ordem=num("ordem"),
         precisao=num("precisao"),
+        desnecessarias=(
+            num("desnecessarias", int)
+            if linha.get("desnecessarias") not in ("", None)
+            else chamadas_desnecessarias(lista("sequencia"), lista("referencia"))
+        ),
         rodadas=num("rodadas", int),
         tokens_prompt=num("tokens_prompt", int),
         tokens_completion=num("tokens_completion", int),
@@ -898,9 +1062,9 @@ def comparativo(rodadas_por_rotulo: Mapping[str, Sequence[Rodada]], k: int) -> s
     acerto, custo em US$ por execução (preço de lista), chars por execução, segundos."""
     linhas = [
         f"| provedor · modo | modelo | tarefas | pass@1 simple | pass@1 medium | pass@1 hard | "
-        f"pass@1 total | pass@{k} total | ordem | precisão | tokens/pass@1 | US$/exec. | "
-        f"chars ferr./exec. | s/exec. |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        f"pass@1 total | pass@{k} total | ordem | precisão | ferr. desnec. | tokens/pass@1 | "
+        f"US$/exec. | chars ferr./exec. | s/exec. |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for rotulo in sorted(rodadas_por_rotulo):
         rs = rodadas_por_rotulo[rotulo]
@@ -915,8 +1079,9 @@ def comparativo(rodadas_por_rotulo: Mapping[str, Sequence[Rodada]], k: int) -> s
             f"{_pct(res.get('medium', {}).get('pass@1'))} | "
             f"{_pct(res.get('hard', {}).get('pass@1'))} | {_pct(total.get('pass@1'))} | "
             f"{_pct(total.get(f'pass@{k}'))} | {_pct(total.get('ordem'))} | "
-            f"{_pct(total.get('precisao'))} | {_num(total.get('tokens_por_pass1'), 0)} | "
-            f"{_usd(total.get('usd_medio'))} | {_num(total.get('chars_ferramentas_medio'), 0)} | "
+            f"{_pct(total.get('precisao'))} | {_num(total.get('desnecessarias_media'), 2)} | "
+            f"{_num(total.get('tokens_por_pass1'), 0)} | {_usd(total.get('usd_medio'))} | "
+            f"{_num(total.get('chars_ferramentas_medio'), 0)} | "
             f"{_num(total.get('segundos_medio'))} |"
         )
     return "\n".join(linhas)
@@ -976,18 +1141,19 @@ def relatorio_markdown(
         "",
         "## Métricas por nível",
         "",
-        f"| nível | tarefas | exec. | pass@1 | pass@{k} | ordem | precisão | tokens médios | "
-        f"tokens/pass@1 | US$/exec. | US$/pass@1 | chars ferr. | s/exec. | rodadas |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        f"| nível | tarefas | exec. | pass@1 | pass@{k} | ordem | precisão | ferr. desnec. | "
+        f"tokens médios | tokens/pass@1 | US$/exec. | US$/pass@1 | chars ferr. | "
+        f"s/exec. | rodadas |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for nivel, m in res.items():
         linhas.append(
             f"| {nivel} | {m['tarefas']} | {m['execucoes']} | {_pct(m['pass@1'])} | "
             f"{_pct(m[f'pass@{k}'])} | {_pct(m['ordem'])} | {_pct(m['precisao'])} | "
-            f"{_num(m['tokens_medio'], 0)} | {_num(m['tokens_por_pass1'], 0)} | "
-            f"{_usd(m['usd_medio'])} | {_usd(m['usd_por_pass1'])} | "
-            f"{_num(m['chars_ferramentas_medio'], 0)} | {_num(m['segundos_medio'])} | "
-            f"{_num(m['rodadas_medio'])} |"
+            f"{_num(m['desnecessarias_media'], 2)} | {_num(m['tokens_medio'], 0)} | "
+            f"{_num(m['tokens_por_pass1'], 0)} | {_usd(m['usd_medio'])} | "
+            f"{_usd(m['usd_por_pass1'])} | {_num(m['chars_ferramentas_medio'], 0)} | "
+            f"{_num(m['segundos_medio'])} | {_num(m['rodadas_medio'])} |"
         )
     if rodadas and not any(r.tokens_informados for r in rodadas):
         linhas.append("")
@@ -1005,10 +1171,10 @@ def relatorio_markdown(
         )
     linhas += ["", "## Por tarefa", ""]
     linhas.append(
-        "| id | nível | cluster | acertos | pass@1 | ordem | sequência típica | esperado | obtido "
-        "(último) | tokens médios | s/exec. |"
+        "| id | nível | cluster | acertos | pass@1 | ordem | ferr. desnec. | sequência típica | "
+        "esperado | obtido (último) | tokens médios | s/exec. |"
     )
-    linhas.append("|---|---|---|---|---|---|---|---|---|---|---|")
+    linhas.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
     por_tarefa: dict[str, list[Rodada]] = {}
     for r in rodadas:
         por_tarefa.setdefault(r.tarefa, []).append(r)
@@ -1022,7 +1188,8 @@ def relatorio_markdown(
         ultimo = rs[-1]
         linhas.append(
             f"| {tid} | {rs[0].nivel} | {rs[0].cluster} | {c}/{len(rs)} | {_pct(c / len(rs))} | "
-            f"{_pct(statistics.fmean(r.ordem for r in rs))} | {tipica} | "
+            f"{_pct(statistics.fmean(r.ordem for r in rs))} | "
+            f"{_num(statistics.fmean(r.desnecessarias for r in rs), 2)} | {tipica} | "
             f"{_fmt_valor(ultimo.esperado)} | {_fmt_valor(ultimo.obtido)} | "
             f"{_num(statistics.fmean(r.tokens_total for r in rs), 0)} | "
             f"{_num(statistics.fmean(r.segundos_total for r in rs))} |"
