@@ -317,7 +317,7 @@ title: "Diário — Modo noturno, rodada 6"
   7. **#98 → PR #109** — GD opcional no gêmeo e diagnóstico de sobretensão/fluxo reverso.
   8. **#99 → PR #111** — comparação da restauração com GD por horário/cenário.
   9. **#96 → PR #113** — sensibilidade das premissas elétricas da restauração.
-  10. **#95 → PR desta tarefa** — paridade do `gpkg2dss` contra o `bdgd2opendss`.
+  10. **#95 → PR #114** — paridade do `gpkg2dss` contra o `bdgd2opendss`.
 - **Issues de acompanhamento abertas de propósito ao longo da rodada**
   - **#102** — separar no bench de generalização “fluxo convergiu” de “caso base eletricamente
     plausível”, para não confundir robustez operacional com sanidade do modelo.
