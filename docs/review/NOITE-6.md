@@ -58,3 +58,33 @@ title: "Diário — Modo noturno, rodada 6"
   comando exato de reprodução e o resultado negativo relevante (tie não implica restauração útil).
 - Abri a follow-up issue #102 para separar, em rodadas futuras, “fluxo convergiu” de “caso base
   eletricamente saudável”, porque vários casos-base convergiram com `Vmin` muito baixa.
+
+## 3. Issue #92 — agente fora do treino (21:45)
+
+- Li o backlog canônico (`docs/backlog/30-agente-fora-do-treino.md`), a issue #92 no GitHub e a
+  infraestrutura existente de benchmark (`src/bdgd_light/bench.py`, `bench/tarefas.yaml`,
+  `docs/bench.md`, `scripts/gerar_resultados.py`) antes de escrever código novo.
+- Implementei `src/bdgd_light/bench_fora_treino.py` + `scripts/preparar_bench_fora_treino.py` para
+  reutilizar o pipeline da #91: ler o CSV de generalização, selecionar deterministicamente os
+  **10 primeiros CTMTs** com `restore_options` bem-sucedido, materializar os recortes
+  `CTMT + vizinhos`, recalcular o gabarito pelas ferramentas reais e escrever
+  `bench/tarefas_fora_treino.yaml` + `docs/bench/2026-09-11-fora-treino-casos.csv`.
+- Estendi o benchmark com um rótulo opcional de família (`--familia`) e persisti essa família no
+  CSV para que suítes dedicadas como `openai-fora-treino-k3` não se misturem ao comparativo da
+  suíte-base; também corrigi a leitura retrocompatível dos CSVs antigos por nome de arquivo.
+- Ajustei `scripts/gerar_resultados.py` para ignorar CSVs auxiliares que não têm o schema do
+  benchmark, o que permite manter o CSV versionado dos 10 casos dentro de `docs/bench/` sem
+  quebrar a regeneração de `docs/resultados.md`.
+- Adicionei testes em `tests/test_bench.py`, `tests/test_bench_fora_treino.py` e
+  `tests/test_gerar_resultados.py` cobrindo seleção determinística, geração do YAML, inferência de
+  família por arquivo e a tolerância do consolidado a CSVs auxiliares.
+- Rodei a validação manual real pedida com OpenAI via
+  `zsh -lic 'uv run bdgd-light bench --provider openai --familia fora-treino-k3 --k 3 --seed 92 ...'`
+  e gerei `docs/bench/2026-09-12-openai-fora-treino-k3.{csv,md}`: **27/30 = 90 %** de pass@1,
+  **0/30 reprovações do verificador**, custo médio de **20.897 tokens / US$ 0,0090** por execução.
+- Resultado negativo registrado sem maquiagem: fora do treino o `gpt-4.1-mini-2025-04-14` caiu de
+  **100 %** no `openai-hard-k5` conhecido para **90 %**. As **3 falhas** ficaram concentradas em
+  `FT02` (SAT1960), onde o modelo reconheceu corretamente que não havia opção viável, mas encerrou
+  sem formalizar `propose_plan` para a proposta **sem chave**.
+- Abri a follow-up **#104** para investigar esse sintoma específico sem alterar o resultado
+  histórico da issue #92.

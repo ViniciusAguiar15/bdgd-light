@@ -1,0 +1,203 @@
+versao: 1
+origem: issue-92-fora-treino
+tarefas:
+- id: FT01
+  nivel: hard
+  cluster: RCP33308-RCP9882
+  evento: falta_permanente
+  falta: '12320339'
+  descricao: 'Fora do treino (issue #92): RCP33308 em Tijuca, porte G, falta determinística
+    no trecho 12320339; referência recalculada pelas ferramentas do benchmark.'
+  referencia:
+  - locate_fault
+  - isolate_fault
+  - restore_options
+  - propose_plan
+  gabarito:
+    ferramenta: restore_options
+    argumentos:
+      score: true
+    campo: melhor_opcao
+  verificar: proposta
+  esperado:
+  - '757513244'
+- id: FT02
+  nivel: hard
+  cluster: SAT1960-SAT9523
+  evento: falta_permanente
+  falta: '12416163'
+  descricao: 'Fora do treino (issue #92): SAT1960 em Centro, porte P, falta determinística
+    no trecho 12416163; referência recalculada pelas ferramentas do benchmark.'
+  referencia:
+  - locate_fault
+  - isolate_fault
+  - restore_options
+  - propose_plan
+  gabarito:
+    ferramenta: restore_options
+    argumentos:
+      score: true
+    campo: melhor_opcao
+  verificar: proposta
+  esperado: []
+- id: FT03
+  nivel: hard
+  cluster: CBI24982-CBI24896-CBI24963-CBI24970-TRG959
+  evento: falta_permanente
+  falta: '23718413'
+  descricao: 'Fora do treino (issue #92): CBI24982 em Méier, porte M, falta determinística
+    no trecho 23718413; referência recalculada pelas ferramentas do benchmark.'
+  referencia:
+  - locate_fault
+  - isolate_fault
+  - restore_options
+  - propose_plan
+  gabarito:
+    ferramenta: restore_options
+    argumentos:
+      score: true
+    campo: melhor_opcao
+  verificar: proposta
+  esperado: []
+- id: FT04
+  nivel: hard
+  cluster: AVD33625-AVD33340-AVD33357-GDN0011
+  evento: falta_permanente
+  falta: '287306161'
+  descricao: 'Fora do treino (issue #92): AVD33625 em Barra/Recreio, porte P, falta
+    determinística no trecho 287306161; referência recalculada pelas ferramentas do
+    benchmark.'
+  referencia:
+  - locate_fault
+  - isolate_fault
+  - restore_options
+  - propose_plan
+  gabarito:
+    ferramenta: restore_options
+    argumentos:
+      score: true
+    campo: melhor_opcao
+  verificar: proposta
+  esperado:
+  - '11138583'
+- id: FT05
+  nivel: hard
+  cluster: ITP00005-ITP33172
+  evento: falta_permanente
+  falta: '92794304'
+  descricao: 'Fora do treino (issue #92): ITP00005 em Barra/Recreio, porte M, falta
+    determinística no trecho 92794304; referência recalculada pelas ferramentas do
+    benchmark.'
+  referencia:
+  - locate_fault
+  - isolate_fault
+  - restore_options
+  - propose_plan
+  gabarito:
+    ferramenta: restore_options
+    argumentos:
+      score: true
+    campo: melhor_opcao
+  verificar: proposta
+  esperado:
+  - '456765966'
+- id: FT06
+  nivel: hard
+  cluster: PDG33010-PDG219-PDG29015-PDG29724-PDG29731-PDG33499-PDG33662-TQR00005
+  evento: falta_permanente
+  falta: '12311381'
+  descricao: 'Fora do treino (issue #92): PDG33010 em Jacarepaguá/Taquara, porte M,
+    falta determinística no trecho 12311381; referência recalculada pelas ferramentas
+    do benchmark.'
+  referencia:
+  - locate_fault
+  - isolate_fault
+  - restore_options
+  - propose_plan
+  gabarito:
+    ferramenta: restore_options
+    argumentos:
+      score: true
+    campo: melhor_opcao
+  verificar: proposta
+  esperado:
+  - '11009531'
+- id: FT07
+  nivel: hard
+  cluster: BPD9350
+  evento: falta_permanente
+  falta: '32750469'
+  descricao: 'Fora do treino (issue #92): BPD9350 em Lapa/Glória, porte G, falta determinística
+    no trecho 32750469; referência recalculada pelas ferramentas do benchmark.'
+  referencia:
+  - locate_fault
+  - isolate_fault
+  - restore_options
+  - propose_plan
+  gabarito:
+    ferramenta: restore_options
+    argumentos:
+      score: true
+    campo: melhor_opcao
+  verificar: proposta
+  esperado: []
+- id: FT08
+  nivel: hard
+  cluster: COP2700
+  evento: falta_permanente
+  falta: '164481985'
+  descricao: 'Fora do treino (issue #92): COP2700 em Copacabana/Leme, porte M, falta
+    determinística no trecho 164481985; referência recalculada pelas ferramentas do
+    benchmark.'
+  referencia:
+  - locate_fault
+  - isolate_fault
+  - restore_options
+  - propose_plan
+  gabarito:
+    ferramenta: restore_options
+    argumentos:
+      score: true
+    campo: melhor_opcao
+  verificar: proposta
+  esperado: []
+- id: FT09
+  nivel: hard
+  cluster: LBN00061
+  evento: falta_permanente
+  falta: '294042270'
+  descricao: 'Fora do treino (issue #92): LBN00061 em Ipanema/Leblon, porte P, falta
+    determinística no trecho 294042270; referência recalculada pelas ferramentas do
+    benchmark.'
+  referencia:
+  - locate_fault
+  - isolate_fault
+  - restore_options
+  - propose_plan
+  gabarito:
+    ferramenta: restore_options
+    argumentos:
+      score: true
+    campo: melhor_opcao
+  verificar: proposta
+  esperado: []
+- id: FT10
+  nivel: hard
+  cluster: PTS9310-PTS0001
+  evento: falta_permanente
+  falta: '12827915'
+  descricao: 'Fora do treino (issue #92): PTS9310 em Ipanema/Leblon, porte G, falta
+    determinística no trecho 12827915; referência recalculada pelas ferramentas do
+    benchmark.'
+  referencia:
+  - locate_fault
+  - isolate_fault
+  - restore_options
+  - propose_plan
+  gabarito:
+    ferramenta: restore_options
+    argumentos:
+      score: true
+    campo: melhor_opcao
+  verificar: proposta
+  esperado: []

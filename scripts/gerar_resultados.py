@@ -25,6 +25,7 @@ DOC_REVIEW_NOITE = RAIZ / "docs" / "review" / "NOITE.md"
 DESTINO = RAIZ / "docs" / "resultados.md"
 
 NIVEIS = ("simple", "medium", "hard")
+COLUNAS_BENCH_OBRIGATORIAS = {"tarefa", "nivel", "repeticao", "acerto"}
 
 
 @dataclass(frozen=True)
@@ -193,7 +194,10 @@ def _fonte_relativa(caminho: Path) -> str:
 def ler_csv_benchmark(caminho: Path) -> list[RodadaCSV]:
     linhas: list[RodadaCSV] = []
     with caminho.open(encoding="utf-8", newline="") as arquivo:
-        for linha in csv.DictReader(arquivo):
+        leitor = csv.DictReader(arquivo)
+        if not leitor.fieldnames or not COLUNAS_BENCH_OBRIGATORIAS.issubset(leitor.fieldnames):
+            return []
+        for linha in leitor:
             sequencia = _json_lista(linha.get("sequencia"))
             referencia = _json_lista(linha.get("referencia"))
             passos_comuns = _lcs(sequencia, referencia)
@@ -335,7 +339,13 @@ def resumir_csv(caminho: Path) -> ResumoCSV:
 
 
 def coletar_resumos(bench_dir: Path) -> list[ResumoCSV]:
-    return [resumir_csv(caminho) for caminho in sorted(bench_dir.glob("*.csv"))]
+    resumos: list[ResumoCSV] = []
+    for caminho in sorted(bench_dir.glob("*.csv")):
+        try:
+            resumos.append(resumir_csv(caminho))
+        except ValueError:
+            continue
+    return resumos
 
 
 def ultimos_por_familia(resumos: Sequence[ResumoCSV]) -> list[ResumoCSV]:
@@ -677,10 +687,10 @@ def extrair_total_tarefas(doc_bench: Path) -> tuple[int | None, str | None]:
         return None, None
     texto = _ler_texto(doc_bench)
     match_total = re.search(r"(\d+) tarefas \(10 \*simple\*", texto)
-    match_data = re.search(r"## Resultados \((\d{4}-\d{2}-\d{2})", texto)
+    datas = re.findall(r"^## .*\((?:[^)]*?)(\d{4}-\d{2}-\d{2})[^)]*\)", texto, re.M)
     if not match_total:
         return None, None
-    return int(match_total.group(1)), match_data.group(1) if match_data else None
+    return int(match_total.group(1)), max(datas) if datas else None
 
 
 def renderizar_resultados(

@@ -188,6 +188,12 @@ def test_gerar_resultados_e_deterministico_com_csv_sintetico(tmp_path):
             },
         ],
     )
+    caminho_casos = bench / "2026-01-02-fora-treino-casos.csv"
+    caminho_casos.parent.mkdir(parents=True, exist_ok=True)
+    with caminho_casos.open("w", encoding="utf-8", newline="") as arquivo:
+        writer = csv.DictWriter(arquivo, fieldnames=["ctmt", "regiao", "trecho_falta"])
+        writer.writeheader()
+        writer.writerow({"ctmt": "AAA001", "regiao": "Centro", "trecho_falta": "TR1"})
 
     (docs / "bench.md").write_text(
         "38 tarefas (10 *simple*, 13 *medium*, 15 *hard*) distribuídas entre "

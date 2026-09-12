@@ -369,3 +369,102 @@ Rodada de 2026-09-10 (PR #36), mantida como histórico:
   timeout; avaliar `timeout` maior ou repetição também nesse caso.
 - Os preços em `PRECOS_USD_MILHAO` são de lista (Gemini conferido em 2026-09-11; OpenAI do
   lançamento dos modelos) — conferir antes da apresentação.
+
+## Alimentadores fora dos três clusters (issue #92, 2026-09-12)
+
+Objetivo desta rodada: medir se o **agente** decide bem em alimentadores que passaram na
+generalização da issue #91, mas **fora** dos três clusters conhecidos da demo. Aqui o gabarito não
+é imaginado nem copiado do YAML-base: ele foi **recalculado pelas próprias ferramentas** em cada
+caso (`locate_fault → isolate_fault → restore_options(score=true)`), e o arquivo versionado de
+referência da rodada é [`docs/bench/2026-09-11-fora-treino-casos.csv`](bench/2026-09-11-fora-treino-casos.csv),
+gerado junto com [`bench/tarefas_fora_treino.yaml`](../bench/tarefas_fora_treino.yaml) pelo runner
+`scripts/preparar_bench_fora_treino.py`.
+
+Comandos usados:
+
+```bash
+uv run python scripts/preparar_bench_fora_treino.py
+uv run bdgd-light bench --gabarito \
+  --tarefas bench/tarefas_fora_treino.yaml \
+  --feeders scratch/issue-92-fora-treino/feeders \
+  --dss-out scratch/issue-92-fora-treino/dss \
+  --estado scratch/issue-92-fora-treino/estado
+zsh -lic 'uv run bdgd-light bench \
+  --provider openai \
+  --familia fora-treino-k3 \
+  --k 3 \
+  --seed 92 \
+  --tarefas bench/tarefas_fora_treino.yaml \
+  --feeders scratch/issue-92-fora-treino/feeders \
+  --dss-out scratch/issue-92-fora-treino/dss \
+  --estado scratch/issue-92-fora-treino/estado'
+```
+
+### Como os 10 alimentadores foram escolhidos
+
+Regra de seleção, sem ajuste para “melhorar o número”: peguei os **10 primeiros CTMTs** da amostra
+determinística da issue #91 (`docs/bench/2026-09-11-generalizacao.csv`), ordenados por
+`ordem_sorteio`, desde que tivessem chegado com sucesso à etapa `restore_options`. Isso produz o
+seguinte subconjunto versionado:
+
+| ordem | CTMT | região | porte | tie(s) | opções | viáveis | falta determinística | gabarito real |
+|---|---|---|---|---:|---:|---:|---|---|
+| 1 | RCP33308 | Tijuca | G | 1 | 1 | 1 | `12320339` | `757513244` |
+| 2 | SAT1960 | Centro | P | 0 | 0 | 0 | `12416163` | ∅ |
+| 3 | CBI24982 | Méier | M | 5 | 0 | 0 | `23718413` | ∅ |
+| 4 | AVD33625 | Barra/Recreio | P | 5 | 4 | 4 | `287306161` | `11138583` |
+| 5 | ITP00005 | Barra/Recreio | M | 2 | 2 | 1 | `92794304` | `456765966` |
+| 6 | PDG33010 | Jacarepaguá/Taquara | M | 7 | 7 | 5 | `12311381` | `11009531` |
+| 7 | BPD9350 | Lapa/Glória | G | 0 | 0 | 0 | `32750469` | ∅ |
+| 8 | COP2700 | Copacabana/Leme | M | 0 | 0 | 0 | `164481985` | ∅ |
+| 9 | LBN00061 | Ipanema/Leblon | P | 0 | 0 | 0 | `294042270` | ∅ |
+| 10 | PTS9310 | Ipanema/Leblon | G | 0 | 0 | 0 | `12827915` | ∅ |
+
+Leitura do subconjunto:
+
+- cobre **8 regiões** e os três portes (**P/M/G**);
+- **5/10** casos têm ao menos uma tie ligada ao CTMT;
+- só **4/10** têm alguma opção viável de restauração; nos outros **6/10** o desfecho correto é
+  **proposta sem chave**.
+
+### Resultado do OpenAI fora do treino
+
+Relatório completo: [`docs/bench/2026-09-12-openai-fora-treino-k3.md`](bench/2026-09-12-openai-fora-treino-k3.md).
+
+| recorte | tarefas | execuções | pass@1 | pass@k | ordem | precisão | ferr. desnec./exec. | rodadas/exec. | tokens/exec. | US$/exec. | taxa de reprovação do verificador |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| fora do treino (`openai-fora-treino-k3`) | 10 | 30 | **27/30 = 90 %** | **90 % (pass@3)** | 97,5 % (117/120) | 100,0 % (117/117) | 0,00 | 4,30 | 20.897 | 0,0090 | **0/30 = 0 %** |
+
+O erro ficou todo concentrado em **FT02 (SAT1960)**: nas **3/3 execuções** o modelo fez
+`locate_fault → isolate_fault → restore_options`, viu corretamente que não havia opção viável, mas
+**encerrou sem chamar `propose_plan`** para formalizar a proposta **sem chave**. Ou seja: a queda
+de acerto aqui **não** veio de proposta insegura rejeitada pelo verificador; veio de um fechamento
+incompleto justamente num caso “sem manobra”. A investigação desse sintoma ficou registrada na
+follow-up **#104**, sem alterar o número desta rodada.
+
+### Comparação com o recorte *hard* conhecido
+
+**Não é A/B controlado.** O recorte conhecido
+[`docs/bench/2026-09-11-openai-hard-k5.csv`](bench/2026-09-11-openai-hard-k5.csv) usa **11 tarefas
+hard** escritas sobre os três clusters da demo, mistura perguntas numéricas com propostas e foi
+rodado com **k=5**; a suíte fora do treino usa **10 tarefas hard de proposta**, todas derivadas da
+amostra da issue #91, e foi rodada com **k=3**. A tabela abaixo serve só para leitura lado a lado:
+
+| recorte | tarefas | execuções | pass@1 | ordem | precisão | ferr. desnec./exec. | tokens/exec. | US$/exec. | taxa de reprovação do verificador |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| *hard* conhecido (`openai-hard-k5`) | 11 | 55 | **100 %** | 100,0 % (195/195) | 97,3 % (195/201) | 0,11 | 18.897 | 0,0081 | **0/55 = 0 %** |
+| fora do treino (`openai-fora-treino-k3`) | 10 | 30 | **90 %** | 97,5 % (117/120) | 100,0 % (117/117) | 0,00 | 20.897 | 0,0090 | **0/30 = 0 %** |
+
+Leitura honesta:
+
+1. **O desempenho caiu fora do treino.** O mesmo `gpt-4.1-mini-2025-04-14` que estava em
+   **100 %** no recorte *hard* conhecido ficou em **90 %** aqui. Esse é o resultado principal da
+   issue #92 e precisa ser dito com todas as letras.
+2. **A queda não veio do verificador.** A taxa de reprovação do verificador ficou em **0 %** nos
+   dois recortes. Logo, o problema fora do treino não foi “o modelo insistiu numa manobra errada e
+   foi barrado”; foi “o modelo não fechou a proposta sem chave em um caso novo”.
+3. **O custo também subiu.** Fora do treino, a execução média foi de **20.897 tokens** e
+   **US$ 0,0090**, contra **18.897 tokens** e **US$ 0,0081** no *hard* conhecido.
+4. **A dificuldade é diferente.** Nesta suíte, **6/10** tarefas corretas terminam em **∅ (sem
+   chave)** e apenas **4/10** têm alguma opção viável de transferência; portanto, não faz sentido
+   ler a diferença de 100 % → 90 % como um experimento controlado de causalidade.

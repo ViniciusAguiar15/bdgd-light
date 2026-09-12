@@ -1,14 +1,14 @@
 # Resultados consolidados
 
 Documento gerado deterministicamente por `uv run python scripts/gerar_resultados.py`.
-Data-base das fontes versionadas mais recentes: **2026-09-11**.
+Data-base das fontes versionadas mais recentes: **2026-09-12**.
 
 ## Escopo das fontes
 
 | item | valor | fonte |
 |---|---:|---|
-| tarefas catalogadas no benchmark | 38 | docs/bench.md (2026-09-11) |
-| CSVs lidos em `docs/bench/` | 16 | docs/bench/ |
+| tarefas catalogadas no benchmark | 38 | docs/bench.md (2026-09-12) |
+| CSVs lidos em `docs/bench/` | 17 | docs/bench/ |
 
 ## Recortes e cenários usados pelos benchmarks
 
@@ -44,6 +44,7 @@ Nas colunas **ordem** e **precisão**, a fração entre parênteses agrega passo
 | gemini | sem exemplos, compactado | gemini-2.5-flash | 34 | 68 | 2 | 100 % | 100 % | 95 % | 100 % | 97,8 % (119/124) | 95,6 % (119/125) | 0,09 | 9.290 | 0,0044 | 8,1 | docs/bench/2026-09-11-gemini-sem-exemplos.csv (2026-09-11) |
 | gemini-hard-k5 | sem exemplos, compactado | gemini-2.5-flash | 11 | 55 | 5 | — | — | 100 % | 100 % | 96,4 % (189/195) | 98,2 % (189/193) | 0,07 | 25.401 | 0,0118 | 17,8 | docs/bench/2026-09-11-gemini-hard-k5-sem-exemplos.csv (2026-09-11) |
 | openai | com exemplos, compactado ★ padrão | gpt-4.1-mini-2025-04-14 | 34 | 102 | 3 | 100 % | 85 % | 100 % | 94 % | 98,5 % (183/186) | 95,1 % (183/193) | 0,10 | 9.556 | 0,0041 | 8,4 | docs/bench/2026-09-11-openai.csv (2026-09-11) |
+| openai-fora-treino-k3 | com exemplos, compactado ★ padrão | gpt-4.1-mini-2025-04-14 | 10 | 30 | 3 | — | — | 90 % | 90 % | 97,5 % (117/120) | 100,0 % (117/117) | 0,00 | 20.897 | 0,0090 | 12,8 | docs/bench/2026-09-12-openai-fora-treino-k3.csv (2026-09-12) |
 | openai-hard-k5 | com exemplos, compactado ★ padrão | gpt-4.1-mini-2025-04-14 | 11 | 55 | 5 | — | — | 100 % | 100 % | 100,0 % (195/195) | 97,3 % (195/201) | 0,11 | 18.897 | 0,0081 | 18,7 | docs/bench/2026-09-11-openai-hard-k5.csv (2026-09-11) |
 | openai-hard-k5 | sem exemplos, compactado | gpt-4.1-mini-2025-04-14 | 11 | 55 | 5 | — | — | 100 % | 100 % | 96,4 % (189/195) | 97,8 % (189/194) | 0,09 | 17.714 | 0,0075 | 16,4 | docs/bench/2026-09-11-openai-hard-k5-sem-exemplos.csv (2026-09-11) |
 | openai-hardplus-k3 | com exemplos, compactado ★ padrão | gpt-4.1-mini-2025-04-14 | 4 | 12 | 3 | — | — | 100 % | 100 % | 100,0 % (36/36) | 68,1 % (36/53) | 1,42 | 41.269 | 0,0172 | 17,6 | docs/bench/2026-09-11-openai-hardplus-k3.csv (2026-09-11) |
@@ -83,6 +84,7 @@ Nas colunas **ordem** e **precisão**, a fração entre parênteses agrega passo
 | gemini | sem exemplos, compactado | 0/68 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-gemini-sem-exemplos.csv (2026-09-11) |
 | gemini-hard-k5 | sem exemplos, compactado | 0/55 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-gemini-hard-k5-sem-exemplos.csv (2026-09-11) |
 | openai | com exemplos, compactado ★ padrão | 0/102 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-openai.csv (2026-09-11) |
+| openai-fora-treino-k3 | com exemplos, compactado ★ padrão | 0/30 (0 %) | 0 | 0,00 | docs/bench/2026-09-12-openai-fora-treino-k3.csv (2026-09-12) |
 | openai-hard-k5 | com exemplos, compactado ★ padrão | 0/55 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-openai-hard-k5.csv (2026-09-11) |
 | openai-hard-k5 | sem exemplos, compactado | 1/55 (2 %) | 1 | 0,02 | docs/bench/2026-09-11-openai-hard-k5-sem-exemplos.csv (2026-09-11) |
 | openai-hardplus-k3 | com exemplos, compactado ★ padrão | 4/12 (33 %) | 4 | 0,33 | docs/bench/2026-09-11-openai-hardplus-k3.csv (2026-09-11) |
