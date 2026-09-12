@@ -191,3 +191,39 @@ title: "Diário — Modo noturno, rodada 6"
   disjuntor de saída; já `BRI001`, `SRD002` e partes dos clusters ainda exibem **não convergência
   ou instabilidade numérica**, e isso ficou versionado explicitamente como limitação em vez de ser
   escondido.
+
+## 8. Issue #99 — GD na restauração (00:16)
+
+- Li o backlog canônico (`docs/backlog/37-gd-na-restauracao.md`), a issue #99, o relatório da #98
+  (`docs/gd-gemeo.md`) e os CSVs `docs/dados/gd-gemeo-*.csv` antes de escrever código novo, para
+  reaproveitar a modelagem já existente de GD opcional e a ordenação elétrica de
+  `restore_options(score=true)`.
+- Implementei `src/bdgd_light/gd_restauracao.py` e o runner `scripts/gd_na_restauracao.py` para
+  comparar o ranking de restauração em **dois instantes**: **meio-dia com GD** (`Master --gd`,
+  `mode=daily`, `hour=12`) e **ponta da noite sem GD** (`Master` base, `hour=19`).
+- Mantive explícita a premissa regulatória pedida na issue: **a GD não é contada como fonte
+  durante a falta** (sem ilhamento sustentando a rede); ela só altera o **carregamento do
+  socorredor no instante da manobra**.
+- Reaproveitei a heurística da #91 para os alimentadores reais: recorte de **CTMT principal +
+  vizinhos diretos** do inventário e injeção de falta no **maior trecho do tronco** do CTMT
+  principal, sem ajuste manual para “melhorar” o resultado.
+- Adicionei `tests/test_gd_restauracao.py` com cobertura para: seleção determinística dos
+  alimentadores de alta penetração, preparação da falta/restauração no `cluster_mini` e geração do
+  relatório/CSVs a partir de fixture sintética com GD.
+- Rodei a comparação real e commitei `docs/gd-restauracao.md`,
+  `docs/dados/gd-restauracao-opcoes.csv` e `docs/dados/gd-restauracao-resumo.csv` para os **3
+  cenários** (`tijuca_cabofrio_tronco`, `ipanema_9210`, `taquara_bocari`) e os **3 alimentadores
+  reais de alta penetração** escolhidos a partir da #98 (`SRD002`, `BRI001`, `TRS003`).
+- Resultado honesto desta base:
+  - `tijuca_cabofrio_tronco`: **não mudou** a vencedora (`974020904`), mas a margem do
+    socorredor caiu de **78,7 %** ao meio-dia com GD para **73,7 %** à noite sem GD.
+  - `ipanema_9210`, `BRI001` e `TRS003`: **sem opções topológicas de restauração** nos recortes
+    avaliados.
+  - `SRD002`: a vencedora continuou `20729022`, mas a **viabilidade mudou** — havia **1 opção
+    viável** ao meio-dia com GD e **0 viáveis** na ponta da noite sem GD.
+  - `taquara_bocari`: a **vencedora mudou** (`1007642983` → `11056672`), porém com limitação
+    importante: o meio-dia com GD **não convergiu para nenhuma das 10 opções**, enquanto a ponta
+    da noite sem GD convergiu com **10 opções viáveis**.
+- Como a regra desta rodada exigia follow-up sempre que a vencedora mudasse em algum caso, abri a
+  issue **#110** propondo tornar o **horário do evento** uma premissa explícita do score, sem
+  alterar o comportamento atual nesta #99.

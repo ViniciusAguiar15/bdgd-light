@@ -1,0 +1,13 @@
+grupo,caso,instante,hora,com_gd,n_opcoes,n_viaveis,vencedora,vencedora_viavel,margem_disjuntor_vencedora,vmin_mt_pu_vencedora,vmax_mt_pu_vencedora,observacao
+alimentador,BRI001,meio-dia com GD,12,True,0,0,,,,,,sem opções de restauração
+alimentador,BRI001,ponta da noite sem GD,19,False,0,0,,,,,,sem opções de restauração
+alimentador,SRD002,meio-dia com GD,12,True,3,1,20729022,20729022,0.9984084094743091,1.0449997082665026,1.0452948804000233,
+alimentador,SRD002,ponta da noite sem GD,19,False,3,0,20729022,,0.6915939508068157,1.03245588917125,1.0449995175182922,fluxo não convergiu
+alimentador,TRS003,meio-dia com GD,12,True,0,0,,,,,,sem opções de restauração
+alimentador,TRS003,ponta da noite sem GD,19,False,0,0,,,,,,sem opções de restauração
+cenario,ipanema_9210,meio-dia com GD,12,True,0,0,,,,,,sem opções de restauração
+cenario,ipanema_9210,ponta da noite sem GD,19,False,0,0,,,,,,sem opções de restauração
+cenario,taquara_bocari,meio-dia com GD,12,True,10,0,1007642983,,,,,fluxo não convergiu
+cenario,taquara_bocari,ponta da noite sem GD,19,False,10,10,11056672,11056672,0.7785778747164256,1.0171489394434938,1.0449995075677128,
+cenario,tijuca_cabofrio_tronco,meio-dia com GD,12,True,10,7,974020904,974020904,0.7869814275671755,1.0371654295602069,1.0449992506786443,
+cenario,tijuca_cabofrio_tronco,ponta da noite sem GD,19,False,10,7,974020904,974020904,0.7365883505102458,1.0361211602630187,1.0449992456638995,
