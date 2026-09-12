@@ -37,3 +37,24 @@ title: "Diário — Modo noturno, rodada 6"
 - O desperdício residual ficou concentrado em H13: `propose_plan` extra em 6/6 execuções, `get_topology` extra em 1/3 do braço com exemplos e salto de `isolate_fault` em 2/3 do braço sem exemplos; documentei isso no bench.
 - Regenerei `docs/resultados.md`, validei `uv run bdgd-light --help`, rodei a suíte de testes completa e deixei a árvore pronta para lint final, commit, push e PR da #100.
 
+
+## 2. Issue #91 — generalização: pipeline em alimentador nunca visto (21:21)
+
+- Li a issue #91, o backlog canônico (`docs/backlog/29-generalizacao-alimentadores.md`) e o
+  pipeline relacionado: inventário/recorte por CTMT, grafo (`grid/rede.py`), `gpkg2dss`, score
+  elétrico e as ferramentas `inject_fault`/`restore_options` do servidor MCP.
+- Confirmei que o ambiente tinha dados reais da Light (`data/parquet/`, `data/inventario_ctmt.csv`
+  e `data/Light_382_2025-12-31_V11_20260824-0926.gdb`), então rodei a execução real pedida, sem
+  recorrer a mocks para o relatório final.
+- Implementei `src/bdgd_light/generalizacao.py` e o runner `scripts/generalizacao.py`: amostragem
+  determinística estratificada por região × porte, recorte automático de `CTMT + vizinhos diretos`
+  quando há tie, execução do pipeline completo por etapa e exportação de um CSV por `CTMT × etapa`.
+- Adicionei `tests/test_generalizacao.py` cobrindo o sorteio determinístico, a normalização do CSV
+  (sucesso/falha/não executada) e uma rodada real pequena sobre a fixture sintética do projeto.
+- Rodei a amostra real de 30 alimentadores com semente 91 e gerei
+  `docs/bench/2026-09-11-generalizacao.csv`: 30/30 sucesso em todas as etapas, 18/30 sem tie,
+  12/30 com tie, 7/30 com opções de restauração e 39 opções viáveis entre 42 avaliadas no score.
+- Documentei os números e os limites de interpretação em `docs/generalizacao.md`, incluindo o
+  comando exato de reprodução e o resultado negativo relevante (tie não implica restauração útil).
+- Abri a follow-up issue #102 para separar, em rodadas futuras, “fluxo convergiu” de “caso base
+  eletricamente saudável”, porque vários casos-base convergiram com `Vmin` muito baixa.
