@@ -110,3 +110,24 @@ title: "Diário — Modo noturno, rodada 6"
 - Adaptação explicitada no relatório: a Light 2025 não oferece vínculo direto de `UCMT_tab` com
   transformador de distribuição, então a checagem de 2 km ficou restrita a `UCBT_tab` e terminou
   com uma pergunta pronta para a distribuidora sobre qual campo físico deve ser usado.
+
+## 5. Issue #94 — atlas de interligações (22:07)
+
+- Li o backlog canônico (`docs/backlog/32-atlas-interligacoes.md`), a issue #94 e reaproveitei a
+  lógica já existente de detecção geométrica de ties em `ingest/interligacoes.py` e do inventário
+  por alimentador em `ingest/inventario.py`, sem reimplementar do zero.
+- Implementei `src/bdgd_light/atlas_interligacoes.py` e o runner
+  `scripts/atlas_interligacoes.py` para consolidar, a partir de `data/parquet`, o atlas completo:
+  tabela por CTMT com ties de campo, telecomando, destinos (`CTMT`, subestação e conjunto),
+  componente conexa e grau no grafo de socorro; arestas agregadas CTMT–CTMT; GraphML; e
+  histograma em SVG puro.
+- Adicionei `tests/test_atlas_interligacoes.py` cobrindo a fixture sintética do projeto, a
+  renderização do Markdown/SVG e a escrita dos artefatos versionáveis.
+- Rodei o script na base inteira da Light 2025 e commitei os agregados reais em `docs/`:
+  `docs/atlas-interligacoes.md`, `docs/dados/atlas-interligacoes-alimentadores.csv`,
+  `docs/dados/grafo-socorro-arestas.csv`, `docs/dados/grafo-socorro.graphml` e
+  `docs/dados/grau-socorro-histograma.svg`.
+- Números honestos da base real: **1.802 alimentadores**, **4.524 ties de campo únicos**
+  (**616 telecomandados**), **2.386 arestas** CTMT–CTMT no grafo, **600 alimentadores grau 0**,
+  **626 componentes conexas** e **379.348 / 5.049.006 clientes = 7,51 %** sem socorro possível por
+  tie de campo.
