@@ -667,6 +667,8 @@ console/               console do operador: Vite + TypeScript + MapLibre GL JS l
                        SMOKE_FLUXO=1 = demo ponta a ponta); publicado no Pages por Actions
 scripts/
   baixar_bdgd.py       baixa e extrai a BDGD (Light 2025 por padrão)
+  baixar_gd.py         baixa a MMGD da ANEEL para `data/gd/` e registra `metadata.json`
+  gerar_gd_light.py    cruza MMGD × BDGD e gera `docs/gd-light.md` + CSVs em `docs/dados/`
   listar_camadas.py    lista as camadas do .gdb
   converter.py         camada → GeoJSON (EPSG:4326) com recorte por bbox
   listar_modelos.py    lista os modelos do provedor LLM configurado (destaca tool calling)

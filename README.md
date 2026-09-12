@@ -126,6 +126,7 @@ agente em [`docs/agent.md`](docs/agent.md).
 | [`docs/demo-roteiro.md`](docs/demo-roteiro.md) | roteiro de aula de 15 min, com tempos e plano B |
 | [`docs/escopo-cidade.md`](docs/escopo-cidade.md) | por que Tijuca e Ipanema, e o panorama do Rio por bairro |
 | [`docs/bdgd-light-2025.md`](docs/bdgd-light-2025.md) · [`docs/bdgd-relacoes.md`](docs/bdgd-relacoes.md) | o que a BDGD da Light tem de particular · como as camadas se ligam |
+| [`docs/gd-light.md`](docs/gd-light.md) | MMGD ANEEL × BDGD Light: chave de junção, penetração por alimentador, conjuntos e divergências |
 | [`docs/grid-modelo.md`](docs/grid-modelo.md) · [`docs/spike-opendss.md`](docs/spike-opendss.md) | BDGD → grafo · BDGD → OpenDSS, convergência e qualidade de dado |
 | [`docs/mcp-ferramentas.md`](docs/mcp-ferramentas.md) · [`docs/agent.md`](docs/agent.md) | as 12 ferramentas · o agente, prompt e resultados |
 | [`docs/console.md`](docs/console.md) · [`docs/sim.md`](docs/sim.md) | backend do console e HITL · simulador de eventos |
@@ -141,8 +142,9 @@ em PR próprio e revisada antes do merge (as revisões ficam em `docs/review/`).
 ## Dados e licença
 
 Código sob licença MIT. Os dados são abertos da ANEEL (BDGD da Light, distribuidora 382, ano-base
-2025) e **não** são redistribuídos aqui: `scripts/baixar_bdgd.py` baixa direto da fonte. Este projeto
-não tem vínculo com a Light nem com a ANEEL.
+2025) e **não** são redistribuídos aqui: `scripts/baixar_bdgd.py` baixa a BDGD e
+`scripts/baixar_gd.py` baixa a MMGD diretamente da fonte. Este projeto não tem vínculo com a Light
+nem com a ANEEL.
 
 ## Referências
 
