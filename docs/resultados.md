@@ -32,47 +32,61 @@ Notas de rastreabilidade:
 
 ## Benchmarks consolidados por arquivo mais recente de cada família
 
-| família | modelo | tarefas | execuções | k efetivo | pass@1 simple | pass@1 medium | pass@1 hard | pass@k total | ordem | precisão | ferr. desnec./exec. | tokens/exec. | US$/exec. | s/exec. | fonte |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| fake | fake-operador | 34 | 170 | 5 | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 0,00 | 0 | — | 2,3 | docs/bench/2026-09-11-fake.csv (2026-09-11) |
-| gemini | gemini-2.5-flash | 34 | 124 | 5 | 100 % | 100 % | 85 % | 100 % | 95 % | 99 % | 0,02 | 11.557 | 0,0051 | 8,6 | docs/bench/2026-09-11-gemini.csv (2026-09-11) |
-| gemini-hard-k5 | gemini-2.5-flash | 11 | 55 | 5 | — | — | 100 % | 100 % | 96 % | 98 % | 0,07 | 25.401 | 0,0118 | 17,8 | docs/bench/2026-09-11-gemini-hard-k5-sem-exemplos.csv (2026-09-11) |
-| openai | gpt-4.1-mini-2025-04-14 | 34 | 102 | 3 | 100 % | 85 % | 100 % | 94 % | 99 % | 95 % | 0,10 | 9.556 | 0,0041 | 8,4 | docs/bench/2026-09-11-openai.csv (2026-09-11) |
-| openai-hard-k5 | gpt-4.1-mini-2025-04-14 | 11 | 55 | 5 | — | — | 100 % | 100 % | 100 % | 97 % | 0,11 | 18.897 | 0,0081 | 18,7 | docs/bench/2026-09-11-openai-hard-k5.csv (2026-09-11) |
-| openai-hardplus-k3 | gpt-4.1-mini-2025-04-14 | 4 | 12 | 3 | — | — | 100 % | 100 % | 100 % | 68 % | 1,42 | 41.269 | 0,0172 | 17,6 | docs/bench/2026-09-11-openai-hardplus-k3.csv (2026-09-11) |
+Nas colunas **ordem** e **precisão**, a fração entre parênteses agrega passos (LCS/passos da referência ou chamadas totais) para dar a escala do percentual.
+
+| família | modo | modelo | tarefas | execuções | k efetivo | pass@1 simple | pass@1 medium | pass@1 hard | pass@k total | ordem | precisão | ferr. desnec./exec. | tokens/exec. | US$/exec. | s/exec. | fonte |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| fake | com exemplos, compactado ★ padrão | fake-operador | 34 | 170 | 5 | 100 % | 100 % | 100 % | 100 % | 100,0 % (310/310) | 100,0 % (310/310) | 0,00 | 0 | — | 2,3 | docs/bench/2026-09-11-fake.csv (2026-09-11) |
+| fake | com exemplos, sem compactação | fake-operador | 34 | 170 | 5 | 100 % | 100 % | 100 % | 100 % | 100,0 % (310/310) | 100,0 % (310/310) | 0,00 | 0 | — | 2,1 | docs/bench/2026-09-11-fake-sem-compactar.csv (2026-09-11) |
+| fake | sem exemplos, compactado | fake-operador | 34 | 170 | 5 | 100 % | 100 % | 100 % | 100 % | 100,0 % (310/310) | 100,0 % (310/310) | 0,00 | 0 | — | 1,9 | docs/bench/2026-09-11-fake-sem-exemplos.csv (2026-09-11) |
+| gemini | com exemplos, compactado ★ padrão | gemini-2.5-flash | 34 | 124 | 5 | 100 % | 100 % | 85 % | 100 % | 94,8 % (245/264) | 98,8 % (245/248) | 0,02 | 11.557 | 0,0051 | 8,6 | docs/bench/2026-09-11-gemini.csv (2026-09-11) |
+| gemini | com exemplos, sem compactação | gemini-2.5-flash | 34 | 68 | 2 | 100 % | 100 % | 91 % | 100 % | 95,6 % (116/124) | 100,0 % (116/116) | 0,00 | 18.858 | 0,0071 | 7,2 | docs/bench/2026-09-11-gemini-sem-compactar.csv (2026-09-11) |
+| gemini | sem exemplos, compactado | gemini-2.5-flash | 34 | 68 | 2 | 100 % | 100 % | 95 % | 100 % | 97,8 % (119/124) | 95,6 % (119/125) | 0,09 | 9.290 | 0,0044 | 8,1 | docs/bench/2026-09-11-gemini-sem-exemplos.csv (2026-09-11) |
+| gemini-hard-k5 | sem exemplos, compactado | gemini-2.5-flash | 11 | 55 | 5 | — | — | 100 % | 100 % | 96,4 % (189/195) | 98,2 % (189/193) | 0,07 | 25.401 | 0,0118 | 17,8 | docs/bench/2026-09-11-gemini-hard-k5-sem-exemplos.csv (2026-09-11) |
+| openai | com exemplos, compactado ★ padrão | gpt-4.1-mini-2025-04-14 | 34 | 102 | 3 | 100 % | 85 % | 100 % | 94 % | 98,5 % (183/186) | 95,1 % (183/193) | 0,10 | 9.556 | 0,0041 | 8,4 | docs/bench/2026-09-11-openai.csv (2026-09-11) |
+| openai-hard-k5 | com exemplos, compactado ★ padrão | gpt-4.1-mini-2025-04-14 | 11 | 55 | 5 | — | — | 100 % | 100 % | 100,0 % (195/195) | 97,3 % (195/201) | 0,11 | 18.897 | 0,0081 | 18,7 | docs/bench/2026-09-11-openai-hard-k5.csv (2026-09-11) |
+| openai-hard-k5 | sem exemplos, compactado | gpt-4.1-mini-2025-04-14 | 11 | 55 | 5 | — | — | 100 % | 100 % | 96,4 % (189/195) | 97,8 % (189/194) | 0,09 | 17.714 | 0,0075 | 16,4 | docs/bench/2026-09-11-openai-hard-k5-sem-exemplos.csv (2026-09-11) |
+| openai-hardplus-k3 | com exemplos, compactado ★ padrão | gpt-4.1-mini-2025-04-14 | 4 | 12 | 3 | — | — | 100 % | 100 % | 100,0 % (36/36) | 68,1 % (36/53) | 1,42 | 41.269 | 0,0172 | 17,6 | docs/bench/2026-09-11-openai-hardplus-k3.csv (2026-09-11) |
+| openai-hardplus-k3 | sem exemplos, compactado | gpt-4.1-mini-2025-04-14 | 4 | 12 | 3 | — | — | 100 % | 100 % | 95,8 % (34/36) | 69,2 % (34/49) | 1,25 | 44.417 | 0,0184 | 17,9 | docs/bench/2026-09-11-openai-hardplus-k3-sem-exemplos.csv (2026-09-11) |
 
 ## Comparação A/B — exemplos anotados
 
 | família | braço | execuções | pass@1 total | ordem | precisão | ferr. desnec./exec. | tokens/exec. | US$/exec. | fonte |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---|
-| fake | com exemplos | 170 | 100 % | 100 % | 100 % | 0,00 | 0 | — | docs/bench/2026-09-11-fake.csv (2026-09-11) |
-| fake | sem exemplos | 170 | 100 % | 100 % | 100 % | 0,00 | 0 | — | docs/bench/2026-09-11-fake-sem-exemplos.csv (2026-09-11) |
-| gemini | com exemplos | 124 | 94 % | 95 % | 99 % | 0,02 | 11.557 | 0,0051 | docs/bench/2026-09-11-gemini.csv (2026-09-11) |
-| gemini | sem exemplos | 68 | 99 % | 98 % | 96 % | 0,09 | 9.290 | 0,0044 | docs/bench/2026-09-11-gemini-sem-exemplos.csv (2026-09-11) |
-| openai-hard-k5 | com exemplos | 55 | 100 % | 100 % | 97 % | 0,11 | 18.897 | 0,0081 | docs/bench/2026-09-11-openai-hard-k5.csv (2026-09-11) |
-| openai-hard-k5 | sem exemplos | 55 | 100 % | 96 % | 98 % | 0,09 | 17.714 | 0,0075 | docs/bench/2026-09-11-openai-hard-k5-sem-exemplos.csv (2026-09-11) |
-| openai-hardplus-k3 | com exemplos | 12 | 100 % | 100 % | 68 % | 1,42 | 41.269 | 0,0172 | docs/bench/2026-09-11-openai-hardplus-k3.csv (2026-09-11) |
-| openai-hardplus-k3 | sem exemplos | 12 | 100 % | 96 % | 69 % | 1,25 | 44.417 | 0,0184 | docs/bench/2026-09-11-openai-hardplus-k3-sem-exemplos.csv (2026-09-11) |
+| fake | com exemplos | 170 | 100 % | 100,0 % (310/310) | 100,0 % (310/310) | 0,00 | 0 | — | docs/bench/2026-09-11-fake.csv (2026-09-11) |
+| fake | sem exemplos | 170 | 100 % | 100,0 % (310/310) | 100,0 % (310/310) | 0,00 | 0 | — | docs/bench/2026-09-11-fake-sem-exemplos.csv (2026-09-11) |
+| gemini | com exemplos | 124 | 94 % | 94,8 % (245/264) | 98,8 % (245/248) | 0,02 | 11.557 | 0,0051 | docs/bench/2026-09-11-gemini.csv (2026-09-11) |
+| gemini | sem exemplos | 68 | 99 % | 97,8 % (119/124) | 95,6 % (119/125) | 0,09 | 9.290 | 0,0044 | docs/bench/2026-09-11-gemini-sem-exemplos.csv (2026-09-11) |
+| openai-hard-k5 | com exemplos | 55 | 100 % | 100,0 % (195/195) | 97,3 % (195/201) | 0,11 | 18.897 | 0,0081 | docs/bench/2026-09-11-openai-hard-k5.csv (2026-09-11) |
+| openai-hard-k5 | sem exemplos | 55 | 100 % | 96,4 % (189/195) | 97,8 % (189/194) | 0,09 | 17.714 | 0,0075 | docs/bench/2026-09-11-openai-hard-k5-sem-exemplos.csv (2026-09-11) |
+| openai-hardplus-k3 | com exemplos | 12 | 100 % | 100,0 % (36/36) | 68,1 % (36/53) | 1,42 | 41.269 | 0,0172 | docs/bench/2026-09-11-openai-hardplus-k3.csv (2026-09-11) |
+| openai-hardplus-k3 | sem exemplos | 12 | 100 % | 95,8 % (34/36) | 69,2 % (34/49) | 1,25 | 44.417 | 0,0184 | docs/bench/2026-09-11-openai-hardplus-k3-sem-exemplos.csv (2026-09-11) |
 
 ## Comparação A/B — compactação das respostas de ferramenta
 
 | família | braço | execuções | pass@1 total | precisão | chars ferr./exec. | tokens/exec. | US$/exec. | fonte |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| fake | compactado | 170 | 100 % | 100 % | 1.806 | 0 | — | docs/bench/2026-09-11-fake.csv (2026-09-11) |
-| fake | sem compactação | 170 | 100 % | 100 % | 6.352 | 0 | — | docs/bench/2026-09-11-fake-sem-compactar.csv (2026-09-11) |
-| gemini | compactado | 124 | 94 % | 99 % | 2.366 | 11.557 | 0,0051 | docs/bench/2026-09-11-gemini.csv (2026-09-11) |
-| gemini | sem compactação | 68 | 97 % | 100 % | 9.236 | 18.858 | 0,0071 | docs/bench/2026-09-11-gemini-sem-compactar.csv (2026-09-11) |
+| fake | compactado | 170 | 100 % | 100,0 % (310/310) | 1.806 | 0 | — | docs/bench/2026-09-11-fake.csv (2026-09-11) |
+| fake | sem compactação | 170 | 100 % | 100,0 % (310/310) | 6.352 | 0 | — | docs/bench/2026-09-11-fake-sem-compactar.csv (2026-09-11) |
+| gemini | compactado | 124 | 94 % | 98,8 % (245/248) | 2.366 | 11.557 | 0,0051 | docs/bench/2026-09-11-gemini.csv (2026-09-11) |
+| gemini | sem compactação | 68 | 97 % | 100,0 % (116/116) | 9.236 | 18.858 | 0,0071 | docs/bench/2026-09-11-gemini-sem-compactar.csv (2026-09-11) |
 
 ## Taxa de reprovação do verificador nos CSVs mais recentes
 
-| família | execuções com recusa | recusas totais | média de recusas/exec. | fonte |
-|---|---:|---:|---:|---|
-| fake | 0/170 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-fake.csv (2026-09-11) |
-| gemini | 0/124 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-gemini.csv (2026-09-11) |
-| gemini-hard-k5 | 0/55 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-gemini-hard-k5-sem-exemplos.csv (2026-09-11) |
-| openai | 0/102 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-openai.csv (2026-09-11) |
-| openai-hard-k5 | 0/55 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-openai-hard-k5.csv (2026-09-11) |
-| openai-hardplus-k3 | 4/12 (33 %) | 4 | 0,33 | docs/bench/2026-09-11-openai-hardplus-k3.csv (2026-09-11) |
+| família | modo | execuções com recusa | recusas totais | média de recusas/exec. | fonte |
+|---|---|---:|---:|---:|---|
+| fake | com exemplos, compactado ★ padrão | 0/170 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-fake.csv (2026-09-11) |
+| fake | com exemplos, sem compactação | 0/170 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-fake-sem-compactar.csv (2026-09-11) |
+| fake | sem exemplos, compactado | 0/170 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-fake-sem-exemplos.csv (2026-09-11) |
+| gemini | com exemplos, compactado ★ padrão | 0/124 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-gemini.csv (2026-09-11) |
+| gemini | com exemplos, sem compactação | 0/68 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-gemini-sem-compactar.csv (2026-09-11) |
+| gemini | sem exemplos, compactado | 0/68 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-gemini-sem-exemplos.csv (2026-09-11) |
+| gemini-hard-k5 | sem exemplos, compactado | 0/55 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-gemini-hard-k5-sem-exemplos.csv (2026-09-11) |
+| openai | com exemplos, compactado ★ padrão | 0/102 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-openai.csv (2026-09-11) |
+| openai-hard-k5 | com exemplos, compactado ★ padrão | 0/55 (0 %) | 0 | 0,00 | docs/bench/2026-09-11-openai-hard-k5.csv (2026-09-11) |
+| openai-hard-k5 | sem exemplos, compactado | 1/55 (2 %) | 1 | 0,02 | docs/bench/2026-09-11-openai-hard-k5-sem-exemplos.csv (2026-09-11) |
+| openai-hardplus-k3 | com exemplos, compactado ★ padrão | 4/12 (33 %) | 4 | 0,33 | docs/bench/2026-09-11-openai-hardplus-k3.csv (2026-09-11) |
+| openai-hardplus-k3 | sem exemplos, compactado | 3/12 (25 %) | 3 | 0,25 | docs/bench/2026-09-11-openai-hardplus-k3-sem-exemplos.csv (2026-09-11) |
 
 ## Cenários ponta a ponta já versionados
 

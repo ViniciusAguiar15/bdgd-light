@@ -10,7 +10,10 @@ ajustaram?" — hoje não tem resposta. Esta é a lacuna mais importante em aber
 
 ## Tarefa
 - `scripts/generalizacao.py`: sorteia **N alimentadores** (padrão 30) com semente fixa a partir do
-  inventário, estratificando por porte (nº de trechos) e região, e roda o pipeline **inteiro sem
+  inventário **do município do Rio de Janeiro** (o escopo declarado do projeto; a Light atende ainda
+  ~30 municípios do estado, que ficam de fora deste sorteio — se sobrar orçamento, um segundo
+  sorteio fora da capital vira comparação interessante e deve ser reportado à parte), estratificando
+  por porte (nº de trechos) e região, e roda o pipeline **inteiro sem
   nenhum ajuste manual**: recorte → grafo → `gpkg2dss` → fluxo base → detecção de ties → injeção de
   falta no maior trecho tronco → `restore_options(score=true)`.
 - Medir **taxa de sucesso por etapa** e, para cada falha, gravar alimentador, etapa, exceção/motivo
