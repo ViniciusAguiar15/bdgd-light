@@ -256,6 +256,9 @@ uv run bdgd-light dss --gpkg data/feeders/cluster_tijuca.gpkg --falha 11304252 -
 # fechando a tie telecomandada 1007642983 (via PARNAIBA)
 uv run bdgd-light dss --gpkg data/feeders/cluster_TQR0007-TQR33859-TQR33862.gpkg \
     --falha 11798327 --restaurar 1007642983
+# mesmo recorte, mas montando um Master de cenário com GD explícita (issue #98)
+uv run bdgd-light dss --gpkg data/feeders/TQR0007.gpkg --gd \
+    --mmgd data/gd/empreendimento-geracao-distribuida.parquet --sem-fluxo
 # só o fluxo, em qualquer Master .dss, com um comando OpenDSS antes do Solve
 uv run bdgd-light dss --master data/dss/gpkg/TQR0007/Master_SA01_gpkg_TQR0007.dss --comando "set loadmult=0.6"
 # oráculo de paridade (bdgd2opendss, ≈3 min): converte TQR0007 do GDB para data/dss/sub_<SUB>/TQR0007/
@@ -288,6 +291,9 @@ na primeira reutilização.
 | `--dia` / `--mes` | `DU` / `1` | Master a resolver |
 | `--master` | — | resolve direto este `.dss`, sem converter |
 | `--gpkg` | — | GeoPackage do recorte: sem `--gdb`/`--master`, gera o Master direto dele; é também o grafo que traduz manobras (exigido por `--falha`, `--restaurar`, `--abrir`, `--fechar`) |
+| `--gd` / `--sem-gd` | `--sem-gd` | monta um **Master de cenário** com `GD_BT`, sem alterar o Master padrão do recorte; requer `UGBT_tab`/`UGMT_tab` no GPKG e MMGD disponível |
+| `--mmgd` | `data/gd/empreendimento-geracao-distribuida.parquet` | arquivo MMGD ANEEL usado para casar `CodEmpreendimento ↔ CEG_GD` e calcular o saldo agregado |
+| `--parquet-dir` | `data/parquet` | Parquet exportado da BDGD usado para o rateio municipal proporcional à carga quando a MMGD não tem chave direta |
 | `--falha` | — | trecho SSDMT em falta: abre no gêmeo as chaves que o isolam (as de `grafo --falha`) |
 | `--restaurar` | — | chave NA a fechar depois do isolamento (cria a `Line` da chave + jumper até o `PAC_VIZ` da tie) |
 | `--abrir` / `--fechar` | — | chaves avulsas a manobrar antes do `Solve` (vírgula) |

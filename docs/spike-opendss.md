@@ -130,7 +130,7 @@ uv run pytest tests/test_gpkg2dss.py -q -k paridade     # skip automático sem d
 
 `bdgd_light.twin.gpkg2dss` (`converter_ctmt`, `converter_gpkg`, `listar_ctmts`, `dias_por_tipo`)
 lê só as camadas do recorte (SSDMT, UNSEMT, UNTRMT, EQTRMT, SSDBT, UNSEBT, RAMLIG, UCBT_tab,
-UCMT_tab, PIP, SEGCON, CRVCRG) e escreve `<out>/<CTMT>/<Prefixo>_gpkg_<CTMT>.dss` +
+UCMT_tab, UGBT_tab, UGMT_tab, PIP, SEGCON, CRVCRG) e escreve `<out>/<CTMT>/<Prefixo>_gpkg_<CTMT>.dss` +
 `Master_<DIA><MM>_gpkg_<CTMT>.dss`, com os mesmos nomes de elemento do bdgd2opendss (as barras são
 os PAC), então `montar_master_cluster`/`comandos_manobras` funcionam sem tradução. Leva ≈1 s por
 alimentador (o bdgd2opendss leva ≈3 min porque carrega o GDB inteiro).

@@ -516,6 +516,33 @@ def dss(
             help="Com --gpkg: regenera o modelo do recorte mesmo se já existir em --out.",
         ),
     ] = False,
+    gd: Annotated[
+        bool,
+        typer.Option(
+            "--gd/--sem-gd",
+            help="Inclui a GD opcional (`GD_BT`) ao montar o Master. Padrão: desligado.",
+        ),
+    ] = False,
+    mmgd: Annotated[
+        Path,
+        typer.Option(
+            "--mmgd",
+            help=(
+                "Parquet/CSV/ZIP da MMGD ANEEL usado para gerar `GD_BT` "
+                "quando houver `--gpkg --gd`."
+            ),
+        ),
+    ] = Path("data/gd/empreendimento-geracao-distribuida.parquet"),
+    parquet_dir: Annotated[
+        Path,
+        typer.Option(
+            "--parquet-dir",
+            help=(
+                "Diretório Parquet completo usado para ratear a GD agregada "
+                "quando houver `--gpkg --gd`."
+            ),
+        ),
+    ] = Path("data/parquet"),
     falha: Annotated[
         str | None,
         typer.Option(
@@ -572,9 +599,11 @@ def dss(
     """Converte alimentadores da BDGD para OpenDSS (bdgd2opendss a partir do GDB, ou direto do
     GeoPackage do recorte) e/ou resolve o fluxo de potência com OpenDSSDirect, reportando
     tensões, violações, perdas e sobrecargas. Com vários --ctmt monta o Master do cluster; com
-    --gpkg aplica manobras do grafo (falta, isolamento e restauração) antes do Solve."""
+    --gpkg aplica manobras do grafo (falta, isolamento e restauração) antes do Solve. A GD
+    opcional fica desligada por padrão e só entra com ``--gd``."""
     try:
         from bdgd_light.twin import (
+            ConfiguracaoGd,
             comandos_manobras,
             converter,
             escolher_master,
@@ -602,14 +631,20 @@ def dss(
     if gpkg is None and any(x is not None for x in (falha, restaurar, abrir, fechar)):
         _erro("--falha, --restaurar, --abrir e --fechar exigem --gpkg com o grafo do recorte.")
         return
+    if gd and master is not None:
+        _erro("--gd não se aplica com --master direto; gere o Master a partir de --gpkg/--ctmt.")
+        return
+    gd_cfg = ConfiguracaoGd(parquet_dir=parquet_dir, mmgd_path=mmgd) if gd and gpkg else None
     try:
         comandos_dss = _manobras_dss(gpkg, falha, restaurar, abrir, fechar, comandos_manobras)
         if master is None:
             pastas = []
             for cod in ctmts:
                 pasta = localizar_pasta(out, cod)
-                if modo_gpkg and (reconverter or not _tem_master(pasta, dia, mes)):
-                    pasta = _converter_gpkg(gpkg, cod, out, dia, mes)
+                if modo_gpkg and (
+                    reconverter or not _tem_master(pasta, dia, mes) or (gd and not _tem_gd(pasta))
+                ):
+                    pasta = _converter_gpkg(gpkg, cod, out, dia, mes, gd=gd_cfg)
                 elif pasta is not None and gdb is None:
                     console.print(f"[green]✔[/] modelo de {cod} já existia em [bold]{pasta}[/]")
                 elif gdb is None:
@@ -626,16 +661,18 @@ def dss(
                     else:
                         console.print(f"[green]✔[/] modelo já existia em [bold]{pasta}[/]")
                 pastas.append(pasta)
-            if len(pastas) == 1 and not comandos_dss:
+            if len(pastas) == 1 and not comandos_dss and not gd:
                 master = escolher_master(pastas[0], dia, mes)
             else:
                 nome = ("cluster_" if len(ctmts) > 1 else "") + "-".join(ctmts)
                 cenario = "base" if not comandos_dss else "manobras"
                 if falha is not None:
                     cenario = f"falha_{falha}" + (f"_via_{restaurar}" if restaurar else "")
+                if gd:
+                    cenario += "_gd"
                 destino = Path(out) / nome / f"Master_{dia.upper()}{mes:02d}_{cenario}.dss"
                 master = montar_master_cluster(
-                    pastas, destino, dia=dia, mes=mes, comandos=comandos_dss, nome=nome
+                    pastas, destino, dia=dia, mes=mes, comandos=comandos_dss, nome=nome, gd=gd
                 )
                 console.print(f"[green]✔[/] Master do cenário em [bold]{master}[/]")
                 comandos_dss = []  # já estão no Master
@@ -2355,12 +2392,24 @@ def _tem_master(pasta: Path | None, dia: str, mes: int) -> bool:
     return True
 
 
-def _converter_gpkg(gpkg: Path, cod: str, out: Path, dia: str, mes: int) -> Path:
+def _tem_gd(pasta: Path | None) -> bool:
+    return bool(pasta and list(Path(pasta).glob("GD_BT_*.dss")))
+
+
+def _converter_gpkg(
+    gpkg: Path,
+    cod: str,
+    out: Path,
+    dia: str,
+    mes: int,
+    *,
+    gd=None,
+) -> Path:
     """Gera (ou regenera) o modelo OpenDSS de ``cod`` direto do GeoPackage do recorte."""
     from bdgd_light.twin import DIAS, converter_ctmt
 
     inicio = time.perf_counter()
-    conv = converter_ctmt(gpkg, cod, out, dias=DIAS, meses=[mes])
+    conv = converter_ctmt(gpkg, cod, out, dias=DIAS, meses=[mes], gd=gd)
     _imprimir_conversao(cod, conv, mes, inicio)
     return conv.pasta
 
@@ -2385,6 +2434,12 @@ def _imprimir_conversao(cod: str, conv, mes: int, inicio: float) -> None:
         f"({time.perf_counter() - inicio:.1f} s): {resumo}; {len(conv.masters)} Masters "
         f"DU/SA/DO do mês {mes:02d}"
     )
+    if conv.gd is not None:
+        gd = conv.gd
+        console.print(
+            f"  GD opcional: {gd.n_empreendimentos_exatos} exatos / {gd.potencia_exata_kw:.1f} kW; "
+            f"{gd.n_empreendimentos_agregados} agregados / {gd.potencia_agregada_kw:.1f} kW"
+        )
     for aviso in conv.avisos:
         console.print(f"[yellow]Aviso:[/] {aviso}")
 
