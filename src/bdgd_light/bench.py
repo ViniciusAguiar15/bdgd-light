@@ -596,6 +596,7 @@ class Rodada:
     erro: str | None
     resposta: str
     provider: str
+    familia: str | None
     modelo: str | None
     exemplos: bool
     compactado: bool
@@ -697,6 +698,7 @@ def resumir(rodadas: Sequence[Rodada], k: int) -> dict[str, dict[str, Any]]:
 @dataclass
 class Configuracao:
     provider: str = "fake"
+    familia: str | None = None
     modelo: str | None = None
     k: int = 5
     n: int | None = None
@@ -725,7 +727,10 @@ class Configuracao:
 
     @property
     def rotulo(self) -> str:
-        return self.provider + ("" if self.modo == "padrao" else f"-{self.modo}")
+        base = self.provider
+        if self.familia:
+            base += f"-{self.familia}"
+        return base + ("" if self.modo == "padrao" else f"-{self.modo}")
 
 
 class Benchmark:
@@ -865,6 +870,7 @@ class Benchmark:
             erro=erro,
             resposta=(execucao.resposta or "")[:RESPOSTA_MAX],
             provider=cfg.provider,
+            familia=cfg.familia,
             modelo=execucao.modelo or self.modelo,
             exemplos=cfg.exemplos,
             compactado=cfg.compactar,
@@ -901,6 +907,7 @@ class Benchmark:
             erro=erro,
             resposta="",
             provider=cfg.provider,
+            familia=cfg.familia,
             modelo=self.modelo,
             exemplos=cfg.exemplos,
             compactado=cfg.compactar,
@@ -964,13 +971,34 @@ def ler_csv(caminho: Path | str) -> list[Rodada]:
     with caminho.open(encoding="utf-8", newline="") as f:
         for linha in csv.DictReader(f):
             try:
-                saida.append(_rodada_de_csv(linha))
+                saida.append(_rodada_de_csv(linha, caminho))
             except (KeyError, ValueError, json.JSONDecodeError):
                 continue
     return saida
 
 
-def _rodada_de_csv(linha: Mapping[str, str]) -> Rodada:
+def _familia_no_arquivo(
+    caminho: Path, provider: str, *, exemplos: bool, compactado: bool
+) -> str | None:
+    stem = caminho.stem
+    if re.match(r"\d{4}-\d{2}-\d{2}-", stem):
+        stem = stem[11:]
+    prefixo = provider.lower()
+    nome = stem.lower()
+    if nome == prefixo:
+        return None
+    if nome.startswith(prefixo + "-"):
+        nome = nome[len(prefixo) + 1 :]
+    else:
+        return None
+    if not exemplos and nome.endswith("sem-exemplos"):
+        nome = nome[: -len("sem-exemplos")].removesuffix("-")
+    if not compactado and nome.endswith("sem-compactar"):
+        nome = nome[: -len("sem-compactar")].removesuffix("-")
+    return nome or None
+
+
+def _rodada_de_csv(linha: Mapping[str, str], caminho: Path | None = None) -> Rodada:
     def num(chave: str, tipo=float):
         v = linha.get(chave, "")
         return tipo(0) if v in ("", None) else tipo(float(v))
@@ -991,6 +1019,13 @@ def _rodada_de_csv(linha: Mapping[str, str]) -> Rodada:
             return json.loads(v)
         except json.JSONDecodeError:
             return v
+
+    provider = linha.get("provider", "?")
+    exemplos = bool(num("exemplos", int)) if linha.get("exemplos") not in ("", None) else True
+    compactado = bool(num("compactado", int)) if linha.get("compactado") not in ("", None) else True
+    familia = opcional("familia")
+    if familia is None and caminho is not None:
+        familia = _familia_no_arquivo(caminho, provider, exemplos=exemplos, compactado=compactado)
 
     return Rodada(
         tarefa=linha["tarefa"],
@@ -1022,12 +1057,11 @@ def _rodada_de_csv(linha: Mapping[str, str]) -> Rodada:
         recusas=num("recusas", int),
         erro=opcional("erro"),
         resposta=linha.get("resposta", ""),
-        provider=linha.get("provider", "?"),
+        provider=provider,
+        familia=familia,
         modelo=opcional("modelo"),
-        exemplos=bool(num("exemplos", int)) if linha.get("exemplos") not in ("", None) else True,
-        compactado=(
-            bool(num("compactado", int)) if linha.get("compactado") not in ("", None) else True
-        ),
+        exemplos=exemplos,
+        compactado=compactado,
         seed=None if linha.get("seed") in ("", None) else int(float(linha["seed"])),
         data=linha.get("data", ""),
     )
@@ -1050,6 +1084,8 @@ def _num(v: Any, casas: int = 1) -> str:
 
 def _rotulo(r: Rodada) -> str:
     partes = [r.provider]
+    if r.familia:
+        partes.append(r.familia)
     if not r.exemplos:
         partes.append("sem-exemplos")
     if not r.compactado:

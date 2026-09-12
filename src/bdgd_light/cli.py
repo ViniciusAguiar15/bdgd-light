@@ -1442,6 +1442,13 @@ def bench(
             "--provider", help="Perfil LLM: fake (operador roteirizado), openai, gemini, ollama."
         ),
     ] = "fake",
+    familia: Annotated[
+        str | None,
+        typer.Option(
+            "--familia",
+            help="Rótulo opcional da família do benchmark (ex.: hard-k5, fora-treino-k3).",
+        ),
+    ] = None,
     modelo: Annotated[
         str | None, typer.Option("--modelo", help="Modelo (sobrepõe o padrão do perfil).")
     ] = None,
@@ -1576,6 +1583,7 @@ def bench(
         return
     config = Configuracao(
         provider=provider,
+        familia=familia,
         modelo=modelo,
         k=k,
         n=n,

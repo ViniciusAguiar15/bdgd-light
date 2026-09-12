@@ -283,8 +283,8 @@ def test_custo_usd_por_preco_de_lista():
         tarefa="S01", nivel="simple", cluster="c", repeticao=1, acerto=True, obtido=1, esperado=1,
         sequencia=[], referencia=[], ordem=1.0, precisao=1.0, desnecessarias=0, rodadas=2,
         chars_ferramentas=0, segundos_llm=0.0, segundos_ferramentas=0.0, segundos_total=0.0,
-        replanejamentos=0, recusas=0, erro=None, resposta="", provider="gemini", exemplos=True,
-        compactado=True, seed=42, data="2026-09-11T00:00:00+00:00",
+        replanejamentos=0, recusas=0, erro=None, resposta="", provider="gemini", familia=None,
+        exemplos=True, compactado=True, seed=42, data="2026-09-11T00:00:00+00:00",
     )  # fmt: skip
     # Gemini: os tokens de raciocínio (total − prompt) contam como saída
     r = Rodada(**base, modelo="gemini-2.5-flash", tokens_prompt=1_000_000, tokens_completion=1_000,
@@ -367,6 +367,7 @@ def _rodada(tarefa, nivel, acerto, tokens=100, seq=None, provider="fake", **kw) 
         erro=None,
         resposta="1",
         provider=provider,
+        familia=None,
         modelo="m",
         exemplos=True,
         compactado=True,
@@ -441,7 +442,23 @@ def test_csv_ida_e_volta_relatorio_e_comparativo(tmp_path):
     assert nome_relatorio(Configuracao(provider="gemini", exemplos=False)).endswith(
         "-gemini-sem-exemplos"
     )
+    assert nome_relatorio(Configuracao(provider="openai", familia="fora-treino-k3")).endswith(
+        "-openai-fora-treino-k3"
+    )
     assert Configuracao(compactar=False, exemplos=False).rotulo == "fake-sem-exemplos-sem-compactar"
+    assert Configuracao(provider="openai", familia="hard-k5").rotulo == "openai-hard-k5"
+
+
+def test_carregar_comparativo_distingue_familias_pelo_nome_do_csv(tmp_path):
+    escrever_csv(
+        [_rodada("H01", "hard", True, provider="openai")], tmp_path / "2026-01-01-openai.csv"
+    )
+    escrever_csv(
+        [_rodada("H01", "hard", True, provider="openai")],
+        tmp_path / "2026-01-01-openai-hard-k5.csv",
+    )
+    comparativos = carregar_comparativo(tmp_path)
+    assert set(comparativos) == {"openai", "openai-hard-k5"}
 
 
 # -- execução no cluster de teste ------------------------------------------------------------------
