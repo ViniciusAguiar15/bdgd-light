@@ -227,3 +227,36 @@ title: "Diário — Modo noturno, rodada 6"
 - Como a regra desta rodada exigia follow-up sempre que a vencedora mudasse em algum caso, abri a
   issue **#110** propondo tornar o **horário do evento** uma premissa explícita do score, sem
   alterar o comportamento atual nesta #99.
+
+## 9. Issue #96 — sensibilidade de premissas (01:05)
+
+- Li a issue #96, o backlog canônico (`docs/backlog/34-sensibilidade-premissas.md`), o uso atual
+  de `loadmult`/`CRVCRG`/`FAS_CON` no conversor (`twin/gpkg2dss.py`), o score elétrico
+  (`twin/score.py`) e a ordenação/viabilidade de `restore_options` na sessão MCP antes de escrever
+  a varredura.
+- Implementei `src/bdgd_light/sensibilidade.py` e `scripts/sensibilidade.py` para materializar os
+  **6 casos reais** da rodada (cenários `tijuca_cabofrio_tronco`, `ipanema_9210`, `taquara_bocari`
+  + alimentadores `BRR38521`, `ALC683`, `PDG33010` escolhidos da #91 por terem opções viáveis e
+  cobrirem regiões distintas), gerar variantes `curva × nominal` e `FAS_CON cadastrado ×
+  rebalanceado` e avaliar `restore_options` com `loadmult` em **0,6/0,8/1,0/1,2/1,4**.
+- O rebalanceamento de `FAS_CON` ficou **conservador e offline**: só redistribui cargas BT
+  monofásicas quando o PAC já tem mais de uma fase disponível no modelo; PAC de dois fios fica
+  intocado. Isso mede sensibilidade sem mudar o comportamento do produto.
+- Adicionei `tests/test_sensibilidade.py` cobrindo seleção determinística dos 3 alimentadores
+  extras, rebalanceamento seguro, reescrita das cargas DSS, leitura das fases por barra e os
+  resumos honestos de ponto de virada/ausência de limiar único.
+- Rodei a varredura real e commitei os artefatos versionáveis: CSV completo em
+  `docs/bench/2026-09-12-sensibilidade-premissas.csv` (**120 combinações = 6 casos × 2 modelos de
+  carga × 2 modos de FAS_CON × 5 loadmults**) e síntese em `docs/sensibilidade.md`.
+- Resultado honesto da rodada:
+  - **robustos na faixa 0,6–1,4**: `ipanema_9210` (segue sem transferência), `ALC683` (`11121256`)
+    e `PDG33010` (`11009531`) nas premissas atuais;
+  - **sem limiar único nas premissas atuais**: `tijuca_cabofrio_tronco`
+    (`974020904` em 0,6–1,0, `746851189` em 1,2, sem transferência em 1,4),
+    `taquara_bocari` (`789941518` em 0,6, `11056672` em 0,8 e 1,2–1,4, `11053620` em 1,0) e
+    `BRR38521` (troca só em 0,8 para `470326292`, volta ao base `462279321` em 1,0–1,4);
+  - com **carga nominal**, a Tijuca já perde transferência viável em `loadmult 0,8`; em
+    `BRR38521`, a decisão ainda passa por `1004924862` e depois por **sem transferência**.
+- Como houve inversão real de decisão em parte dos casos, **abri a issue #112** para o follow-up
+  pedido pela #96: o console deve explicitar ao operador quando a recomendação depende das
+  premissas medidas, sem alterar a UI/comportamento nesta issue.
