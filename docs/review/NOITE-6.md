@@ -260,3 +260,82 @@ title: "Diário — Modo noturno, rodada 6"
 - Como houve inversão real de decisão em parte dos casos, **abri a issue #112** para o follow-up
   pedido pela #96: o console deve explicitar ao operador quando a recomendação depende das
   premissas medidas, sem alterar a UI/comportamento nesta issue.
+
+## 10. Issue #95 — paridade gpkg2dss × bdgd2opendss (01:24)
+
+- Li o backlog canônico (`docs/backlog/33-paridade-bdgd2opendss.md`), a issue #95 no GitHub, o
+  histórico anterior em `docs/spike-opendss.md` e o conversor atual
+  `src/bdgd_light/twin/gpkg2dss.py` antes de rodar a comparação.
+- Tentei instalar o oráculo pela rota do projeto com `uv sync --extra dev --extra twin`; nesta
+  máquina o comando **funcionou** e o `bdgd2opendss` ficou importável sem precisar mexer em
+  dependência fora do `uv`.
+- Implementei `src/bdgd_light/paridade_twin.py` e o runner `scripts/paridade_twin.py` para
+  reproduzir a comparação em lote: converter o mesmo CTMT pelos dois caminhos, resolver o fluxo
+  base `DU01`, comparar tensões MT por barra/fase, perdas totais, corrente no disjuntor de saída e
+  contagens ativas (`Line`/`Transformer`/`Load`/`Reactor`/`Vsource`), além de registrar diferenças
+  esperadas de empacotamento (`CodCondutor`, `CurvaCarga`, `GD_BT`).
+- A referência foi chamada pelo wrapper do próprio projeto
+  (`bdgd_light.twin.convert.converter()`), que logo após o `bdgd2opendss` aplica a correção
+  idempotente `corrigir_bancos_monofasicos()` já adotada aqui por causa dos bugs upstream
+  #35/#36; isso ficou escrito explicitamente no relatório para não vender a comparação como
+  “upstream bruto”.
+- Adicionei `tests/test_paridade_twin.py` cobrindo a contagem normalizada de definições DSS e a
+  renderização determinística do relatório Markdown.
+- Rodei a comparação real em **5 alimentadores**:
+  `TQR0007` (#91 / baseline histórico), `PDG33010`, `ALC683`, `BRR38521` (#96) e `TRS003`
+  (#98/#99), gravando os números versionados em `docs/dados/paridade-twin.csv` e a análise em
+  `docs/paridade-twin.md`.
+- Resultado honesto da rodada:
+  - os **5/5** casos convergiram nos dois conversores;
+  - o pior `|ΔV|` MT foi **4,292e-08 pu** (`TQR0007`), portanto **nenhum** alimentador chegou
+    perto do limiar de **1 %** da issue;
+  - o maior desvio de perdas foi **0,000014 kW** (`TQR0007`);
+  - o maior desvio de corrente no disjuntor foi **0,000002 A** (`TQR0007`);
+  - `Line`, `Transformer`, `Load`, `Reactor` e `Vsource` bateram exatamente nos cinco casos.
+- As divergências encontradas ficaram fora do circuito ativo e tiveram causa nomeada no relatório:
+  o `bdgd2opendss` escreve o catálogo completo de `CodCondutor`/`CurvaCarga` e o arquivo `GD_BT`,
+  enquanto o `gpkg2dss` grava só códigos/curvas usados no CTMT e mantém a GD fora do Master base
+  por padrão. Reportei isso explicitamente como divergência de **empacotamento**, não de modelagem
+  elétrica.
+- Mantive também, como insumo para comparação futura, os avisos reais do cadastro que podem pesar
+  mais em divergências futuras (`RAMLIG` muito longos e trafos com quase toda a BT monofásica
+  concentrada numa fase), sem maquiá-los.
+- Veredito escrito na issue: **há paridade operacional do fluxo base DU01 sem GD** na amostra real
+  desta rodada, mas ainda **não dá para estender automaticamente** essa confiança para o upstream
+  sem o patch local dos bancos monofásicos, para alimentadores com reguladores efetivos (`UNREMT`)
+  ou para cenários com GD ligada no Master.
+
+## Resumo final da rodada 6
+
+- **Issues fechadas com PRs nesta rodada**
+  1. **#100 → PR #101** — pedidos da revisão MANHA-5 no consolidado/bench.
+  2. **#91 → PR #103** — generalização do pipeline em alimentador nunca visto.
+  3. **#92 → PR #105** — benchmark do agente fora do treino.
+  4. **#93 → PR #106** — perfil de qualidade do cadastro BDGD Light 2025.
+  5. **#94 → PR #107** — atlas de interligações por alimentador/grafo de socorro.
+  6. **#97 → PR #108** — ingestão da MMGD ANEEL para a Light.
+  7. **#98 → PR #109** — GD opcional no gêmeo e diagnóstico de sobretensão/fluxo reverso.
+  8. **#99 → PR #111** — comparação da restauração com GD por horário/cenário.
+  9. **#96 → PR #113** — sensibilidade das premissas elétricas da restauração.
+  10. **#95 → PR desta tarefa** — paridade do `gpkg2dss` contra o `bdgd2opendss`.
+- **Issues de acompanhamento abertas de propósito ao longo da rodada**
+  - **#102** — separar no bench de generalização “fluxo convergiu” de “caso base eletricamente
+    plausível”, para não confundir robustez operacional com sanidade do modelo.
+  - **#104** — investigar por que o agente fora do treino em `SAT1960` reconhece o gabarito vazio,
+    mas encerra sem formalizar `propose_plan` sem chave.
+  - **#110** — tornar o horário do evento uma premissa explícita do score de restauração, mantendo
+    a GD fora do papel de fonte durante a falta.
+  - **#112** — explicitar no console quando a recomendação operacional é sensível às premissas do
+    gêmeo medidas na varredura da #96.
+- **Estado final esperado da fila ao mergear este último PR**
+  - `main` ficará atualizada com o fechamento da rodada 6;
+  - as issues **#91–#100** estarão todas fechadas;
+  - não ficará PR pendente da fila desta rodada;
+  - a issue **#90** continua só como duplicata pré-existente da rodada 5, sem ter sido tocada.
+- **Chaves de API**
+  - nenhuma pendência conhecida nesta rodada: `OPENAI_API_KEY` e `GEMINI_API_KEY` já estavam
+    presentes no ambiente desde o início documentado em `## 0. Ambiente`.
+- **Higiene do repositório**
+  - nenhum arquivo de `data/` foi commitado nesta rodada;
+  - os relatórios versionáveis ficaram em `docs/`/`docs/dados/` dentro dos respectivos PRs;
+  - nenhum documento ficou solto fora de um PR desta fila.
