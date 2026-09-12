@@ -88,3 +88,25 @@ title: "Diário — Modo noturno, rodada 6"
   sem formalizar `propose_plan` para a proposta **sem chave**.
 - Abri a follow-up **#104** para investigar esse sintoma específico sem alterar o resultado
   histórico da issue #92.
+
+## 4. Issue #93 — qualidade do cadastro BDGD Light 2025 (21:56)
+
+- Li o backlog canônico (`docs/backlog/31-qualidade-cadastro.md`), a issue #93 e as regras já
+  documentadas em `docs/bdgd-relacoes.md`, `docs/bdgd-light-2025.md`, `ingest/export.py`,
+  `ingest/parquet.py` e `recorte.py` antes de escrever o perfil de qualidade.
+- Implementei `src/bdgd_light/qualidade.py` e o runner `scripts/qualidade_bdgd.py` para gerar, de
+  modo determinístico, `docs/qualidade-bdgd.md` a partir de `data/parquet` com as 9 verificações
+  pedidas: `FAS_CON`, `RAMLIG`, `PN_CON`, `TIP_CND`×`SEGCON`, referências de `CTMT`, PACs
+  multi-alimentador, geometria inválida/vazia, bbox da concessão e `TLCD`.
+- Adicionei `tests/test_qualidade.py` com uma base sintética pequena em Parquet/GeoParquet cobrindo
+  as anomalias principais, a limitação real de `UCMT_tab` sem `UNI_TR_MT` e a equivalência entre o
+  Markdown escrito pelo script e o renderizador do módulo.
+- Rodei o script na base inteira da Light 2025 e commitei o relatório real sem digitar números à
+  mão. Principais achados honestos: `FAS_CON` monofásico em **5.466.508 / 11.807.122 (46,30 %)**;
+  `RAMLIG > 300 m` em **2.069 / 3.818.151 (0,05 %)** com p99 **81,83 m**; `PN_CON` a > 2 km em
+  **6.412 / 5.041.346 (0,13 %)**; `TIP_CND` sem `SEGCON`, `CTMT` ausente/inverso, PAC multi-CTMT,
+  geometria inválida/vazia e `TLCD` nulo/indefinido ficaram todos em **0**; bbox fora da concessão
+  apareceu em **164 / 3.872.877 (0,0042 %)**, concentrado em `CONJ`, `PONNOT`, `SSDAT` e um `SUB`.
+- Adaptação explicitada no relatório: a Light 2025 não oferece vínculo direto de `UCMT_tab` com
+  transformador de distribuição, então a checagem de 2 km ficou restrita a `UCBT_tab` e terminou
+  com uma pergunta pronta para a distribuidora sobre qual campo físico deve ser usado.
