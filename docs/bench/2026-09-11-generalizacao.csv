@@ -1,0 +1,211 @@
+ctmt,ordem_sorteio,seed,regiao,porte,n_trechos,etapa,status,duracao_s,motivo,resumo,n_ties,n_opcoes,score_viaveis,trecho_falta
+RCP33308,1,91,Tijuca,G,1066,recorte,sucesso,3.487,,"18684 feições em 25 camada(s); 2 CTMT(s): RCP33308, RCP9882",,,,
+RCP33308,1,91,Tijuca,G,1066,grafo,sucesso,0.142,,"1547 trechos, 66 chaves; 1 tie(s) ligadas a RCP33308",1,,,
+RCP33308,1,91,Tijuca,G,1066,gpkg2dss,sucesso,1.196,,master do cluster em Master_DU01_base.dss,,,,
+RCP33308,1,91,Tijuca,G,1066,fluxo_base,sucesso,1.028,,"Vmin 0.020 pu, perdas 489.2 kW",,,,
+RCP33308,1,91,Tijuca,G,1066,deteccao_ties,sucesso,0.0,,1 tie(s) ligadas a RCP33308,1,,,
+RCP33308,1,91,Tijuca,G,1066,injecao_falta,sucesso,0.0,,"trecho 12320339, religador 10924927",,,,12320339
+RCP33308,1,91,Tijuca,G,1066,restore_options,sucesso,0.562,,"1 opção(ões), 1 viável(is)",1,1,1,12320339
+SAT1960,2,91,Centro,P,65,recorte,sucesso,3.314,,"2139 feições em 25 camada(s); 2 CTMT(s): SAT1960, SAT9523",,,,
+SAT1960,2,91,Centro,P,65,grafo,sucesso,0.058,,"549 trechos, 139 chaves; 0 tie(s) ligadas a SAT1960",0,,,
+SAT1960,2,91,Centro,P,65,gpkg2dss,sucesso,0.208,,master do cluster em Master_DU01_base.dss,,,,
+SAT1960,2,91,Centro,P,65,fluxo_base,sucesso,0.075,,"Vmin 0.842 pu, perdas 20.0 kW",,,,
+SAT1960,2,91,Centro,P,65,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a SAT1960,0,,,
+SAT1960,2,91,Centro,P,65,injecao_falta,sucesso,0.0,,"trecho 12416163, religador 10925396",,,,12416163
+SAT1960,2,91,Centro,P,65,restore_options,sucesso,0.001,,"0 opção(ões), 0 viável(is)",0,0,0,12416163
+CBI24982,3,91,Méier,M,394,recorte,sucesso,5.308,,"42177 feições em 25 camada(s); 5 CTMT(s): CBI24982, CBI24896, CBI24963, CBI24970, TRG959",,,,
+CBI24982,3,91,Méier,M,394,grafo,sucesso,0.131,,"1443 trechos, 139 chaves; 5 tie(s) ligadas a CBI24982",5,,,
+CBI24982,3,91,Méier,M,394,gpkg2dss,sucesso,3.851,,master do cluster em Master_DU01_base.dss,,,,
+CBI24982,3,91,Méier,M,394,fluxo_base,sucesso,1.139,,"Vmin 0.025 pu, perdas 768.6 kW",,,,
+CBI24982,3,91,Méier,M,394,deteccao_ties,sucesso,0.0,,5 tie(s) ligadas a CBI24982,5,,,
+CBI24982,3,91,Méier,M,394,injecao_falta,sucesso,0.001,,"trecho 23718413, religador 1422423",,,,23718413
+CBI24982,3,91,Méier,M,394,restore_options,sucesso,0.003,,"0 opção(ões), 0 viável(is)",5,0,0,23718413
+AVD33625,4,91,Barra/Recreio,P,252,recorte,sucesso,4.053,,"15405 feições em 25 camada(s); 4 CTMT(s): AVD33625, AVD33340, AVD33357, GDN0011",,,,
+AVD33625,4,91,Barra/Recreio,P,252,grafo,sucesso,0.106,,"3353 trechos, 169 chaves; 5 tie(s) ligadas a AVD33625",5,,,
+AVD33625,4,91,Barra/Recreio,P,252,gpkg2dss,sucesso,1.098,,master do cluster em Master_DU01_base.dss,,,,
+AVD33625,4,91,Barra/Recreio,P,252,fluxo_base,sucesso,0.53,,"Vmin 0.025 pu, perdas 385.5 kW",,,,
+AVD33625,4,91,Barra/Recreio,P,252,deteccao_ties,sucesso,0.0,,5 tie(s) ligadas a AVD33625,5,,,
+AVD33625,4,91,Barra/Recreio,P,252,injecao_falta,sucesso,0.002,,"trecho 287306161, religador 10924157",,,,287306161
+AVD33625,4,91,Barra/Recreio,P,252,restore_options,sucesso,1.842,,"4 opção(ões), 4 viável(is)",5,4,4,287306161
+ITP00005,5,91,Barra/Recreio,M,380,recorte,sucesso,4.265,,"21437 feições em 25 camada(s); 2 CTMT(s): ITP00005, ITP33172",,,,
+ITP00005,5,91,Barra/Recreio,M,380,grafo,sucesso,0.09,,"1486 trechos, 99 chaves; 2 tie(s) ligadas a ITP00005",2,,,
+ITP00005,5,91,Barra/Recreio,M,380,gpkg2dss,sucesso,1.321,,master do cluster em Master_DU01_base.dss,,,,
+ITP00005,5,91,Barra/Recreio,M,380,fluxo_base,sucesso,0.569,,"Vmin 0.016 pu, perdas 730.8 kW",,,,
+ITP00005,5,91,Barra/Recreio,M,380,deteccao_ties,sucesso,0.0,,2 tie(s) ligadas a ITP00005,2,,,
+ITP00005,5,91,Barra/Recreio,M,380,injecao_falta,sucesso,0.001,,"trecho 92794304, religador 10924304",,,,92794304
+ITP00005,5,91,Barra/Recreio,M,380,restore_options,sucesso,1.236,,"2 opção(ões), 1 viável(is)",2,2,1,92794304
+PDG33010,6,91,Jacarepaguá/Taquara,M,464,recorte,sucesso,5.375,,"65669 feições em 25 camada(s); 8 CTMT(s): PDG33010, PDG219, PDG29015, PDG29724, PDG29731, PDG33499, PDG33662, TQR00005",,,,
+PDG33010,6,91,Jacarepaguá/Taquara,M,464,grafo,sucesso,0.164,,"4297 trechos, 399 chaves; 7 tie(s) ligadas a PDG33010",7,,,
+PDG33010,6,91,Jacarepaguá/Taquara,M,464,gpkg2dss,sucesso,9.693,,master do cluster em Master_DU01_base.dss,,,,
+PDG33010,6,91,Jacarepaguá/Taquara,M,464,fluxo_base,sucesso,2.474,,"Vmin 0.017 pu, perdas 2198.1 kW",,,,
+PDG33010,6,91,Jacarepaguá/Taquara,M,464,deteccao_ties,sucesso,0.0,,7 tie(s) ligadas a PDG33010,7,,,
+PDG33010,6,91,Jacarepaguá/Taquara,M,464,injecao_falta,sucesso,0.002,,"trecho 12311381, religador 10924689",,,,12311381
+PDG33010,6,91,Jacarepaguá/Taquara,M,464,restore_options,sucesso,17.708,,"7 opção(ões), 5 viável(is)",7,7,5,12311381
+BPD9350,7,91,Lapa/Glória,G,645,recorte,sucesso,5.394,,7192 feições em 25 camada(s); 1 CTMT(s): BPD9350,,,,
+BPD9350,7,91,Lapa/Glória,G,645,grafo,sucesso,0.055,,"645 trechos, 9 chaves; 0 tie(s) ligadas a BPD9350",0,,,
+BPD9350,7,91,Lapa/Glória,G,645,gpkg2dss,sucesso,0.351,,master do cluster em Master_DU01_base.dss,,,,
+BPD9350,7,91,Lapa/Glória,G,645,fluxo_base,sucesso,0.422,,"Vmin 0.737 pu, perdas 301.2 kW",,,,
+BPD9350,7,91,Lapa/Glória,G,645,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a BPD9350,0,,,
+BPD9350,7,91,Lapa/Glória,G,645,injecao_falta,sucesso,0.0,,"trecho 32750469, religador 10926642",,,,32750469
+BPD9350,7,91,Lapa/Glória,G,645,restore_options,sucesso,0.002,,"0 opção(ões), 0 viável(is)",0,0,0,32750469
+COP2700,8,91,Copacabana/Leme,M,401,recorte,sucesso,3.625,,4933 feições em 25 camada(s); 1 CTMT(s): COP2700,,,,
+COP2700,8,91,Copacabana/Leme,M,401,grafo,sucesso,0.064,,"401 trechos, 3 chaves; 0 tie(s) ligadas a COP2700",0,,,
+COP2700,8,91,Copacabana/Leme,M,401,gpkg2dss,sucesso,0.276,,master do cluster em Master_DU01_base.dss,,,,
+COP2700,8,91,Copacabana/Leme,M,401,fluxo_base,sucesso,0.184,,"Vmin 0.776 pu, perdas 136.2 kW",,,,
+COP2700,8,91,Copacabana/Leme,M,401,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a COP2700,0,,,
+COP2700,8,91,Copacabana/Leme,M,401,injecao_falta,sucesso,0.0,,"trecho 164481985, religador 156275881",,,,164481985
+COP2700,8,91,Copacabana/Leme,M,401,restore_options,sucesso,0.001,,"0 opção(ões), 0 viável(is)",0,0,0,164481985
+LBN00061,9,91,Ipanema/Leblon,P,279,recorte,sucesso,4.002,,870 feições em 25 camada(s); 1 CTMT(s): LBN00061,,,,
+LBN00061,9,91,Ipanema/Leblon,P,279,grafo,sucesso,0.064,,"279 trechos, 6 chaves; 0 tie(s) ligadas a LBN00061",0,,,
+LBN00061,9,91,Ipanema/Leblon,P,279,gpkg2dss,sucesso,0.11,,master do cluster em Master_DU01_base.dss,,,,
+LBN00061,9,91,Ipanema/Leblon,P,279,fluxo_base,sucesso,0.048,,"Vmin 1.007 pu, perdas 15.8 kW",,,,
+LBN00061,9,91,Ipanema/Leblon,P,279,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a LBN00061,0,,,
+LBN00061,9,91,Ipanema/Leblon,P,279,injecao_falta,sucesso,0.0,,"trecho 294042270, religador 283702119",,,,294042270
+LBN00061,9,91,Ipanema/Leblon,P,279,restore_options,sucesso,0.001,,"0 opção(ões), 0 viável(is)",0,0,0,294042270
+PTS9310,10,91,Ipanema/Leblon,G,870,recorte,sucesso,5.009,,"17725 feições em 25 camada(s); 2 CTMT(s): PTS9310, PTS0001",,,,
+PTS9310,10,91,Ipanema/Leblon,G,870,grafo,sucesso,0.109,,"1196 trechos, 72 chaves; 0 tie(s) ligadas a PTS9310",0,,,
+PTS9310,10,91,Ipanema/Leblon,G,870,gpkg2dss,sucesso,1.052,,master do cluster em Master_DU01_base.dss,,,,
+PTS9310,10,91,Ipanema/Leblon,G,870,fluxo_base,sucesso,0.681,,"Vmin 0.512 pu, perdas 874.0 kW",,,,
+PTS9310,10,91,Ipanema/Leblon,G,870,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a PTS9310,0,,,
+PTS9310,10,91,Ipanema/Leblon,G,870,injecao_falta,sucesso,0.0,,"trecho 12827915, religador 10934408",,,,12827915
+PTS9310,10,91,Ipanema/Leblon,G,870,restore_options,sucesso,0.003,,"0 opção(ões), 0 viável(is)",0,0,0,12827915
+FCN9735,11,91,Centro,M,404,recorte,sucesso,3.969,,3270 feições em 25 camada(s); 1 CTMT(s): FCN9735,,,,
+FCN9735,11,91,Centro,M,404,grafo,sucesso,0.039,,"404 trechos, 5 chaves; 0 tie(s) ligadas a FCN9735",0,,,
+FCN9735,11,91,Centro,M,404,gpkg2dss,sucesso,0.158,,master do cluster em Master_DU01_base.dss,,,,
+FCN9735,11,91,Centro,M,404,fluxo_base,sucesso,0.17,,"Vmin 0.023 pu, perdas 100.1 kW",,,,
+FCN9735,11,91,Centro,M,404,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a FCN9735,0,,,
+FCN9735,11,91,Centro,M,404,injecao_falta,sucesso,0.0,,"trecho 12747698, religador 10933778",,,,12747698
+FCN9735,11,91,Centro,M,404,restore_options,sucesso,0.001,,"0 opção(ões), 0 viável(is)",0,0,0,12747698
+SAT9793,12,91,Centro,M,483,recorte,sucesso,3.847,,"3568 feições em 25 camada(s); 2 CTMT(s): SAT9793, SAT9523",,,,
+SAT9793,12,91,Centro,M,483,grafo,sucesso,0.07,,"967 trechos, 147 chaves; 0 tie(s) ligadas a SAT9793",0,,,
+SAT9793,12,91,Centro,M,483,gpkg2dss,sucesso,0.288,,master do cluster em Master_DU01_base.dss,,,,
+SAT9793,12,91,Centro,M,483,fluxo_base,sucesso,0.072,,"Vmin 0.026 pu, perdas 64.5 kW",,,,
+SAT9793,12,91,Centro,M,483,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a SAT9793,0,,,
+SAT9793,12,91,Centro,M,483,injecao_falta,sucesso,0.0,,"trecho 12415197, religador 10925074",,,,12415197
+SAT9793,12,91,Centro,M,483,restore_options,sucesso,0.003,,"0 opção(ões), 0 viável(is)",0,0,0,12415197
+ALC683,13,91,Tijuca,P,148,recorte,sucesso,4.625,,"24251 feições em 25 camada(s); 5 CTMT(s): ALC683, ALC718, ALC740, ALC868, ALC9946",,,,
+ALC683,13,91,Tijuca,P,148,grafo,sucesso,0.1,,"1515 trechos, 171 chaves; 7 tie(s) ligadas a ALC683",7,,,
+ALC683,13,91,Tijuca,P,148,gpkg2dss,sucesso,2.583,,master do cluster em Master_DU01_base.dss,,,,
+ALC683,13,91,Tijuca,P,148,fluxo_base,sucesso,0.774,,"Vmin 0.008 pu, perdas 689.4 kW",,,,
+ALC683,13,91,Tijuca,P,148,deteccao_ties,sucesso,0.0,,7 tie(s) ligadas a ALC683,7,,,
+ALC683,13,91,Tijuca,P,148,injecao_falta,sucesso,0.001,,"trecho 12435787, religador 10927440",,,,12435787
+ALC683,13,91,Tijuca,P,148,restore_options,sucesso,5.524,,"6 opção(ões), 6 viável(is)",7,6,6,12435787
+SMT30735,14,91,Botafogo/Humaitá,P,159,recorte,sucesso,3.421,,"5084 feições em 25 camada(s); 2 CTMT(s): SMT30735, SMT0001",,,,
+SMT30735,14,91,Botafogo/Humaitá,P,159,grafo,sucesso,0.067,,"650 trechos, 44 chaves; 0 tie(s) ligadas a SMT30735",0,,,
+SMT30735,14,91,Botafogo/Humaitá,P,159,gpkg2dss,sucesso,0.469,,master do cluster em Master_DU01_base.dss,,,,
+SMT30735,14,91,Botafogo/Humaitá,P,159,fluxo_base,sucesso,0.252,,"Vmin 0.911 pu, perdas 71.8 kW",,,,
+SMT30735,14,91,Botafogo/Humaitá,P,159,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a SMT30735,0,,,
+SMT30735,14,91,Botafogo/Humaitá,P,159,injecao_falta,sucesso,0.0,,"trecho 12509782, religador 10924556",,,,12509782
+SMT30735,14,91,Botafogo/Humaitá,P,159,restore_options,sucesso,0.002,,"0 opção(ões), 0 viável(is)",0,0,0,12509782
+PDD33096,15,91,Méier,P,193,recorte,sucesso,2.208,,380 feições em 25 camada(s); 1 CTMT(s): PDD33096,,,,
+PDD33096,15,91,Méier,P,193,grafo,sucesso,0.026,,"193 trechos, 7 chaves; 0 tie(s) ligadas a PDD33096",0,,,
+PDD33096,15,91,Méier,P,193,gpkg2dss,sucesso,0.027,,master do cluster em Master_DU01_base.dss,,,,
+PDD33096,15,91,Méier,P,193,fluxo_base,sucesso,0.014,,"Vmin 1.045 pu, perdas 0.0 kW",,,,
+PDD33096,15,91,Méier,P,193,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a PDD33096,0,,,
+PDD33096,15,91,Méier,P,193,injecao_falta,sucesso,0.0,,"trecho 289525605, religador 1423235",,,,289525605
+PDD33096,15,91,Méier,P,193,restore_options,sucesso,0.001,,"0 opção(ões), 0 viável(is)",0,0,0,289525605
+SAT1246,16,91,Centro,P,63,recorte,sucesso,4.175,,"2129 feições em 25 camada(s); 2 CTMT(s): SAT1246, SAT9523",,,,
+SAT1246,16,91,Centro,P,63,grafo,sucesso,0.066,,"547 trechos, 139 chaves; 0 tie(s) ligadas a SAT1246",0,,,
+SAT1246,16,91,Centro,P,63,gpkg2dss,sucesso,0.216,,master do cluster em Master_DU01_base.dss,,,,
+SAT1246,16,91,Centro,P,63,fluxo_base,sucesso,0.04,,"Vmin 0.842 pu, perdas 19.7 kW",,,,
+SAT1246,16,91,Centro,P,63,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a SAT1246,0,,,
+SAT1246,16,91,Centro,P,63,injecao_falta,sucesso,0.0,,"trecho 12428131, religador 10926229",,,,12428131
+SAT1246,16,91,Centro,P,63,restore_options,sucesso,0.001,,"0 opção(ões), 0 viável(is)",0,0,0,12428131
+BRR37090,17,91,Barra/Recreio,G,554,recorte,sucesso,3.037,,1790 feições em 25 camada(s); 1 CTMT(s): BRR37090,,,,
+BRR37090,17,91,Barra/Recreio,G,554,grafo,sucesso,0.053,,"554 trechos, 11 chaves; 0 tie(s) ligadas a BRR37090",0,,,
+BRR37090,17,91,Barra/Recreio,G,554,gpkg2dss,sucesso,0.138,,master do cluster em Master_DU01_base.dss,,,,
+BRR37090,17,91,Barra/Recreio,G,554,fluxo_base,sucesso,0.045,,"Vmin 0.039 pu, perdas 55.3 kW",,,,
+BRR37090,17,91,Barra/Recreio,G,554,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a BRR37090,0,,,
+BRR37090,17,91,Barra/Recreio,G,554,injecao_falta,sucesso,0.0,,"trecho 437073390, religador 345835841",,,,437073390
+BRR37090,17,91,Barra/Recreio,G,554,restore_options,sucesso,0.002,,"0 opção(ões), 0 viável(is)",0,0,0,437073390
+HMT0001,18,91,Botafogo/Humaitá,G,743,recorte,sucesso,4.895,,"16036 feições em 25 camada(s); 4 CTMT(s): HMT0001, BFG1250, HMT3463A, HMT3941",,,,
+HMT0001,18,91,Botafogo/Humaitá,G,743,grafo,sucesso,0.152,,"3171 trechos, 59 chaves; 0 tie(s) ligadas a HMT0001",0,,,
+HMT0001,18,91,Botafogo/Humaitá,G,743,gpkg2dss,sucesso,1.504,,master do cluster em Master_DU01_base.dss,,,,
+HMT0001,18,91,Botafogo/Humaitá,G,743,fluxo_base,sucesso,0.525,,"Vmin 0.035 pu, perdas 357.3 kW",,,,
+HMT0001,18,91,Botafogo/Humaitá,G,743,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a HMT0001,0,,,
+HMT0001,18,91,Botafogo/Humaitá,G,743,injecao_falta,sucesso,0.001,,"trecho 12446593, religador 10933918",,,,12446593
+HMT0001,18,91,Botafogo/Humaitá,G,743,restore_options,sucesso,0.008,,"0 opção(ões), 0 viável(is)",0,0,0,12446593
+PTS9240,19,91,Ipanema/Leblon,G,744,recorte,sucesso,3.982,,"11947 feições em 25 camada(s); 2 CTMT(s): PTS9240, PTS0001",,,,
+PTS9240,19,91,Ipanema/Leblon,G,744,grafo,sucesso,0.088,,"1070 trechos, 72 chaves; 0 tie(s) ligadas a PTS9240",0,,,
+PTS9240,19,91,Ipanema/Leblon,G,744,gpkg2dss,sucesso,0.79,,master do cluster em Master_DU01_base.dss,,,,
+PTS9240,19,91,Ipanema/Leblon,G,744,fluxo_base,sucesso,0.412,,"Vmin 0.560 pu, perdas 677.2 kW",,,,
+PTS9240,19,91,Ipanema/Leblon,G,744,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a PTS9240,0,,,
+PTS9240,19,91,Ipanema/Leblon,G,744,injecao_falta,sucesso,0.0,,"trecho 12827885, religador 10934317",,,,12827885
+PTS9240,19,91,Ipanema/Leblon,G,744,restore_options,sucesso,0.004,,"0 opção(ões), 0 viável(is)",0,0,0,12827885
+CMT1,20,91,Centro,M,386,recorte,sucesso,3.02,,"2345 feições em 25 camada(s); 5 CTMT(s): CMT1, CMT210, CMT322, CMT327, CMT353",,,,
+CMT1,20,91,Centro,M,386,grafo,sucesso,0.06,,"1701 trechos, 40 chaves; 4 tie(s) ligadas a CMT1",4,,,
+CMT1,20,91,Centro,M,386,gpkg2dss,sucesso,0.229,,master do cluster em Master_DU01_base.dss,,,,
+CMT1,20,91,Centro,M,386,fluxo_base,sucesso,0.079,,"Vmin 1.045 pu, perdas 0.2 kW",,,,
+CMT1,20,91,Centro,M,386,deteccao_ties,sucesso,0.0,,4 tie(s) ligadas a CMT1,4,,,
+CMT1,20,91,Centro,M,386,injecao_falta,sucesso,0.001,,"trecho 143861947, religador 160253258",,,,143861947
+CMT1,20,91,Centro,M,386,restore_options,sucesso,0.003,,"0 opção(ões), 0 viável(is)",4,0,0,143861947
+BPD24726,21,91,Flamengo/Catete,M,385,recorte,sucesso,3.84,,"23440 feições em 25 camada(s); 3 CTMT(s): BPD24726, BPD24650, BPD34707",,,,
+BPD24726,21,91,Flamengo/Catete,M,385,grafo,sucesso,0.095,,"2253 trechos, 150 chaves; 1 tie(s) ligadas a BPD24726",1,,,
+BPD24726,21,91,Flamengo/Catete,M,385,gpkg2dss,sucesso,1.953,,master do cluster em Master_DU01_base.dss,,,,
+BPD24726,21,91,Flamengo/Catete,M,385,fluxo_base,sucesso,0.814,,"Vmin 0.030 pu, perdas 689.4 kW",,,,
+BPD24726,21,91,Flamengo/Catete,M,385,deteccao_ties,sucesso,0.0,,1 tie(s) ligadas a BPD24726,1,,,
+BPD24726,21,91,Flamengo/Catete,M,385,injecao_falta,sucesso,0.002,,"trecho 12434689, religador 10926950",,,,12434689
+BPD24726,21,91,Flamengo/Catete,M,385,restore_options,sucesso,0.008,,"0 opção(ões), 0 viável(is)",1,0,0,12434689
+BRR38521,22,91,Barra/Recreio,G,643,recorte,sucesso,7.023,,"147609 feições em 25 camada(s); 6 CTMT(s): BRR38521, BAR000, BAR29407, BAR3176, PDG0006, PDG33647",,,,
+BRR38521,22,91,Barra/Recreio,G,643,grafo,sucesso,0.196,,"3422 trechos, 313 chaves; 15 tie(s) ligadas a BRR38521",15,,,
+BRR38521,22,91,Barra/Recreio,G,643,gpkg2dss,sucesso,13.324,,master do cluster em Master_DU01_base.dss,,,,
+BRR38521,22,91,Barra/Recreio,G,643,fluxo_base,sucesso,3.186,,"Vmin 0.492 pu, perdas 950.4 kW",,,,
+BRR38521,22,91,Barra/Recreio,G,643,deteccao_ties,sucesso,0.0,,15 tie(s) ligadas a BRR38521,15,,,
+BRR38521,22,91,Barra/Recreio,G,643,injecao_falta,sucesso,0.001,,"trecho 655895678, religador 345836180",,,,655895678
+BRR38521,22,91,Barra/Recreio,G,643,restore_options,sucesso,61.046,,"15 opção(ões), 15 viável(is)",15,15,15,655895678
+SLZ30050,23,91,Centro,P,65,recorte,sucesso,2.376,,109 feições em 25 camada(s); 1 CTMT(s): SLZ30050,,,,
+SLZ30050,23,91,Centro,P,65,grafo,sucesso,0.02,,"65 trechos, 1 chaves; 0 tie(s) ligadas a SLZ30050",0,,,
+SLZ30050,23,91,Centro,P,65,gpkg2dss,sucesso,0.022,,master do cluster em Master_DU01_base.dss,,,,
+SLZ30050,23,91,Centro,P,65,fluxo_base,sucesso,0.265,,"Vmin 1.045 pu, perdas -0.0 kW",,,,
+SLZ30050,23,91,Centro,P,65,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a SLZ30050,0,,,
+SLZ30050,23,91,Centro,P,65,injecao_falta,sucesso,0.0,,"trecho 12442243, religador 10933120",,,,12442243
+SLZ30050,23,91,Centro,P,65,restore_options,sucesso,0.0,,"0 opção(ões), 0 viável(is)",0,0,0,12442243
+SAT4908,24,91,Centro,P,59,recorte,sucesso,3.89,,"2126 feições em 25 camada(s); 2 CTMT(s): SAT4908, SAT9523",,,,
+SAT4908,24,91,Centro,P,59,grafo,sucesso,0.064,,"543 trechos, 140 chaves; 0 tie(s) ligadas a SAT4908",0,,,
+SAT4908,24,91,Centro,P,59,gpkg2dss,sucesso,0.259,,master do cluster em Master_DU01_base.dss,,,,
+SAT4908,24,91,Centro,P,59,fluxo_base,sucesso,0.058,,"Vmin 0.842 pu, perdas 21.5 kW",,,,
+SAT4908,24,91,Centro,P,59,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a SAT4908,0,,,
+SAT4908,24,91,Centro,P,59,injecao_falta,sucesso,0.0,,"trecho 12415497, religador 10925130",,,,12415497
+SAT4908,24,91,Centro,P,59,restore_options,sucesso,0.002,,"0 opção(ões), 0 viável(is)",0,0,0,12415497
+MKZ9030,25,91,Centro,M,436,recorte,sucesso,3.962,,"5442 feições em 25 camada(s); 2 CTMT(s): MKZ9030, MKZ9280",,,,
+MKZ9030,25,91,Centro,M,436,grafo,sucesso,0.058,,"946 trechos, 29 chaves; 0 tie(s) ligadas a MKZ9030",0,,,
+MKZ9030,25,91,Centro,M,436,gpkg2dss,sucesso,0.261,,master do cluster em Master_DU01_base.dss,,,,
+MKZ9030,25,91,Centro,M,436,fluxo_base,sucesso,0.179,,"Vmin 0.638 pu, perdas 175.8 kW",,,,
+MKZ9030,25,91,Centro,M,436,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a MKZ9030,0,,,
+MKZ9030,25,91,Centro,M,436,injecao_falta,sucesso,0.0,,"trecho 12444559, religador 10933463",,,,12444559
+MKZ9030,25,91,Centro,M,436,restore_options,sucesso,0.003,,"0 opção(ões), 0 viável(is)",0,0,0,12444559
+SAT9358,26,91,Centro,G,509,recorte,sucesso,7.584,,"4579 feições em 25 camada(s); 2 CTMT(s): SAT9358, SAT9523",,,,
+SAT9358,26,91,Centro,G,509,grafo,sucesso,0.07,,"993 trechos, 150 chaves; 0 tie(s) ligadas a SAT9358",0,,,
+SAT9358,26,91,Centro,G,509,gpkg2dss,sucesso,0.338,,master do cluster em Master_DU01_base.dss,,,,
+SAT9358,26,91,Centro,G,509,fluxo_base,sucesso,0.214,,"Vmin 0.012 pu, perdas 56.6 kW",,,,
+SAT9358,26,91,Centro,G,509,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a SAT9358,0,,,
+SAT9358,26,91,Centro,G,509,injecao_falta,sucesso,0.0,,"trecho 12415587, religador 10925151",,,,12415587
+SAT9358,26,91,Centro,G,509,restore_options,sucesso,0.004,,"0 opção(ões), 0 viável(is)",0,0,0,12415587
+AVD0001,27,91,Barra/Recreio,G,2557,recorte,sucesso,5.132,,"37710 feições em 25 camada(s); 5 CTMT(s): AVD0001, AVD30048, AVD30081, AVD33340, ITP0003",,,,
+AVD0001,27,91,Barra/Recreio,G,2557,grafo,sucesso,0.189,,"7194 trechos, 320 chaves; 11 tie(s) ligadas a AVD0001",11,,,
+AVD0001,27,91,Barra/Recreio,G,2557,gpkg2dss,sucesso,2.952,,master do cluster em Master_DU01_base.dss,,,,
+AVD0001,27,91,Barra/Recreio,G,2557,fluxo_base,sucesso,1.261,,"Vmin 0.048 pu, perdas 1178.0 kW",,,,
+AVD0001,27,91,Barra/Recreio,G,2557,deteccao_ties,sucesso,0.0,,11 tie(s) ligadas a AVD0001,11,,,
+AVD0001,27,91,Barra/Recreio,G,2557,injecao_falta,sucesso,0.003,,"trecho 12287101, religador 10924059",,,,12287101
+AVD0001,27,91,Barra/Recreio,G,2557,restore_options,sucesso,9.585,,"7 opção(ões), 7 viável(is)",11,7,7,12287101
+TQR0007,28,91,Jacarepaguá/Taquara,G,675,recorte,sucesso,5.422,,"53782 feições em 25 camada(s); 4 CTMT(s): TQR0007, TQR33830, TQR33859, TQR33862",,,,
+TQR0007,28,91,Jacarepaguá/Taquara,G,675,grafo,sucesso,0.184,,"2442 trechos, 235 chaves; 13 tie(s) ligadas a TQR0007",13,,,
+TQR0007,28,91,Jacarepaguá/Taquara,G,675,gpkg2dss,sucesso,4.074,,master do cluster em Master_DU01_base.dss,,,,
+TQR0007,28,91,Jacarepaguá/Taquara,G,675,fluxo_base,sucesso,1.703,,"Vmin 0.369 pu, perdas 844.5 kW",,,,
+TQR0007,28,91,Jacarepaguá/Taquara,G,675,deteccao_ties,sucesso,0.0,,13 tie(s) ligadas a TQR0007,13,,,
+TQR0007,28,91,Jacarepaguá/Taquara,G,675,injecao_falta,sucesso,0.001,,"trecho 310743928, religador 358368825",,,,310743928
+TQR0007,28,91,Jacarepaguá/Taquara,G,675,restore_options,sucesso,0.006,,"0 opção(ões), 0 viável(is)",13,0,0,310743928
+BFG24599,29,91,Botafogo/Humaitá,M,417,recorte,sucesso,3.689,,"5020 feições em 25 camada(s); 2 CTMT(s): BFG24599, BFG29289",,,,
+BFG24599,29,91,Botafogo/Humaitá,M,417,grafo,sucesso,0.072,,"949 trechos, 46 chaves; 1 tie(s) ligadas a BFG24599",1,,,
+BFG24599,29,91,Botafogo/Humaitá,M,417,gpkg2dss,sucesso,0.423,,master do cluster em Master_DU01_base.dss,,,,
+BFG24599,29,91,Botafogo/Humaitá,M,417,fluxo_base,sucesso,0.269,,"Vmin 0.569 pu, perdas 139.6 kW",,,,
+BFG24599,29,91,Botafogo/Humaitá,M,417,deteccao_ties,sucesso,0.0,,1 tie(s) ligadas a BFG24599,1,,,
+BFG24599,29,91,Botafogo/Humaitá,M,417,injecao_falta,sucesso,0.001,,"trecho 12269011, religador 10918547",,,,12269011
+BFG24599,29,91,Botafogo/Humaitá,M,417,restore_options,sucesso,0.002,,"0 opção(ões), 0 viável(is)",1,0,0,12269011
+PTS9775,30,91,Ipanema/Leblon,M,480,recorte,sucesso,3.233,,2463 feições em 25 camada(s); 1 CTMT(s): PTS9775,,,,
+PTS9775,30,91,Ipanema/Leblon,M,480,grafo,sucesso,0.043,,"480 trechos, 7 chaves; 0 tie(s) ligadas a PTS9775",0,,,
+PTS9775,30,91,Ipanema/Leblon,M,480,gpkg2dss,sucesso,0.141,,master do cluster em Master_DU01_base.dss,,,,
+PTS9775,30,91,Ipanema/Leblon,M,480,fluxo_base,sucesso,0.101,,"Vmin 0.948 pu, perdas 62.4 kW",,,,
+PTS9775,30,91,Ipanema/Leblon,M,480,deteccao_ties,sucesso,0.0,,0 tie(s) ligadas a PTS9775,0,,,
+PTS9775,30,91,Ipanema/Leblon,M,480,injecao_falta,sucesso,0.0,,"trecho 12491984, religador 10933715",,,,12491984
+PTS9775,30,91,Ipanema/Leblon,M,480,restore_options,sucesso,0.004,,"0 opção(ões), 0 viável(is)",0,0,0,12491984
