@@ -31,6 +31,8 @@ def _escrever_csv(caminho: Path, linhas: list[dict[str, object]]) -> None:
         "modelo",
         "exemplos",
         "compactado",
+        "sequencia",
+        "referencia",
         "ordem",
         "precisao",
         "desnecessarias",
@@ -65,6 +67,8 @@ def test_gerar_resultados_e_deterministico_com_csv_sintetico(tmp_path):
                 "modelo": "gpt-4.1-mini-2025-04-14",
                 "exemplos": 1,
                 "compactado": 1,
+                "sequencia": '["get_topology"]',
+                "referencia": '["get_topology"]',
                 "ordem": 1.0,
                 "precisao": 1.0,
                 "desnecessarias": 0,
@@ -86,6 +90,10 @@ def test_gerar_resultados_e_deterministico_com_csv_sintetico(tmp_path):
                 "modelo": "gpt-4.1-mini-2025-04-14",
                 "exemplos": 1,
                 "compactado": 1,
+                "sequencia": '["locate_fault", "get_topology", "restore_options", '
+                '"propose_plan", "downstream_customers", "get_switch_state"]',
+                "referencia": '["locate_fault", "isolate_fault", "restore_options", '
+                '"propose_plan"]',
                 "ordem": 0.75,
                 "precisao": 0.5,
                 "desnecessarias": 2,
@@ -112,6 +120,8 @@ def test_gerar_resultados_e_deterministico_com_csv_sintetico(tmp_path):
                 "modelo": "gpt-4.1-mini-2025-04-14",
                 "exemplos": 0,
                 "compactado": 1,
+                "sequencia": '["get_topology"]',
+                "referencia": '["get_topology"]',
                 "ordem": 1.0,
                 "precisao": 1.0,
                 "desnecessarias": 0,
@@ -133,6 +143,9 @@ def test_gerar_resultados_e_deterministico_com_csv_sintetico(tmp_path):
                 "modelo": "gpt-4.1-mini-2025-04-14",
                 "exemplos": 0,
                 "compactado": 1,
+                "sequencia": '["locate_fault", "isolate_fault", "restore_options", "propose_plan"]',
+                "referencia": '["locate_fault", "isolate_fault", "restore_options", '
+                '"propose_plan"]',
                 "ordem": 1.0,
                 "precisao": 1.0,
                 "desnecessarias": 0,
@@ -159,6 +172,8 @@ def test_gerar_resultados_e_deterministico_com_csv_sintetico(tmp_path):
                 "modelo": "gpt-4.1-mini-2025-04-14",
                 "exemplos": 1,
                 "compactado": 0,
+                "sequencia": '["get_topology"]',
+                "referencia": '["get_topology"]',
                 "ordem": 1.0,
                 "precisao": 1.0,
                 "desnecessarias": 0,
@@ -261,10 +276,13 @@ def test_gerar_resultados_e_deterministico_com_csv_sintetico(tmp_path):
     assert "Data-base das fontes versionadas mais recentes: **2026-01-02**." in primeiro
     assert "docs/bench/2026-01-02-openai.csv (2026-01-02)" in primeiro
     assert (
-        "| openai | gpt-4.1-mini-2025-04-14 | 2 | 2 | 1 | 100 % | — | 0 % | 50 % | 88 % |"
-        in primeiro
+        "| openai | com exemplos, compactado ★ padrão | gpt-4.1-mini-2025-04-14 | 2 | 2 | 1 | "
+        "100 % | — | 0 % | 50 % | 87,5 % (4/5) | 75,0 % (4/7) |" in primeiro
     )
     assert (
-        "| openai | 1/2 (50 %) | 1 | 0,50 | docs/bench/2026-01-02-openai.csv (2026-01-02) |"
-        in primeiro
+        "| openai | com exemplos, compactado ★ padrão | 1/2 (50 %) | 1 | 0,50 | "
+        "docs/bench/2026-01-02-openai.csv (2026-01-02) |" in primeiro
     )
+    assert "| openai | sem exemplos, compactado |" in primeiro
+    assert "| openai | com exemplos, sem compactação |" in primeiro
+    assert "Nas colunas **ordem** e **precisão**" in primeiro

@@ -48,6 +48,9 @@ class RodadaCSV:
     segundos_total: float
     recusas: int
     data: str
+    passos_sequencia: int
+    passos_referencia: int
+    passos_comuns: int
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,7 @@ class ResumoCSV:
     arquivo: str
     data_arquivo: str
     familia: str
+    chave_familia: str
     provider: str
     exemplos: bool
     compactado: bool
@@ -75,6 +79,19 @@ class ResumoCSV:
         if not self.compactado:
             partes.append("sem-compactar")
         return "-".join(partes)
+
+    @property
+    def padrao(self) -> bool:
+        return self.exemplos and self.compactado
+
+    @property
+    def modo(self) -> str:
+        partes = [
+            "com exemplos" if self.exemplos else "sem exemplos",
+            "compactado" if self.compactado else "sem compactação",
+        ]
+        rotulo = ", ".join(partes)
+        return f"{rotulo} ★ padrão" if self.padrao else rotulo
 
     @property
     def fonte(self) -> str:
@@ -154,8 +171,12 @@ def _lcs(a: Sequence[str], b: Sequence[str]) -> int:
     return atual[-1]
 
 
+def _nome_benchmark(stem: str) -> str:
+    return stem[11:] if re.match(r"\d{4}-\d{2}-\d{2}-", stem) else stem
+
+
 def _nome_familia(stem: str) -> str:
-    nome = stem[11:] if re.match(r"\d{4}-\d{2}-\d{2}-", stem) else stem
+    nome = _nome_benchmark(stem)
     for sufixo in ("-sem-exemplos", "-sem-compactar"):
         if nome.endswith(sufixo):
             nome = nome[: -len(sufixo)]
@@ -175,6 +196,7 @@ def ler_csv_benchmark(caminho: Path) -> list[RodadaCSV]:
         for linha in csv.DictReader(arquivo):
             sequencia = _json_lista(linha.get("sequencia"))
             referencia = _json_lista(linha.get("referencia"))
+            passos_comuns = _lcs(sequencia, referencia)
             desnecessarias = linha.get("desnecessarias")
             linhas.append(
                 RodadaCSV(
@@ -191,7 +213,7 @@ def ler_csv_benchmark(caminho: Path) -> list[RodadaCSV]:
                     desnecessarias=(
                         _para_int(desnecessarias)
                         if desnecessarias not in (None, "")
-                        else max(len(sequencia) - _lcs(sequencia, referencia), 0)
+                        else max(len(sequencia) - passos_comuns, 0)
                     ),
                     tokens_prompt=_para_int(linha.get("tokens_prompt")),
                     tokens_completion=_para_int(linha.get("tokens_completion")),
@@ -201,6 +223,9 @@ def ler_csv_benchmark(caminho: Path) -> list[RodadaCSV]:
                     segundos_total=_para_float(linha.get("segundos_total")),
                     recusas=_para_int(linha.get("recusas")),
                     data=(linha.get("data") or "")[:10],
+                    passos_sequencia=len(sequencia),
+                    passos_referencia=len(referencia),
+                    passos_comuns=passos_comuns,
                 )
             )
     return linhas
@@ -271,6 +296,10 @@ def resumir_csv(caminho: Path) -> ResumoCSV:
             f"pass@{k_efetivo}": round(passk, 4),
             "ordem": round(sum(r.ordem for r in grupo) / execucoes, 4),
             "precisao": round(sum(r.precisao for r in grupo) / execucoes, 4),
+            "ordem_passos": sum(r.passos_comuns for r in grupo),
+            "ordem_total": sum(r.passos_referencia for r in grupo),
+            "precisao_passos": sum(r.passos_comuns for r in grupo),
+            "precisao_total": sum(r.passos_sequencia for r in grupo),
             "desnecessarias": round(sum(r.desnecessarias for r in grupo) / execucoes, 2),
             "tokens": round(sum(r.tokens_total for r in grupo) / execucoes, 1),
             "usd": (
@@ -291,6 +320,7 @@ def resumir_csv(caminho: Path) -> ResumoCSV:
         arquivo=caminho.name,
         data_arquivo=datas[-1] if datas else caminho.name[:10],
         familia=_nome_familia(caminho.stem),
+        chave_familia=_nome_benchmark(caminho.stem),
         provider=rodadas[0].provider,
         exemplos=rodadas[0].exemplos,
         compactado=rodadas[0].compactado,
@@ -311,31 +341,32 @@ def coletar_resumos(bench_dir: Path) -> list[ResumoCSV]:
 def ultimos_por_familia(resumos: Sequence[ResumoCSV]) -> list[ResumoCSV]:
     por_familia: dict[str, ResumoCSV] = {}
     for resumo in resumos:
-        atual = por_familia.get(resumo.familia)
+        atual = por_familia.get(resumo.chave_familia)
         if atual is None or resumo.arquivo > atual.arquivo:
-            por_familia[resumo.familia] = resumo
-    return [por_familia[chave] for chave in sorted(por_familia)]
+            por_familia[resumo.chave_familia] = resumo
+    return sorted(
+        por_familia.values(),
+        key=lambda resumo: (resumo.familia, 0 if resumo.padrao else 1, resumo.chave_familia),
+    )
 
 
 def pares_ab(resumos: Sequence[ResumoCSV], *, sufixo: str) -> list[tuple[ResumoCSV, ResumoCSV]]:
     por_familia: dict[str, dict[str, ResumoCSV]] = defaultdict(dict)
     for resumo in resumos:
-        estado = "controle"
-        if sufixo == "sem-exemplos" and not resumo.exemplos:
-            estado = sufixo
-        if sufixo == "sem-compactar" and not resumo.compactado:
-            estado = sufixo
-        if estado == "controle" and (
-            (sufixo == "sem-exemplos" and resumo.exemplos)
-            or (sufixo == "sem-compactar" and resumo.compactado)
-        ):
-            atual = por_familia[resumo.familia].get(estado)
-            if atual is None or resumo.arquivo > atual.arquivo:
-                por_familia[resumo.familia][estado] = resumo
-        elif estado == sufixo:
-            atual = por_familia[resumo.familia].get(estado)
-            if atual is None or resumo.arquivo > atual.arquivo:
-                por_familia[resumo.familia][estado] = resumo
+        estado: str | None = None
+        if sufixo == "sem-exemplos":
+            if not resumo.compactado:
+                continue
+            estado = "controle" if resumo.exemplos else sufixo
+        elif sufixo == "sem-compactar":
+            if not resumo.exemplos:
+                continue
+            estado = "controle" if resumo.compactado else sufixo
+        if estado is None:
+            continue
+        atual = por_familia[resumo.familia].get(estado)
+        if atual is None or resumo.arquivo > atual.arquivo:
+            por_familia[resumo.familia][estado] = resumo
     pares: list[tuple[ResumoCSV, ResumoCSV]] = []
     for familia in sorted(por_familia):
         grupo = por_familia[familia]
@@ -355,6 +386,18 @@ def _pt_pct(valor: float | None, casas: int = 0) -> str:
     if valor is None:
         return "—"
     return f"{_pt_num(100 * valor, casas)} %"
+
+
+def _pt_pct_fracao(
+    valor: float | None,
+    numerador: float | int | None,
+    denominador: float | int | None,
+    *,
+    casas: int = 1,
+) -> str:
+    if valor is None or numerador is None or denominador is None:
+        return _pt_pct(valor, casas)
+    return f"{_pt_pct(valor, casas)} ({_pt_num(numerador, 0)}/{_pt_num(denominador, 0)})"
 
 
 def _pt_usd(valor: float | None) -> str:
@@ -722,15 +765,19 @@ def renderizar_resultados(
         "",
         "## Benchmarks consolidados por arquivo mais recente de cada família",
         "",
-        "| família | modelo | tarefas | execuções | k efetivo | pass@1 simple | pass@1 medium | "
-        "pass@1 hard | pass@k total | ordem | precisão | ferr. desnec./exec. | tokens/exec. | "
-        "US$/exec. | s/exec. | fonte |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        "Nas colunas **ordem** e **precisão**, a fração entre parênteses agrega passos "
+        "(LCS/passos da referência ou chamadas totais) para dar a escala do percentual.",
+        "",
+        "| família | modo | modelo | tarefas | execuções | k efetivo | pass@1 simple | "
+        "pass@1 medium | pass@1 hard | pass@k total | ordem | precisão | "
+        "ferr. desnec./exec. | tokens/exec. | US$/exec. | s/exec. | fonte |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for resumo in latest:
         total = _dados_nivel(resumo, "total")
         partes = [
             resumo.familia,
+            resumo.modo,
             resumo.modelo or "—",
             str(resumo.tarefas),
             str(resumo.execucoes),
@@ -739,8 +786,12 @@ def renderizar_resultados(
             _pt_pct(_dados_nivel(resumo, "medium").get("pass@1")),
             _pt_pct(_dados_nivel(resumo, "hard").get("pass@1")),
             _pt_pct(total.get(f"pass@{resumo.k_efetivo}")),
-            _pt_pct(total.get("ordem")),
-            _pt_pct(total.get("precisao")),
+            _pt_pct_fracao(total.get("ordem"), total.get("ordem_passos"), total.get("ordem_total")),
+            _pt_pct_fracao(
+                total.get("precisao"),
+                total.get("precisao_passos"),
+                total.get("precisao_total"),
+            ),
             _pt_num(total.get("desnecessarias"), 2),
             _pt_num(total.get("tokens"), 0),
             _pt_usd(total.get("usd")),
@@ -765,8 +816,14 @@ def renderizar_resultados(
                 rotulo,
                 str(resumo.execucoes),
                 _pt_pct(total.get("pass@1")),
-                _pt_pct(total.get("ordem")),
-                _pt_pct(total.get("precisao")),
+                _pt_pct_fracao(
+                    total.get("ordem"), total.get("ordem_passos"), total.get("ordem_total")
+                ),
+                _pt_pct_fracao(
+                    total.get("precisao"),
+                    total.get("precisao_passos"),
+                    total.get("precisao_total"),
+                ),
                 _pt_num(total.get("desnecessarias"), 2),
                 _pt_num(total.get("tokens"), 0),
                 _pt_usd(total.get("usd")),
@@ -792,7 +849,11 @@ def renderizar_resultados(
                 rotulo,
                 str(resumo.execucoes),
                 _pt_pct(total.get("pass@1")),
-                _pt_pct(total.get("precisao")),
+                _pt_pct_fracao(
+                    total.get("precisao"),
+                    total.get("precisao_passos"),
+                    total.get("precisao_total"),
+                ),
                 _pt_num(total.get("chars"), 0),
                 _pt_num(total.get("tokens"), 0),
                 _pt_usd(total.get("usd")),
@@ -806,13 +867,15 @@ def renderizar_resultados(
         "",
         "## Taxa de reprovação do verificador nos CSVs mais recentes",
         "",
-        "| família | execuções com recusa | recusas totais | média de recusas/exec. | fonte |",
-        "|---|---:|---:|---:|---|",
+        "| família | modo | execuções com recusa | recusas totais | média de recusas/exec. | "
+        "fonte |",
+        "|---|---|---:|---:|---:|---|",
     ]
     for resumo in latest:
         media = resumo.recusas_total / resumo.execucoes if resumo.execucoes else 0.0
         partes = [
             resumo.familia,
+            resumo.modo,
             _ratio(resumo.recusas_exec, resumo.execucoes),
             str(resumo.recusas_total),
             _pt_num(media, 2),

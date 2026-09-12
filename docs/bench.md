@@ -17,7 +17,7 @@ TQR33862 — regressão):
 |---|---|---|---|
 | **simple** (S01–S10) | ler uma grandeza de um alimentador | `get_topology` | km de rede MT do ALC9925 (4,246); UCBT do RCP9882 (5.824); chaves NA do PTS0001 (31); trafos do TQR0007 (82) |
 | **medium** (M01–M13) | uma chave ou uma falta já registrada: clientes a jusante, zona de falta, fronteira, isolamento — e dois **eventos sem manobra** (chave indisponível, falta transitória) | `downstream_customers`; `locate_fault` [→ `isolate_fault`]; nenhuma (eventos) | UCBT a jusante da 1006470683 (1.307); nós da zona da falta 11304252 (35); UCBT que continuam sem tensão após isolar 11798327 e religar (2.023); religador do PTS9088 sem telecomando → 1.816 UCBT dependem de equipe |
-| **hard** (H01–H15) | restauração com o gêmeo: opções viáveis, margem, clientes recuperados — quatro **eventos completos** e um bloco **hard+** com restrição ativa, chave indisponível e replanejamento após rejeição | `locate_fault → isolate_fault → restore_options(score) [→ propose_plan]`; no replanejamento, `restore_options(score) → propose_plan` é a referência mínima | margem da melhor opção em Tijuca (45,98 %); opções viáveis (4); Ipanema sem opção (∅, 479 UCBT ficam sem tensão); Taquara com 10 equivalentes; H12–H15 estressam escolha/ordem sob restrição |
+| **hard** (H01–H15) | restauração com o gêmeo: opções viáveis, margem, clientes recuperados — quatro **eventos completos** e um bloco **hard+** com restrição ativa, chave indisponível e replanejamento após rejeição | `locate_fault → isolate_fault → restore_options(score) [→ propose_plan]`; em H14–H15 a referência considera a rederivação completa da falta (`locate_fault → isolate_fault → restore_options(score) → propose_plan`) | margem da melhor opção em Tijuca (45,98 %); opções viáveis (4); Ipanema sem opção (∅, 479 UCBT ficam sem tensão); Taquara com 10 equivalentes; H12–H15 estressam escolha/ordem sob restrição |
 
 Cada tarefa tem `id, nivel, cluster`, uma `pergunta` **ou** um `evento` (`falta_permanente` e
 `falta_transitoria` com o `falta` — trecho — que o simulador injeta; `chave_indisponivel` com a
@@ -70,8 +70,8 @@ conjunto é vazio e a proposta certa é **sem chave** (isolar e despachar).
 |---|---|
 | **pass@1** | fração de execuções certas (por nível e total) |
 | **pass@k** | estimador não enviesado do Codex, `1 − C(n−c, k)/C(n, k)`, por tarefa (n execuções, c acertos), média entre tarefas; com n < k usa k = n |
-| **ordem** | LCS(sequência executada, referência) / len(referência) — quanto da sequência certa apareceu, na ordem |
-| **precisão** | LCS / len(sequência executada) — quanto do que o agente chamou era necessário (penaliza chamadas supérfluas) |
+| **ordem** | LCS(sequência executada, referência) / len(referência) — quanto da sequência certa apareceu, na ordem; nas tabelas abaixo a fração entre parênteses agrega **passos em ordem / passos de referência** |
+| **precisão** | LCS / len(sequência executada) — quanto do que o agente chamou era necessário (penaliza chamadas supérfluas); nas tabelas abaixo a fração entre parênteses agrega **passos em ordem / chamadas feitas** |
 | **ferr. desnec.** | `len(sequência) − LCS` — número médio de chamadas fora da subsequência de referência |
 | **tokens/pass@1** | tokens médios por execução ÷ pass@1 — custo por acerto (PowerChain); `tokens médios` inclui as rodadas todas de uma execução |
 | **US$/exec.** | custo estimado por execução: tokens informados pelo provedor × **preço de lista** do modelo (`bench.PRECOS_USD_MILHAO`: entrada e saída por milhão; raciocínio conta como saída; sem cache nem lote). Leitura de ordem de grandeza para a apresentação, não fatura — o `.md` de cada rodada registra o preço usado |
@@ -130,13 +130,13 @@ resolução para em `OPENAI_API_KEY`.
 
 | provedor · modo | modelo | exec. | pass@1 simple | pass@1 medium | pass@1 hard | pass@1 total | pass@k total | ordem | precisão | tokens/exec. | **US$/exec.** | chars ferr./exec. | s/exec. |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| fake | fake-operador | 170 (k=5) | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 0 | — | 1.806 | 2,3 |
-| fake · sem compactar | fake-operador | 170 (k=5) | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 0 | — | 6.352 | 2,1 |
-| fake · sem exemplos | fake-operador | 170 (k=5) | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 0 | — | 1.806 | 1,9 |
-| **gemini** (exemplos + compactação) | gemini-2.5-flash | 124 (k=3 simple/medium, **k=5 hard**) | 100 % | 100 % | 85 % | 94 % | **100 %** | 95 % | 99 % | 11.557 | **0,0051** | 2.366 | 8,6 |
-| gemini · sem exemplos | gemini-2.5-flash | 68 (k=2) | 100 % | 100 % | 95 % | 99 % | 100 % | 98 % | 96 % | 9.290 | 0,0044 | 2.244 | 8,1 |
-| gemini · sem compactar | gemini-2.5-flash | 68 (k=2) | 100 % | 100 % | 91 % | 97 % | 100 % | 96 % | 100 % | 18.858 | 0,0071 | 9.236 | 7,2 |
-| **openai** | gpt-4.1-mini-2025-04-14 | 102 (k=3) | 100 % | 85 % | 100 % | 94 % | 94 % | 99 % | 95 % | 9.556 | **0,0041** | 5.687 | 8,4 |
+| fake | fake-operador | 170 (k=5) | 100 % | 100 % | 100 % | 100 % | 100 % | 100,0 % (310/310) | 100,0 % (310/310) | 0 | — | 1.806 | 2,3 |
+| fake · sem compactar | fake-operador | 170 (k=5) | 100 % | 100 % | 100 % | 100 % | 100 % | 100,0 % (310/310) | 100,0 % (310/310) | 0 | — | 6.352 | 2,1 |
+| fake · sem exemplos | fake-operador | 170 (k=5) | 100 % | 100 % | 100 % | 100 % | 100 % | 100,0 % (310/310) | 100,0 % (310/310) | 0 | — | 1.806 | 1,9 |
+| **gemini** (exemplos + compactação) | gemini-2.5-flash | 124 (k=3 simple/medium, **k=5 hard**) | 100 % | 100 % | 85 % | 94 % | **100 %** | 94,8 % (245/264) | 98,8 % (245/248) | 11.557 | **0,0051** | 2.366 | 8,6 |
+| gemini · sem exemplos | gemini-2.5-flash | 68 (k=2) | 100 % | 100 % | 95 % | 99 % | 100 % | 97,8 % (119/124) | 95,6 % (119/125) | 9.290 | 0,0044 | 2.244 | 8,1 |
+| gemini · sem compactar | gemini-2.5-flash | 68 (k=2) | 100 % | 100 % | 91 % | 97 % | 100 % | 95,6 % (116/124) | 100,0 % (116/116) | 18.858 | 0,0071 | 9.236 | 7,2 |
+| **openai** | gpt-4.1-mini-2025-04-14 | 102 (k=3) | 100 % | 85 % | 100 % | 94 % | 94 % | 98,5 % (183/186) | 95,1 % (183/193) | 9.556 | **0,0041** | 5.687 | 8,4 |
 
 Por nível, Gemini com exemplos e compactação (a configuração padrão do agente):
 
@@ -193,6 +193,17 @@ exploratório de 4 tarefas, com **k = n = 3** e `seed = 42`, versionado em
 `docs/bench/2026-09-11-openai-hardplus-k3.*` e
 `docs/bench/2026-09-11-openai-hardplus-k3-sem-exemplos.*`.
 
+Reabrindo os CSVs H12–H15, a maior parte da queda original de precisão no *hard+* apareceu como
+artefato do gabarito de referência, não como desperdício real do agente. Nos dois casos de
+**rejeição prévia** (H14–H15), as 6 execuções rederivam a mesma cadeia
+`locate_fault → isolate_fault → restore_options → propose_plan` antes de propor a alternativa
+restante. Isso é coerente com o prompt de replanejamento (`EVENTO` + `REJEICAO_HUMANA` + proposta
+anterior) e com o fato de a sessão não injetar no contexto o cache das chamadas anteriores; o
+agente recebe a falta registrada e a proposta rejeitada, mas não uma garantia de que a localização
+e o isolamento já estejam “materializados” na conversa corrente. Por isso, corrigi a
+`referencia` de H14 e H15 em `bench/tarefas.yaml` para aceitar a rederivação completa. A tabela
+abaixo já reflete essa leitura corrigida; os CSVs versionados mantêm a métrica histórica da rodada.
+
 Como o *hard+* foi construído:
 
 - **H12 — restrição ativa:** parte do caso H01, mas a sessão já nasce com
@@ -207,29 +218,37 @@ Como o *hard+* foi construído:
 
 | recorte | modo | n | pass@1 | ordem | precisão | ferr. desnec./exec. | rodadas/exec. | tokens/exec. | US$/exec. |
 |---|---|---|---|---|---|---|---|---|---|
-| *hard* original | com exemplos | 55 | 55/55 = 100 % | **100,0 %** | 97,3 % | 0,11 | **3,64** | 18.897 | 0,0081 |
-| *hard* original | sem exemplos | 55 | 55/55 = 100 % | 96,4 % | **97,8 %** | **0,09** | 3,87 | **17.714** | **0,0075** |
-| *hard+* | com exemplos | 12 | 12/12 = 100 % | **100,0 %** | 68,1 % | 1,42 | **4,08** | **41.269** | **0,0172** |
-| *hard+* | sem exemplos | 12 | 12/12 = 100 % | 95,8 % | **69,2 %** | **1,25** | 4,58 | 44.417 | 0,0184 |
+| *hard* original | com exemplos | 55 | 55/55 = 100 % | **100,0 % (195/195)** | 97,3 % (195/201) | 0,11 | **3,64** | 18.897 | 0,0081 |
+| *hard* original | sem exemplos | 55 | 55/55 = 100 % | 96,4 % (189/195) | **97,8 % (189/194)** | **0,09** | 3,87 | **17.714** | **0,0075** |
+| *hard+* | com exemplos | 12 | 12/12 = 100 % | **100,0 % (48/48)** | 92,2 % (48/53) | 0,42 | **4,08** | **41.269** | **0,0172** |
+| *hard+* | sem exemplos | 12 | 12/12 = 100 % | 95,8 % (46/48) | **94,2 % (46/49)** | **0,25** | 4,58 | 44.417 | 0,0184 |
 
 Leitura honesta:
 
 1. **No *hard* original, nenhum ganho detectável apesar de n=55.** `pass@1` saturou em 100 % nos
    dois braços; as métricas secundárias ficaram em direções diferentes: com exemplos a **ordem**
-   e o número de **rodadas** ficam um pouco melhores, sem exemplos a **precisão**, as
-   **chamadas desnecessárias** e os **tokens** ficam um pouco melhores. Isso é compatível com
-   efeito pequeno ou nulo nesse recorte, não com benefício claro.
-2. **O *hard+* força a hipótese certa, mas ainda não mostra um vencedor claro.** Nos cenários com
-   restrição ativa, chave indisponível e replanejamento após rejeição, o OpenAI continuou em
-   **12/12** com e sem exemplos. Com exemplos, a **ordem** ficou perfeita e houve menos
-   **rodadas** e **tokens**; sem exemplos, a **precisão** e as **chamadas desnecessárias** ficaram
-   ligeiramente melhores. De novo, os sinais se cancelam.
-3. **O gargalo observado no *hard+* é o replanejamento, não o acerto final.** H14 e H15 ainda
-   fazem `locate_fault` + `isolate_fault` antes de `restore_options`, embora a sessão já esteja em
-   modo de replanejamento; isso derruba a precisão para ~50 % em ambos os braços. Em H13 sem
-   exemplos, 1 execução pulou `isolate_fault` e foi direto a `restore_options`, reduzindo a ordem
-   para 83 %, mas sem errar a proposta.
-4. **O padrão do agente não muda.** Não há evidência suficiente, no provedor padrão da demo, para
+   ficou em **100,0 % (195/195)**, sem exemplos caiu para **96,4 % (189/195)**; em compensação, a
+   **precisão** ficou ligeiramente melhor sem exemplos (**97,8 % = 189/194** contra
+   **97,3 % = 195/201**), assim como **tokens** e **chamadas desnecessárias**. Isso continua
+   compatível com efeito pequeno ou nulo nesse recorte, não com benefício claro.
+2. **A maior parte da “queda para ~68 %” no *hard+* vinha do gabarito estreito de H14–H15.**
+   Nas 6 execuções com rejeição prévia (3 em H14, 3 em H15), os dois braços repetem
+   `locate_fault` + `isolate_fault` antes de `restore_options` e `propose_plan`. Como o prompt de
+   replanejamento reapresenta o evento e a rejeição, mas não injeta o cache das ferramentas
+   anteriores, tratei essa rederivação como **sequência válida** e atualizei o gabarito. Com isso,
+   a **precisão** do *hard+* sobe para **92,2 % (48/53)** com exemplos e **94,2 % (46/49)** sem
+   exemplos; as **chamadas desnecessárias** caem de **1,42/1,25** para **0,42/0,25** por execução.
+3. **O resíduo real de desperdício ficou concentrado em H13.** Ali, o agente faz uma
+   `propose_plan` extra em **6/6 execuções** antes de encerrar corretamente com proposta **sem
+   chave**; em **1/3** das execuções com exemplos ainda entra um `get_topology` a mais, e em
+   **2/3** das execuções sem exemplos ele pula `isolate_fault`, o que derruba a **ordem** para
+   **83,3 % (10/12)** sem alterar o desfecho. Ou seja: o problema remanescente não é
+   “replanejar de novo” em si, e sim insistir numa proposta intermediária onde a tie já nasce
+   indisponível.
+4. **Mesmo no *hard+* corrigido, os exemplos continuam sem vencedor claro.** Com exemplos, a
+   **ordem** fica um pouco melhor e há menos **rodadas**; sem exemplos, a **precisão** residual e
+   as **chamadas desnecessárias** ficam um pouco melhores. De novo, os sinais se cancelam.
+5. **O padrão do agente não muda.** Não há evidência suficiente, no provedor padrão da demo, para
    ligar ou desligar exemplos anotados por padrão com base em “ganho de planejamento”.
 
 O que **não** foi medido aqui: intervalo de confiança formal, poder estatístico para diferenças

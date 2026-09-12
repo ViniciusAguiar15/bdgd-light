@@ -373,7 +373,7 @@ tarefas:
     descricao: "Hard+ (rejeição prévia com alternativa): após rejeitar a primeira proposta porque a chave 974020904 está em manutenção, o agente deve replanejar direto para 529355823."
     rejeicao_previa:
       motivo: "a chave 974020904 está em manutenção"
-    referencia: [restore_options, propose_plan]
+    referencia: [locate_fault, isolate_fault, restore_options, propose_plan]
     gabarito: {ferramenta: restore_options, argumentos: {score: true}, campo: melhor_opcao}
     verificar: proposta
     esperado: ["529355823"]
@@ -385,7 +385,7 @@ tarefas:
     descricao: "Hard+ (rejeição prévia sem alternativa): após rejeitar a única tie viável porque a chave 746851189 está em manutenção, o agente deve ficar só com o isolamento."
     rejeicao_previa:
       motivo: "a chave 746851189 está em manutenção"
-    referencia: [restore_options, propose_plan]
+    referencia: [locate_fault, isolate_fault, restore_options, propose_plan]
     gabarito: {ferramenta: restore_options, argumentos: {score: true}, campo: melhor_opcao}
     verificar: proposta
     esperado: []
