@@ -131,3 +131,35 @@ title: "Diário — Modo noturno, rodada 6"
   (**616 telecomandados**), **2.386 arestas** CTMT–CTMT no grafo, **600 alimentadores grau 0**,
   **626 componentes conexas** e **379.348 / 5.049.006 clientes = 7,51 %** sem socorro possível por
   tie de campo.
+
+## 6. Issue #97 — ingest GD ANEEL (MMGD) (22:19)
+
+- Li o backlog canônico (`docs/backlog/35-ingest-gd-aneel.md`), a issue #97 no GitHub e confirmei
+  a fonte real via CKAN/API da ANEEL antes de codar: recurso principal
+  `empreendimento-geracao-distribuida.parquet`, `ZIP` equivalente e o PDF
+  `dm-geracao-distribuida-relacao-de-empreendimentos.pdf` (dicionário v2.3, 17-11-2025).
+- Baixei e parseei o PDF real, sem adivinhar nomes de coluna. O Parquet expõe exatamente os campos
+  usados no pipeline, em especial `CodEmpreendimento`, `DthAtualizaCadastralEmpreend`,
+  `DscClasseConsumo`, `DscSubGrupoTarifario`, `SigTipoGeracao`, `DscFonteGeracao` e
+  `MdaPotenciaInstaladaKW`.
+- Implementei `scripts/baixar_gd.py` com descoberta do recurso correto por nome no catálogo CKAN,
+  retomada via `HTTP Range`, preferência por Parquet e gravação de `data/gd/metadata.json` com
+  data/hora de extração, URL do `package_show` e metadados do arquivo baixado.
+- Implementei `src/bdgd_light/ingest/gd.py` e `scripts/gerar_gd_light.py` para:
+  filtrar a Light (`NumCNPJDistribuidora = 60444437000146`, `NomAgente = LIGHT SERVICOS DE
+  ELETRICIDADE S A`, `SigUF = RJ`), normalizar potência/fonte/classe/subgrupo, cruzar MMGD × BDGD
+  pela chave direta `CodEmpreendimento ↔ CEG_GD`, agregar por alimentador e conjunto e gerar
+  `docs/gd-light.md` + CSVs auxiliares em `docs/dados/`.
+- Evidência documentada no relatório, sem fingir precisão inexistente: a chave direta existe e casa
+  **56.941 / 64.233 = 88,65 %** dos empreendimentos da MMGD da Light (**699.667,12 /
+  843.404,78 kW = 82,96 %**). O que sobra **não** tem `CTMT`, `UNI_TR_MT` nem código da UC
+  beneficiária na MMGD; por isso o saldo sem chave foi agregado **apenas por município**.
+- Divergências reais registradas: **7.292** empreendimentos MMGD sem match direto
+  (**143.737,66 kW**), **1.197** linhas BDGD com `CEG_GD` vazio (**92.199,47 kW**) e **3**
+  repetições BT/MT idênticas da própria BDGD para a mesma chave no mesmo CTMT.
+- Gerei e commitei o relatório real `docs/gd-light.md`: topo por alimentador, conjuntos, evolução
+  anual pelo único campo temporal disponível (`DthAtualizaCadastralEmpreend`), municípios sem chave
+  e maiores divergências de potência entre MMGD e BDGD.
+- Adicionei `tests/test_gd.py` cobrindo filtro/nome real de colunas, junção exata com fixture
+  sintética, renderização determinística do Markdown, geração dos CSVs e leitura dos metadados do
+  downloader.
