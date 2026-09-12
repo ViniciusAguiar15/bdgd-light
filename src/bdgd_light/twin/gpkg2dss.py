@@ -18,9 +18,10 @@ Diferenças conscientes em relação ao bdgd2opendss (ver ``docs/spike-opendss.m
 - só os Masters pedidos (tipo de dia × mês) são escritos, não os 36;
 - ``CodCondutor``/``CurvaCarga`` só trazem os códigos usados pelo CTMT (o bdgd2opendss escreve o
   catálogo inteiro);
-- ``GD_BT``/reguladores não são gerados (o Master do bdgd2opendss também não inclui GD; a Light
-  não tem reguladores nos clusters da demo). A iluminação pública (``PIP``) entra no
-  ``CargasBT`` como ``Load.BT_IP<COD_ID>``, igual ao bdgd2opendss.
+- reguladores não são gerados (a Light não tem reguladores nos clusters da demo);
+- ``GD_BT`` pode ser gerado **sob demanda** a partir da MMGD pública da ANEEL + BDGD Light, mas o
+  Master segue saindo sem ``Redirect`` desse arquivo por padrão; a iluminação pública (``PIP``)
+  entra no ``CargasBT`` como ``Load.BT_IP<COD_ID>``, igual ao bdgd2opendss.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
@@ -159,6 +161,32 @@ class GpkgInvalidoError(ValueError):
     """O GeoPackage não tem as camadas/colunas mínimas para gerar um Master."""
 
 
+@dataclass(frozen=True)
+class ConfiguracaoGd:
+    """Fontes necessárias para materializar a GD opcional no gêmeo."""
+
+    parquet_dir: Path
+    mmgd_path: Path
+
+
+@dataclass(frozen=True)
+class ResumoGdCtmt:
+    """Resumo da GD modelada para um CTMT."""
+
+    ctmt: str
+    n_elementos: int
+    potencia_total_kw: float
+    n_empreendimentos_exatos: int
+    potencia_exata_kw: float
+    n_elementos_exatos: int
+    n_empreendimentos_agregados: int
+    potencia_agregada_kw: float
+    n_elementos_agregados: int
+    criterio_agregado: str | None
+    grupos_agregados: tuple[str, ...] = ()
+    observacoes: tuple[str, ...] = ()
+
+
 @dataclass
 class ConversaoGpkg:
     """Resultado da conversão de um CTMT."""
@@ -168,6 +196,7 @@ class ConversaoGpkg:
     masters: list[Path]
     contagem: dict[str, int] = field(default_factory=dict)
     avisos: list[str] = field(default_factory=list)
+    gd: ResumoGdCtmt | None = None
 
     @property
     def master(self) -> Path:
@@ -345,6 +374,269 @@ class _Curvas:
         return energia_kwh * prop_mes / (n * 24 * self.fc[chave]) if n else 0.0
 
 
+# --- GD opcional ---------------------------------------------------------------------------------
+
+
+_SHAPE_SOLAR = (
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.05,
+    0.15,
+    0.35,
+    0.6,
+    0.82,
+    0.95,
+    1.0,
+    0.95,
+    0.82,
+    0.6,
+    0.35,
+    0.15,
+    0.05,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+)
+_SHAPE_NAO_SOLAR = (1.0,) * 24
+_COLUNAS_CARGA_REF = ("CTMT", "MUN", "CAR_INST")
+
+
+def _shape_dss(nome: str, valores: Sequence[float]) -> str:
+    mult = ", ".join(f"{v:.4f}" for v in valores)
+    return f'New "Loadshape.{nome}" 24 1 mult=({mult})'
+
+
+def _eh_solar(sigla: object, descricao: object) -> bool:
+    sigla_txt = _texto(sigla).upper()
+    desc = _texto(descricao).casefold()
+    return sigla_txt == "UFV" or "solar" in desc
+
+
+def _peso_carga(valor: object) -> float:
+    return max(_num(valor), 0.0)
+
+
+@lru_cache(maxsize=8)
+def _base_gd_light(parquet_dir: str, mmgd_path: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    from bdgd_light.ingest.gd import carregar_bdgd_gd, carregar_mmgd, normalizar_mmgd
+    from bdgd_light.ingest.parquet import DiretorioParquet
+
+    fonte = DiretorioParquet(Path(parquet_dir))
+    mmgd = normalizar_mmgd(carregar_mmgd(Path(mmgd_path)))
+    bdgd_gd = carregar_bdgd_gd(fonte)
+    chaves_exatas = set(bdgd_gd.loc[bdgd_gd["ceg_gd"].ne(""), "ceg_gd"])
+    sem_chave = mmgd.loc[~mmgd["cod_empreendimento"].isin(chaves_exatas)].copy()
+    sem_chave["tipo_modelo"] = sem_chave.apply(
+        lambda r: (
+            "PVSystem" if _eh_solar(r["sig_tipo_geracao"], r["fonte_geracao"]) else "Generator"
+        ),
+        axis=1,
+    )
+    agregado = (
+        sem_chave.groupby(["cod_municipio_ibge", "municipio", "tipo_modelo"], dropna=False)
+        .agg(
+            n_empreendimentos=("cod_empreendimento", "nunique"),
+            potencia_kw=("potencia_kw", "sum"),
+        )
+        .reset_index()
+    )
+    return mmgd, agregado
+
+
+@lru_cache(maxsize=8)
+def _carga_ctmt_municipio(parquet_dir: str) -> pd.DataFrame:
+    from bdgd_light.ingest.parquet import DiretorioParquet
+
+    fonte = DiretorioParquet(Path(parquet_dir))
+    grupos: list[pd.DataFrame] = []
+    for camada in ("UCBT_tab", "UCMT_tab"):
+        if not fonte.tem(camada):
+            continue
+        lotes = []
+        for lote in fonte.iterar_lotes(camada, _COLUNAS_CARGA_REF, tamanho=500_000):
+            if lote.empty:
+                continue
+            dados = lote[["CTMT", "MUN"]].copy()
+            dados["carga_ref"] = lote["CAR_INST"].map(_peso_carga)
+            dados["CTMT"] = dados["CTMT"].map(_texto)
+            dados["MUN"] = pd.to_numeric(dados["MUN"], errors="coerce").astype("Int64")
+            lotes.append(
+                dados[dados["CTMT"].ne("") & dados["MUN"].notna() & (dados["carga_ref"] > 0.0)]
+            )
+        if lotes:
+            grupos.append(pd.concat(lotes, ignore_index=True))
+    if not grupos:
+        return pd.DataFrame(columns=["CTMT", "MUN", "carga_ref", "carga_municipio"])
+    base = pd.concat(grupos, ignore_index=True)
+    carga = base.groupby(["CTMT", "MUN"], as_index=False, dropna=False)["carga_ref"].sum()
+    carga["carga_municipio"] = carga.groupby("MUN", dropna=False)["carga_ref"].transform("sum")
+    return carga
+
+
+def _alocacao_exata(
+    ctmt: str,
+    mmgd: pd.DataFrame,
+    bdgd_local: pd.DataFrame,
+) -> tuple[list[dict[str, object]], list[str]]:
+    if bdgd_local.empty:
+        return [], []
+    local = bdgd_local.copy()
+    local["CEG_GD"] = local["CEG_GD"].map(_texto)
+    local = local[local["CEG_GD"].ne("")]
+    if local.empty:
+        return [], []
+    mmgd_idx = mmgd.set_index("cod_empreendimento", drop=False)
+    elementos: list[dict[str, object]] = []
+    observacoes: list[str] = []
+    for ceg, grupo in local.groupby("CEG_GD", sort=True):
+        if ceg not in mmgd_idx.index:
+            continue
+        if isinstance(mmgd_idx.loc[ceg], pd.DataFrame):
+            mmgd_row = mmgd_idx.loc[ceg].iloc[0]
+            observacoes.append(f"{ctmt}: MMGD duplicada na chave {ceg}; usada a primeira linha.")
+        else:
+            mmgd_row = mmgd_idx.loc[ceg]
+        pesos = grupo["POT_INST"].map(lambda x: max(_num(x), 0.0))
+        soma_pesos = float(pesos.sum())
+        if soma_pesos <= 0:
+            pesos = pd.Series([1.0] * len(grupo), index=grupo.index)
+            soma_pesos = float(len(grupo))
+        for idx, bdgd_row in grupo.iterrows():
+            elementos.append(
+                {
+                    "metodo": "chave_direta_pac",
+                    "ceg_gd": ceg,
+                    "cod_id_bdgd": _texto(bdgd_row.get("COD_ID")),
+                    "camada": _texto(bdgd_row.get("_camada_gd")),
+                    "pac": _texto(bdgd_row.get("PAC")),
+                    "uni_tr_mt": _texto(bdgd_row.get("UNI_TR_MT")),
+                    "fas_con": _texto(bdgd_row.get("FAS_CON")),
+                    "ten_con": _texto(bdgd_row.get("TEN_CON")),
+                    "tipo_modelo": (
+                        "PVSystem"
+                        if _eh_solar(mmgd_row["sig_tipo_geracao"], mmgd_row["fonte_geracao"])
+                        else "Generator"
+                    ),
+                    "fonte_geracao": _texto(mmgd_row["fonte_geracao"]),
+                    "sig_tipo_geracao": _texto(mmgd_row["sig_tipo_geracao"]),
+                    "potencia_kw": (
+                        float(mmgd_row["potencia_kw"]) * float(pesos.loc[idx]) / soma_pesos
+                    ),
+                }
+            )
+    return elementos, observacoes
+
+
+def _alocacao_agregada(
+    ctmt: str,
+    tabelas: dict[str, pd.DataFrame],
+    config: ConfiguracaoGd,
+) -> tuple[list[dict[str, object]], list[str]]:
+    carga_ref = _carga_ctmt_municipio(str(Path(config.parquet_dir).resolve()))
+    _, agregado = _base_gd_light(
+        str(Path(config.parquet_dir).resolve()), str(Path(config.mmgd_path).resolve())
+    )
+    municipios = sorted(
+        {
+            int(m)
+            for nome in ("UCBT_tab", "UCMT_tab")
+            if "MUN" in tabelas[nome].columns
+            for m in pd.to_numeric(tabelas[nome]["MUN"], errors="coerce").dropna().astype(int)
+        }
+    )
+    if not municipios:
+        return [], []
+    ref_bt = pd.DataFrame(columns=["UNI_TR_MT", "peso"])
+    if {"UNI_TR_MT", "CAR_INST"} <= set(tabelas["UCBT_tab"].columns):
+        ref_bt = (
+            tabelas["UCBT_tab"][["UNI_TR_MT", "CAR_INST"]]
+            .copy()
+            .assign(
+                UNI_TR_MT=lambda x: x["UNI_TR_MT"].map(_texto),
+                peso=lambda x: x["CAR_INST"].map(_peso_carga),
+            )
+        )
+        ref_bt = ref_bt[ref_bt["UNI_TR_MT"].ne("") & (ref_bt["peso"] > 0.0)]
+        ref_bt = ref_bt.groupby("UNI_TR_MT", as_index=False)["peso"].sum()
+    ref_mt = pd.DataFrame()
+    if {"PAC", "FAS_CON", "TEN_FORN", "CAR_INST"} <= set(tabelas["UCMT_tab"].columns):
+        ref_mt = tabelas["UCMT_tab"][["PAC", "FAS_CON", "TEN_FORN", "CAR_INST"]].copy()
+        ref_mt["PAC"] = ref_mt["PAC"].map(_texto)
+        ref_mt["FAS_CON"] = ref_mt["FAS_CON"].map(_texto)
+        ref_mt["TEN_FORN"] = ref_mt["TEN_FORN"].map(_texto)
+        ref_mt["peso"] = ref_mt["CAR_INST"].map(_peso_carga)
+        ref_mt = ref_mt[ref_mt["PAC"].ne("") & (ref_mt["peso"] > 0.0)]
+        ref_mt = ref_mt.groupby(["PAC", "FAS_CON", "TEN_FORN"], as_index=False)["peso"].sum()
+
+    pontos: list[dict[str, object]] = []
+    for row in ref_bt.itertuples(index=False):
+        pontos.append(
+            {
+                "metodo": "agregado_municipio_proporcional_carga",
+                "grupo": "BT",
+                "id_ref": row.UNI_TR_MT,
+                "peso": float(row.peso),
+            }
+        )
+    for row in ref_mt.itertuples(index=False):
+        pontos.append(
+            {
+                "metodo": "agregado_municipio_proporcional_carga",
+                "grupo": "MT",
+                "id_ref": row.PAC,
+                "pac": row.PAC,
+                "fas_con": row.FAS_CON,
+                "ten_con": row.TEN_FORN,
+                "peso": float(row.peso),
+            }
+        )
+    peso_total = sum(float(p["peso"]) for p in pontos)
+    if peso_total <= 0:
+        return [], []
+
+    local = carga_ref[carga_ref["CTMT"] == ctmt]
+    if local.empty:
+        return [], []
+    frac_por_municipio = {
+        int(r.MUN): (
+            float(r.carga_ref) / float(r.carga_municipio) if float(r.carga_municipio) > 0 else 0.0
+        )
+        for r in local.itertuples(index=False)
+    }
+    elementos: list[dict[str, object]] = []
+    grupos: list[str] = []
+    for mun in municipios:
+        frac_ctmt = frac_por_municipio.get(mun, 0.0)
+        if frac_ctmt <= 0:
+            continue
+        saldo = agregado[pd.to_numeric(agregado["cod_municipio_ibge"], errors="coerce") == mun]
+        for row in saldo.itertuples(index=False):
+            potencia_ctmt = float(row.potencia_kw) * frac_ctmt
+            if potencia_ctmt <= 0:
+                continue
+            grupos.append(f"{mun} / {row.municipio} ({row.tipo_modelo})")
+            for ponto in pontos:
+                elementos.append(
+                    {
+                        **ponto,
+                        "tipo_modelo": row.tipo_modelo,
+                        "tipo_geracao": row.tipo_modelo,
+                        "fonte_geracao": _texto(row.municipio),
+                        "municipio": _texto(row.municipio),
+                        "cod_municipio_ibge": mun,
+                        "n_empreendimentos": int(row.n_empreendimentos),
+                        "potencia_kw": potencia_ctmt * float(ponto["peso"]) / peso_total,
+                    }
+                )
+    return elementos, grupos
+
+
 # --- conversão de um CTMT -------------------------------------------------------------------------
 
 
@@ -365,6 +657,7 @@ class _Conversor:
         self.pac_ini = _texto(ctmt_row.get("PAC_INI"))
         self.kv_bt: dict[str, float] = {}  # UNTRMT → tensão de linha BT
         self.kv_fase_bt: dict[str, float] = {}  # UNTRMT → tensão fase-neutro para carga 1F
+        self.ref_gd_bt: dict[str, dict[str, str | float]] = {}
         self.bases_kv: set[float] = {self.basekv}
         self.conectados: set[str] = set()
 
@@ -597,6 +890,19 @@ class _Conversor:
                 self.kv_fase_bt[cod] = kv2
             else:
                 self.kv_fase_bt[cod] = kv2 / _RAIZ3
+            lig_s_base = (
+                _texto(unidades[0].get("LIG_FAS_S"))
+                if unidades[0] is not None
+                else (_texto(r.get("FAS_CON_S")) or "ABCN")
+            )
+            self.ref_gd_bt[cod] = {
+                "pac": pac2,
+                "fas_con": (
+                    lig_s_base if lig_s_base in NOS else (_texto(r.get("FAS_CON_S")) or "ABCN")
+                ),
+                "kv_linha": kv2,
+                "kv_fase": self.kv_fase_bt[cod],
+            }
             for idx, u in enumerate(unidades):
                 sufixo = chr(65 + idx)
                 kva = kvas_unid[idx]
@@ -742,6 +1048,140 @@ class _Conversor:
         self.contagem[nome] = n
         return linhas
 
+    def gd(self, config: ConfiguracaoGd) -> tuple[list[str], ResumoGdCtmt | None]:
+        mmgd, _ = _base_gd_light(
+            str(Path(config.parquet_dir).resolve()), str(Path(config.mmgd_path).resolve())
+        )
+        tabelas_gd = []
+        for nome in ("UGBT_tab", "UGMT_tab"):
+            df = self.t.get(nome, pd.DataFrame()).copy()
+            if df.empty:
+                continue
+            df["_camada_gd"] = nome
+            tabelas_gd.append(df)
+        bdgd_local = pd.concat(tabelas_gd, ignore_index=True) if tabelas_gd else pd.DataFrame()
+        elementos_exatos, observacoes = _alocacao_exata(self.ctmt, mmgd, bdgd_local)
+        elementos_agregados, grupos_agregados = _alocacao_agregada(self.ctmt, self.t, config)
+        elementos = [*elementos_exatos, *elementos_agregados]
+        if not elementos:
+            return [], None
+        linhas = [
+            "! GD opcional da issue #98 — arquivo gerado sem alterar o padrão do Master.",
+            (
+                "! Regra: chave direta `CEG_GD -> PAC` quando existe; "
+                "saldo sem chave direta da MMGD Light"
+            ),
+            (
+                "! é rateado por município proporcionalmente à carga do CTMT "
+                "e alocado por transformador BT"
+            ),
+            "! e PAC MT. O Master só inclui este arquivo com `--gd`.",
+            _shape_dss("gd_pv_diario", _SHAPE_SOLAR),
+            _shape_dss("gd_nao_solar_diario", _SHAPE_NAO_SOLAR),
+        ]
+        linhas += self._linhas_gd_explicitas(elementos_exatos)
+        linhas += self._linhas_gd_agregadas(elementos_agregados)
+        resumo = ResumoGdCtmt(
+            ctmt=self.ctmt,
+            n_elementos=len(elementos),
+            potencia_total_kw=sum(float(e["potencia_kw"]) for e in elementos),
+            n_empreendimentos_exatos=len({str(e["ceg_gd"]) for e in elementos_exatos}),
+            potencia_exata_kw=sum(float(e["potencia_kw"]) for e in elementos_exatos),
+            n_elementos_exatos=len(elementos_exatos),
+            n_empreendimentos_agregados=sum(
+                {
+                    (int(e.get("cod_municipio_ibge", 0)), _texto(e.get("tipo_modelo"))): int(
+                        e.get("n_empreendimentos", 0)
+                    )
+                    for e in elementos_agregados
+                }.values()
+            ),
+            potencia_agregada_kw=sum(float(e["potencia_kw"]) for e in elementos_agregados),
+            n_elementos_agregados=len(elementos_agregados),
+            criterio_agregado="municipio proporcional à carga" if elementos_agregados else None,
+            grupos_agregados=tuple(dict.fromkeys(grupos_agregados)),
+            observacoes=tuple(dict.fromkeys(observacoes)),
+        )
+        return linhas, resumo
+
+    def _linhas_gd_explicitas(self, elementos: list[dict[str, object]]) -> list[str]:
+        if not elementos:
+            return []
+        linhas = [
+            (
+                "! chave_direta_pac: MMGD `CodEmpreendimento` casada com BDGD `CEG_GD`; "
+                "injeção no PAC da unidade geradora."
+            )
+        ]
+        for idx, elemento in enumerate(elementos, start=1):
+            nome = f"{self.ctmt}_exata_{idx:04d}"
+            linhas.append(
+                f"! exata {elemento['ceg_gd']} ({elemento['camada']}/{elemento['cod_id_bdgd']}) "
+                f"{elemento['potencia_kw']:.3f} kW — {_texto(elemento['fonte_geracao'])}"
+            )
+            linhas.append(self._elemento_gd(nome, elemento))
+        return linhas
+
+    def _linhas_gd_agregadas(self, elementos: list[dict[str, object]]) -> list[str]:
+        if not elementos:
+            return []
+        linhas = [
+            (
+                "! agregado_municipio_proporcional_carga: "
+                "saldo MMGD sem chave direta distribuído por "
+                "carga do CTMT; agrupamento possível na Light atual = município."
+            )
+        ]
+        for idx, elemento in enumerate(elementos, start=1):
+            rotulo = _texto(elemento.get("municipio")) or (
+                f"MUN {elemento.get('cod_municipio_ibge')}"
+            )
+            linhas.append(
+                f"! agregado {rotulo} / {elemento['grupo']} / {elemento['tipo_modelo']} "
+                f"{elemento['potencia_kw']:.6f} kW"
+            )
+            linhas.append(self._elemento_gd(f"{self.ctmt}_agregado_{idx:05d}", elemento))
+        return linhas
+
+    def _elemento_gd(self, nome: str, elemento: dict[str, object]) -> str:
+        grupo = _texto(elemento.get("grupo"))
+        if grupo == "BT":
+            ref = self.ref_gd_bt.get(
+                _texto(elemento.get("id_ref") or elemento.get("uni_tr_mt")), {}
+            )
+            pac = _texto(ref.get("pac") or elemento.get("pac"))
+            fas = _texto(ref.get("fas_con") or elemento.get("fas_con")) or "ABCN"
+            uni_tr_mt = _texto(elemento.get("uni_tr_mt") or elemento.get("id_ref"))
+            kv_linha = float(ref.get("kv_linha") or self.kv_bt.get(uni_tr_mt, 0.22))
+            kv_fase = float(ref.get("kv_fase") or self.kv_fase_bt.get(uni_tr_mt, kv_linha / _RAIZ3))
+        else:
+            pac = _texto(elemento.get("pac"))
+            fas = _texto(elemento.get("fas_con")) or "ABC"
+            kv_linha = _kv(elemento.get("ten_con"), self.basekv) or self.basekv
+            kv_fase = kv_linha / _RAIZ3
+        fases = FASES.get(fas, 3 if grupo != "BT" else 1)
+        conn = CONEXAO.get(fas, "Wye")
+        nos = NOS.get(fas, "1.2.3" if fases > 1 else "1.4")
+        kv = kv_fase if fases == 1 and conn == "Wye" else kv_linha
+        shape = (
+            "gd_pv_diario"
+            if _texto(elemento.get("tipo_modelo")) == "PVSystem"
+            else "gd_nao_solar_diario"
+        )
+        potencia = max(float(elemento["potencia_kw"]), 0.0)
+        if _texto(elemento.get("tipo_modelo")) == "PVSystem":
+            linha = (
+                f'New "PVSystem.GD_{nome}" phases={fases} bus1="{pac}.{nos}" conn={conn} '
+                f"kv={kv:.9f} pmpp={potencia:.6f} kva={max(potencia, 0.001):.6f} pf=1 "
+                f"irradiance=1 daily={shape}"
+            )
+        else:
+            linha = (
+                f'New "Generator.GD_{nome}" phases={fases} bus1="{pac}.{nos}" conn={conn} '
+                f"kv={kv:.9f} kw={potencia:.6f} pf=1 model=1 daily={shape}"
+            )
+        return linha if self._ligado(pac) else self._isolado(linha, "GD_BT")
+
 
 CARGAS = ("UCBT_tab", "UCMT_tab", "PIP")
 
@@ -775,6 +1215,7 @@ def converter_ctmt(
     dias: Iterable[str] = DIAS,
     meses: Iterable[int] = (1,),
     ano: int = ANO_PADRAO,
+    gd: ConfiguracaoGd | None = None,
 ) -> ConversaoGpkg:
     """Converte um CTMT do GeoPackage para ``<out>/<ctmt>/`` e devolve os caminhos gerados.
 
@@ -794,8 +1235,8 @@ def converter_ctmt(
             f"CTMT {ctmt!r} não está em {gpkg.name}; disponíveis: {', '.join(ctmts['COD_ID'])}"
         )
     nomes = (
-        "SSDMT", "UNSEMT", "UNTRMT", "SSDBT", "UNSEBT", "RAMLIG", "UCBT_tab", "UCMT_tab", "PIP",
-        "EQTRMT", "SEGCON", "CRVCRG",
+        "SSDMT", "UNSEMT", "UNTRMT", "SSDBT", "UNSEBT", "RAMLIG", "UCBT_tab", "UCMT_tab",
+        "UGBT_tab", "UGMT_tab", "PIP", "EQTRMT", "SEGCON", "CRVCRG",
     )  # fmt: skip
     tabelas = {n: _por_ctmt(_ler(gpkg, n, existentes), ctmt) for n in nomes}
     if tabelas["UCBT_tab"].empty and "UCBT" in existentes:
@@ -850,6 +1291,16 @@ def converter_ctmt(
     redirects = [
         arq.name for prefixo, linhas in fixos if (arq := _escrever(pasta, prefixo, ctmt, linhas))
     ]
+    resumo_gd = None
+    if gd is not None:
+        linhas_gd, resumo_gd = c.gd(gd)
+        if linhas_gd:
+            arq_gd = _escrever(pasta, "GD_BT", ctmt, linhas_gd)
+            if arq_gd is not None:
+                c.contagem["GD_BT"] = resumo_gd.n_elementos
+                c.contagem["GD_exata"] = resumo_gd.n_elementos_exatos
+                c.contagem["GD_agregada"] = resumo_gd.n_elementos_agregados
+                c.avisos.extend(resumo_gd.observacoes)
     bases = " ".join(f"{b:g}" for b in sorted(c.bases_kv))
     masters: list[Path] = []
     for mes in meses:
@@ -880,7 +1331,7 @@ def converter_ctmt(
     isolados = sum(v for k, v in c.contagem.items() if k.startswith("isolados_"))
     if isolados:
         c.avisos.append(f"{ctmt}: {isolados} elementos sem caminho até {c.pac_ini} (comentados)")
-    return ConversaoGpkg(ctmt, pasta, masters, c.contagem, c.avisos)
+    return ConversaoGpkg(ctmt, pasta, masters, c.contagem, c.avisos, gd=resumo_gd)
 
 
 def listar_ctmts(gpkg: str | Path) -> list[str]:
@@ -900,8 +1351,9 @@ def converter_gpkg(
     dias: Iterable[str] = DIAS,
     meses: Iterable[int] = (1,),
     ano: int = ANO_PADRAO,
+    gd: ConfiguracaoGd | None = None,
 ) -> list[ConversaoGpkg]:
     """Converte todos (ou só ``ctmts``) os alimentadores do GeoPackage; um ``<out>/<CTMT>/`` por
     CTMT."""
     ctmts = list(ctmts) if ctmts else listar_ctmts(gpkg)
-    return [converter_ctmt(gpkg, c, out, dias=dias, meses=meses, ano=ano) for c in ctmts]
+    return [converter_ctmt(gpkg, c, out, dias=dias, meses=meses, ano=ano, gd=gd) for c in ctmts]

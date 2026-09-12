@@ -163,3 +163,31 @@ title: "Diário — Modo noturno, rodada 6"
 - Adicionei `tests/test_gd.py` cobrindo filtro/nome real de colunas, junção exata com fixture
   sintética, renderização determinística do Markdown, geração dos CSVs e leitura dos metadados do
   downloader.
+
+## 7. Issue #98 — GD no gêmeo: sobretensão e fluxo reverso (23:32)
+
+- Li o backlog canônico (`docs/backlog/36-gd-no-gemeo.md`), a issue #98 e o relatório da #97
+  (`docs/gd-light.md`) antes de alterar o conversor, para preservar a regra crítica desta rodada:
+  **GD desligada por padrão** e só habilitada em cenário explícito.
+- Estendi `src/bdgd_light/twin/gpkg2dss.py` com `ConfiguracaoGd`/`ResumoGdCtmt` e a geração
+  opcional de `GD_BT`: quando existe chave direta `CodEmpreendimento ↔ CEG_GD`, a unidade entra no
+  **PAC da própria UG** (`UGBT_tab`/`UGMT_tab`); quando não existe, o saldo da MMGD Light é
+  agregado **por município** e rateado proporcionalmente à carga do CTMT, depois entre trafos BT e
+  PACs MT — premissa escrita no código e nos relatórios.
+- Modelei fonte **solar** como `PVSystem` com shape diário sintético 0→1→0 e fonte **não solar**
+  como `Generator` com shape plano; também passei a **comentar** GD conectada a PAC isolado, pelo
+  mesmo critério já usado para cargas/trechos fora do caminho até a fonte, o que eliminou
+  artefatos numéricos grosseiros em alimentadores reais como `TRS003`.
+- Integrei a opção ao CLI `bdgd-light dss` com `--gd`, `--mmgd` e `--parquet-dir`, sempre montando
+  um **Master de cenário** separado; o Master padrão do recorte continua sem `Redirect` de `GD_BT`.
+- Adicionei cobertura em `tests/test_gpkg2dss.py` para: geração opcional de `GD_BT` sem mexer no
+  Master padrão, uso de `Generator` quando a fonte não é solar e acionamento do cenário via CLI.
+- Criei `scripts/gerar_gd_gemeo.py` e gerei `docs/gd-gemeo.md` + CSVs auxiliares em `docs/dados/`
+  com fluxo OpenDSS em 02h/12h/19h para **7 alimentadores versionados**, os **2 de maior
+  penetração** da #97/#35 como diagnóstico (`BRI001`, `SRD002`) e os **3 clusters** (`tijuca`,
+  `ipanema`, `taquara`).
+- Resultado honesto desta rodada: nos 7 alimentadores versionados a GD **reduz perdas e a potência
+  pedida à subestação**, mas **não** elevou `Vmax MT` acima de 1,05 pu nem inverteu o fluxo no
+  disjuntor de saída; já `BRI001`, `SRD002` e partes dos clusters ainda exibem **não convergência
+  ou instabilidade numérica**, e isso ficou versionado explicitamente como limitação em vez de ser
+  escondido.

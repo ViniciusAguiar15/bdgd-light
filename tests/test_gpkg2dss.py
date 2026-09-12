@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 import geopandas as gpd
+import pandas as pd
 import pytest
 from shapely.geometry import Point
 from typer.testing import CliRunner
@@ -23,6 +24,7 @@ from bdgd_light.ingest.recorte import recortar  # noqa: E402
 from bdgd_light.twin import (  # noqa: E402
     DIAS,
     PREFIXO_ELEMENTO_TRECHO_MT,
+    ConfiguracaoGd,
     ConversaoGpkg,
     GpkgInvalidoError,
     cod_id_trecho_mt_de_elemento,
@@ -56,6 +58,146 @@ def compacto(resultado) -> str:
 def _texto(pasta: Path, prefixo: str) -> str:
     (arquivo,) = pasta.glob(f"{prefixo}_gpkg_*.dss")
     return arquivo.read_text(encoding="utf-8")
+
+
+def _mmgd_gemeo(destino: Path) -> Path:
+    dados = [
+        {
+            "DatGeracaoConjuntoDados": "2026-09-11",
+            "AnmPeriodoReferencia": "09/2026",
+            "NumCNPJDistribuidora": "60444437000146",
+            "SigAgente": "LIGHT SESA",
+            "NomAgente": "LIGHT SERVICOS DE ELETRICIDADE S A",
+            "CodClasseConsumo": "RE",
+            "DscClasseConsumo": "Residencial",
+            "CodSubGrupoTarifario": "B1",
+            "DscSubGrupoTarifario": "B1",
+            "CodUFibge": "33",
+            "SigUF": "RJ",
+            "CodRegiao": "3301",
+            "NomRegiao": "Metropolitana",
+            "CodMunicipioIbge": "3304557",
+            "NomMunicipio": "Rio de Janeiro",
+            "CodCEP": "20000000",
+            "SigTipoConsumidor": "PF",
+            "NumCPFCNPJ": "***",
+            "CodEmpreendimento": "GD.RJ.UGBT001",
+            "DthAtualizaCadastralEmpreend": "2024-07-10",
+            "SigModalidadeEmpreendimento": "",
+            "DscModalidadeHabilitado": "Geracao na propria UC",
+            "QtdUCRecebeCredito": 1,
+            "SigTipoGeracao": "UFV",
+            "DscFonteGeracao": "Radiação solar",
+            "DscPorte": "Microgeracao",
+            "MdaPotenciaInstaladaKW": 5.0,
+            "NomSubEstacao": "SE001",
+            "NumCoordESub": -43.2,
+            "NumCoordNSub": -22.9,
+            "NomTitularEmpreendimento": "***",
+        },
+        {
+            "DatGeracaoConjuntoDados": "2026-09-11",
+            "AnmPeriodoReferencia": "09/2026",
+            "NumCNPJDistribuidora": "60444437000146",
+            "SigAgente": "LIGHT SESA",
+            "NomAgente": "LIGHT SERVICOS DE ELETRICIDADE S A",
+            "CodClasseConsumo": "CO",
+            "DscClasseConsumo": "Comercial",
+            "CodSubGrupoTarifario": "B3",
+            "DscSubGrupoTarifario": "B3",
+            "CodUFibge": "33",
+            "SigUF": "RJ",
+            "CodRegiao": "3301",
+            "NomRegiao": "Metropolitana",
+            "CodMunicipioIbge": "3304557",
+            "NomMunicipio": "Rio de Janeiro",
+            "CodCEP": "20000000",
+            "SigTipoConsumidor": "PJ",
+            "NumCPFCNPJ": "***",
+            "CodEmpreendimento": "GD.RJ.UGBT002",
+            "DthAtualizaCadastralEmpreend": "2024-07-10",
+            "SigModalidadeEmpreendimento": "",
+            "DscModalidadeHabilitado": "Geracao na propria UC",
+            "QtdUCRecebeCredito": 1,
+            "SigTipoGeracao": "UTE",
+            "DscFonteGeracao": "Biogás",
+            "DscPorte": "Microgeracao",
+            "MdaPotenciaInstaladaKW": 10.0,
+            "NomSubEstacao": "SE001",
+            "NumCoordESub": -43.2,
+            "NumCoordNSub": -22.9,
+            "NomTitularEmpreendimento": "***",
+        },
+        {
+            "DatGeracaoConjuntoDados": "2026-09-11",
+            "AnmPeriodoReferencia": "09/2026",
+            "NumCNPJDistribuidora": "60444437000146",
+            "SigAgente": "LIGHT SESA",
+            "NomAgente": "LIGHT SERVICOS DE ELETRICIDADE S A",
+            "CodClasseConsumo": "CO",
+            "DscClasseConsumo": "Comercial",
+            "CodSubGrupoTarifario": "A4",
+            "DscSubGrupoTarifario": "A4",
+            "CodUFibge": "33",
+            "SigUF": "RJ",
+            "CodRegiao": "3301",
+            "NomRegiao": "Metropolitana",
+            "CodMunicipioIbge": "3304557",
+            "NomMunicipio": "Rio de Janeiro",
+            "CodCEP": "20000000",
+            "SigTipoConsumidor": "PJ",
+            "NumCPFCNPJ": "***",
+            "CodEmpreendimento": "GD.RJ.UGMT001",
+            "DthAtualizaCadastralEmpreend": "2024-07-10",
+            "SigModalidadeEmpreendimento": "",
+            "DscModalidadeHabilitado": "Geracao na propria UC",
+            "QtdUCRecebeCredito": 1,
+            "SigTipoGeracao": "UFV",
+            "DscFonteGeracao": "Radiação solar",
+            "DscPorte": "Minigeracao",
+            "MdaPotenciaInstaladaKW": 500.0,
+            "NomSubEstacao": "SE001",
+            "NumCoordESub": -43.2,
+            "NumCoordNSub": -22.9,
+            "NomTitularEmpreendimento": "***",
+        },
+        {
+            "DatGeracaoConjuntoDados": "2026-09-11",
+            "AnmPeriodoReferencia": "09/2026",
+            "NumCNPJDistribuidora": "60444437000146",
+            "SigAgente": "LIGHT SESA",
+            "NomAgente": "LIGHT SERVICOS DE ELETRICIDADE S A",
+            "CodClasseConsumo": "RE",
+            "DscClasseConsumo": "Residencial",
+            "CodSubGrupoTarifario": "B1",
+            "DscSubGrupoTarifario": "B1",
+            "CodUFibge": "33",
+            "SigUF": "RJ",
+            "CodRegiao": "3301",
+            "NomRegiao": "Metropolitana",
+            "CodMunicipioIbge": "3304557",
+            "NomMunicipio": "Rio de Janeiro",
+            "CodCEP": "20000000",
+            "SigTipoConsumidor": "PF",
+            "NumCPFCNPJ": "***",
+            "CodEmpreendimento": "GD.RJ.SEM.MATCH",
+            "DthAtualizaCadastralEmpreend": "2024-07-10",
+            "SigModalidadeEmpreendimento": "",
+            "DscModalidadeHabilitado": "Geracao na propria UC",
+            "QtdUCRecebeCredito": 1,
+            "SigTipoGeracao": "UFV",
+            "DscFonteGeracao": "Radiação solar",
+            "DscPorte": "Microgeracao",
+            "MdaPotenciaInstaladaKW": 7.5,
+            "NomSubEstacao": "SE001",
+            "NumCoordESub": -43.2,
+            "NumCoordNSub": -22.9,
+            "NomTitularEmpreendimento": "***",
+        },
+    ]
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(dados).to_parquet(destino, index=False)
+    return destino
 
 
 @pytest.fixture(scope="module")
@@ -231,6 +373,53 @@ def test_fluxo_converge(convertido):
     assert r.n_desenergizados == 0
 
 
+def test_converter_gera_gd_opcional_sem_mudar_master_padrao(parquet_mini: Path, tmp_path: Path):
+    mmgd = _mmgd_gemeo(tmp_path / "dados" / "mmgd.parquet")
+
+    conv = converter_ctmt(
+        FIXTURE,
+        "RJO001",
+        tmp_path,
+        dias=["DU"],
+        gd=ConfiguracaoGd(parquet_dir=parquet_mini, mmgd_path=mmgd),
+    )
+
+    assert conv.gd is not None
+    assert conv.gd.n_empreendimentos_exatos == 2
+    assert conv.gd.potencia_exata_kw == pytest.approx(505.0)
+    assert conv.gd.n_empreendimentos_agregados == 1
+    assert conv.gd.potencia_agregada_kw == pytest.approx(7.46, abs=0.05)
+    assert conv.gd.criterio_agregado == "municipio proporcional à carga"
+    texto = _texto(conv.pasta, "GD_BT")
+    assert "chave_direta_pac" in texto
+    assert "agregado_municipio_proporcional_carga" in texto
+    assert 'New "PVSystem.GD_RJO001_exata_0001"' in texto
+    assert "GD.RJ.UGMT001" in texto
+    assert conv.masters[0].read_text(encoding="utf-8").count("GD_BT") == 0
+
+    base = run_powerflow(conv.masters[0])
+    com_gd = run_powerflow(montar_master_cluster([conv.pasta], tmp_path / "gd.dss", gd=True))
+    assert base.convergiu and com_gd.convergiu
+    assert com_gd.potencia_kw < base.potencia_kw
+
+
+def test_converter_usa_generator_quando_fonte_nao_e_solar(parquet_mini: Path, tmp_path: Path):
+    mmgd = _mmgd_gemeo(tmp_path / "dados2" / "mmgd.parquet")
+
+    conv = converter_ctmt(
+        FIXTURE,
+        "RJO002",
+        tmp_path,
+        dias=["DU"],
+        gd=ConfiguracaoGd(parquet_dir=parquet_mini, mmgd_path=mmgd),
+    )
+
+    texto = _texto(conv.pasta, "GD_BT")
+    assert 'New "Generator.GD_RJO002_exata_0001"' in texto
+    assert "Biogás" in texto
+    assert conv.gd is not None and conv.gd.potencia_exata_kw == pytest.approx(10.0)
+
+
 def test_cluster_com_manobras(convertido, cluster_mini, tmp_path):
     pastas = [convertido["RJO001"].pasta, convertido["RJO002"].pasta]
     base = run_powerflow(montar_master_cluster(pastas, tmp_path / "base.dss"))
@@ -287,6 +476,37 @@ def test_cli_dss_modo_gpkg(recorte_mini, tmp_path):
     assert (
         dados["fontes"]["source"] == pytest.approx(0, abs=0.1) and dados["fontes"]["rjo002"] > 100
     )
+
+
+def test_cli_dss_gd_opcional(parquet_mini: Path, tmp_path: Path):
+    mmgd = _mmgd_gemeo(tmp_path / "cli" / "mmgd.parquet")
+    out = tmp_path / "dss_gd"
+
+    r = runner.invoke(
+        app,
+        [
+            "dss",
+            "--gpkg",
+            str(FIXTURE),
+            "--ctmt",
+            "RJO001",
+            "--out",
+            str(out),
+            "--sem-fluxo",
+            "--gd",
+            "--mmgd",
+            str(mmgd),
+            "--parquet-dir",
+            str(parquet_mini),
+        ],
+    )
+
+    assert r.exit_code == 0, r.output
+    texto = compacto(r)
+    assert "GDopcional:2exatos/505.0kW;1agregados/" in texto
+    assert (out / "RJO001" / "GD_BT_gpkg_RJO001.dss").is_file()
+    master = out / "RJO001" / "Master_DU01_gpkg_RJO001.dss"
+    assert "GD_BT" not in master.read_text(encoding="utf-8")
 
 
 @pytest.mark.skipif(
